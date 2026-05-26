@@ -1,0 +1,38 @@
+/**
+ * vazir.css - Persian Font Integration
+ * 
+ * Vazirmatn font family for Persian/Farsi text rendering
+ * Includes Thin, Light, Medium, and Bold weights
+ */
+
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('./Vazir-Thin.woff2') format('woff2'),
+         url('./Vazir-Thin.woff') format('woff');
+    font-weight: 100;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('./Vazir-Light.woff2') format('woff2'),
+         url('./Vazir-Light.woff') format('woff');
+    font-weight: 300;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('./Vazir-Medium.woff2') format('woff2'),
+         url('./Vazir-Medium.woff') format('woff');
+    font-weight: 500;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('./Vazir-Bold.woff2') format('woff2'),
+         url('./Vazir-Bold.woff') format('woff');
+    font-weight: 700;
+    font-display: swap;
+}

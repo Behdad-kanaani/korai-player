@@ -5,10 +5,11 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder",
-    "build:portable": "electron-builder --win portable",
-    "build:win": "electron-builder --win",
-    "build:all": "electron-builder --win --linux --mac"
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux",
+    "dist:all": "electron-builder --win --mac --linux"
   },
   "author": "Behdad Kanaani",
   "license": "Apache-2.0",
@@ -35,28 +36,136 @@
     "files": [
       "main.js",
       "preload.js",
-      "src/**/*"
+      "src/**/*",
+      "!**/*.map",
+      "!**/.vscode/**",
+      "!**/test/**",
+      "!**/tests/**",
+      "!**/__tests__/**",
+      "!**/docs/**",
+      "!**/example/**",
+      "!**/*.log",
+      "!**/.git/**"
     ],
+    "asar": true,
     "win": {
       "target": [
         {
-          "target": "portable",
+          "target": "nsis",
           "arch": ["x64"]
         }
       ],
-      "icon": "korai.png"
+      "icon": "korai.png",
+      "fileAssociations": [
+        {
+          "ext": "mp3",
+          "name": "MP3 Audio File",
+          "description": "KORAI Music Player - MP3",
+          "icon": "korai.png",
+          "role": "Player"
+        },
+        {
+          "ext": "wav",
+          "name": "WAV Audio File",
+          "description": "KORAI Music Player - WAV",
+          "icon": "korai.png",
+          "role": "Player"
+        },
+        {
+          "ext": "flac",
+          "name": "FLAC Audio File",
+          "description": "KORAI Music Player - FLAC",
+          "icon": "korai.png",
+          "role": "Player"
+        },
+        {
+          "ext": "ogg",
+          "name": "OGG Audio File",
+          "description": "KORAI Music Player - OGG",
+          "icon": "korai.png",
+          "role": "Player"
+        },
+        {
+          "ext": "m4a",
+          "name": "M4A Audio File",
+          "description": "KORAI Music Player - M4A",
+          "icon": "korai.png",
+          "role": "Player"
+        }
+      ]
     },
-    "portable": {
-      "artifactName": "KORAI-Player-Portable.exe",
-      "requestExecutionLevel": "user"
-    },
-    "linux": {
-      "target": ["AppImage"],
-      "icon": "korai.png"
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "perMachine": true,
+      "runAfterFinish": true,
+      "artifactName": "KORAI-Player-Setup-${version}.exe"
     },
     "mac": {
-      "target": "dmg",
-      "icon": "korai.png"
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "korai.png",
+      "category": "public.app-category.music",
+      "fileAssociations": [
+        {
+          "ext": "mp3",
+          "role": "Editor"
+        },
+        {
+          "ext": "wav",
+          "role": "Editor"
+        },
+        {
+          "ext": "flac",
+          "role": "Editor"
+        },
+        {
+          "ext": "ogg",
+          "role": "Editor"
+        },
+        {
+          "ext": "m4a",
+          "role": "Editor"
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "korai.png",
+      "category": "Audio",
+      "fileAssociations": [
+        {
+          "ext": "mp3",
+          "mimeType": "audio/mpeg"
+        },
+        {
+          "ext": "wav",
+          "mimeType": "audio/wav"
+        },
+        {
+          "ext": "flac",
+          "mimeType": "audio/flac"
+        },
+        {
+          "ext": "ogg",
+          "mimeType": "audio/ogg"
+        },
+        {
+          "ext": "m4a",
+          "mimeType": "audio/mp4"
+        }
+      ]
     }
   }
 }

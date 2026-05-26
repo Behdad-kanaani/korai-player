@@ -74,9 +74,9 @@ const translations = {
         welcomeOobeTitle: "Welcome to KORAI Stage",
         welcomeOobeSub: "Immersive local audio system designed for audiophiles",
         welcomeOobeGoalTitle: "Project Core",
-        welcomeOobeGoalDesc: "KORAI leverages high-fidelity Web Audio API, dynamic real-time spectrum analysis, and DSP sound shaping technologies to deliver a fluid, latency-free listening experience directly on your desktop.",
+        welcomeOobeGoalDesc: "A beautiful, modern, and completely free music player. Built to provide endless and powerful features, usable on all computers without any limitations. This project is ready for development and achieving greater goals.",
         welcomeOobeCreatorTitle: "The Craft",
-        welcomeOobeCreatorDesc: "Designed and engineered with passion by Behdad Kanaani. An open-source desktop environment bridging system-level media pipelines with glowing neon interfaces.",
+        welcomeOobeCreatorDesc: "I am Behdad Kanaani, a teenage programmer and lover of music, AI, computer vision, and everything related to programming and computers. I have many projects; visit my GitHub to see them.",
         welcomeOobeBtn: "Initialize Studio Core",
         
         // DSP Controls
@@ -222,12 +222,13 @@ const translations = {
         welcomeOobeTitle: "به استیج KORAI خوش آمدید",
         welcomeOobeSub: "سیستم صوتی بومی و سینمایی طراحی شده برای علاقه‌مندان به موسیقی تراز اول",
         welcomeOobeGoalTitle: "هسته پروژه",
-        welcomeOobeGoalDesc: "برنامه KORAI با بهره‌گیری از پردازش سیگنال زنده Web Audio API، آنالیز فرکانسی پویا و تکنولوژی‌های فیلتر باند اکولایزر شکل گرفته است تا تجربه‌ای مدرن، بدون تاخیر و روان از پخش فایل‌های صوتی محلی را در دسکتاپ فراهم آورد.",
+        welcomeOobeGoalDesc: "پلیر موسیقی زیبا، مدرن و کاملاً رایگان. ساخته شده برای ارائه امکانات بی‌پایان و خفن، قابل استفاده روی تمام کامپیوترها بدون هیچ محدودیتی. این پروژه آماده توسعه و دستیابی به اهداف بزرگ‌تر است.",
         welcomeOobeCreatorTitle: "توسعه و هنر",
-        welcomeOobeCreatorDesc: "توسعه یافته با عشق توسط بهداد کنعانی. پروژه‌ای متن‌باز برای پیوند دادن مدیریت رسانه سیستم‌عامل با طراحی‌های شیشه‌ای کلاینت.",
+        welcomeOobeCreatorDesc: "من بهداد کنعانی هستم، یک نوجوان برنامه‌نویس و عاشق موسیقی، هوش مصنوعی، بینایی کامپیوتر و هر چیزی که به برنامه‌نویسی و کامپیوتر ربط داشته باشد. پروژه‌های زیادی دارم؛ برای دیدن آن‌ها به گیت‌هاب من سر بزنید.",
         welcomeOobeBtn: "راه‌اندازی هسته صوتی کلاینت",
         
-        // DSP Controls        dspPreservePitch: "حفظ گام صدا (Preserve Pitch):",
+        // DSP Controls
+        dspPreservePitch: "حفظ گام صدا (Preserve Pitch):",
         dspTitle: "اکولایزر گرافیکی استودیویی",
         
         // Stats labels

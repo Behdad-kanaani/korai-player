@@ -40,6 +40,8 @@ let currentLanguage = localStorage.getItem('user_lang') || 'en';
 let currentSkin = localStorage.getItem('user_skin') || 'default';
 let currentVinylRotation = 0;
 let lastVinylUpdateTime = 0;
+let importProgressElement = null;
+let importProgressInterval = null;
 let vinylRotationInterval = null;
 
 // Web Audio API nodes
@@ -453,6 +455,94 @@ function renderPlaylistView() {
             </table>
         </div>
     `;
+}
+
+// =============================================================================
+// IMPORT PROGRESS EFFECT FUNCTIONS
+// =============================================================================
+/**
+ * Shows the import progress overlay with animation
+ */
+function showImportProgress(fileCount) {
+    // Remove existing if any
+    hideImportProgress();
+    
+    // Create overlay element
+    importProgressElement = document.createElement('div');
+    importProgressElement.id = 'importProgressOverlay';
+    importProgressElement.innerHTML = `
+        <div class="import-progress-container">
+            <div class="import-progress-card">
+                <div class="import-spinner">
+                    <i class="fa-solid fa-compact-disc fa-spin"></i>
+                </div>
+                <h3 class="import-title">Importing Audio Files</h3>
+                <p class="import-subtitle">Analyzing ${fileCount} file(s)...</p>
+                <div class="import-progress-bar-wrapper">
+                    <div class="import-progress-bar-fill" id="importProgressFill" style="width: 0%;"></div>
+                </div>
+                <p class="import-percentage" id="importPercentage">0%</p>
+                <div class="import-wave-bars">
+                    <span></span><span></span><span></span><span></span><span></span>
+                    <span></span><span></span><span></span><span></span><span></span>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(importProgressElement);
+    
+    // Trigger animation
+    setTimeout(() => {
+        if (importProgressElement) {
+            importProgressElement.classList.add('active');
+        }
+    }, 50);
+    
+    // Animate progress from 0 to 90% (remaining 10% for completion)
+    let progress = 0;
+    importProgressInterval = setInterval(() => {
+        if (progress < 90) {
+            progress += Math.random() * 8;
+            if (progress > 90) progress = 90;
+            updateImportProgress(progress, `Importing ${Math.floor(progress)}%...`);
+        }
+    }, 200);
+}
+
+/**
+ * Updates the import progress percentage
+ */
+function updateImportProgress(percent, message) {
+    const fill = document.getElementById('importProgressFill');
+    const percentText = document.getElementById('importPercentage');
+    const subtitle = document.querySelector('.import-subtitle');
+    
+    if (fill) fill.style.width = `${Math.min(100, percent)}%`;
+    if (percentText) percentText.innerText = `${Math.min(100, Math.floor(percent))}%`;
+    if (subtitle && message) subtitle.innerText = message;
+}
+
+/**
+ * Hides and removes the import progress overlay with exit animation
+ */
+function hideImportProgress() {
+    if (importProgressInterval) {
+        clearInterval(importProgressInterval);
+        importProgressInterval = null;
+    }
+    
+    if (importProgressElement) {
+        importProgressElement.classList.remove('active');
+        importProgressElement.classList.add('fade-out');
+        
+        setTimeout(() => {
+            if (importProgressElement && importProgressElement.parentNode) {
+                importProgressElement.parentNode.removeChild(importProgressElement);
+                importProgressElement = null;
+            }
+        }, 400);
+    }
 }
 
 // Remove track from playlist
@@ -979,11 +1069,22 @@ function startTimelineVisualizerLoop() {
     loop();
 }
 
+// Send playback state to system tray for menu update
+function syncTrayPlaybackState() {
+    if (window.electronAPI && typeof window.electronAPI.syncTrayState === 'function') {
+        window.electronAPI.syncTrayState({
+            isPlaying: isPlaying,
+            track: currentTrack
+        });
+    }
+}
+
 // Set play state and update all UI elements
 function setPlayState(playing) {
     isPlaying = playing;
     
     syncWithMiniPlayerWidget();
+    syncTrayPlaybackState();
 
     const mainBtn = document.getElementById('mainPlayBtn');
     const mainIcon = document.getElementById('mainPlayIcon');
@@ -994,6 +1095,16 @@ function setPlayState(playing) {
         mainIcon.className = isPlaying ? 'fa-solid fa-pause' : 'fa-solid fa-play';
     }
     
+    // Fullscreen/Cinematic play states
+    const fsPlayBtn = document.getElementById('fsPlayBtn');
+    if (fsPlayBtn) {
+        fsPlayBtn.innerHTML = isPlaying ? '<i class="fa-solid fa-pause"></i>' : '<i class="fa-solid fa-play"></i>';
+    }
+    const fsPlayIcon = document.getElementById('fsPlayIcon');
+    if (fsPlayIcon) {
+        fsPlayIcon.className = isPlaying ? 'fa-solid fa-pause' : 'fa-solid fa-play';
+    }
+
     const miniBtn = document.getElementById('miniPlayBtn');
     const miniIcon = document.getElementById('miniPlayIcon');
     if (miniBtn) {
@@ -1110,6 +1221,7 @@ function updatePlayerUI() {
     if (!currentTrack) return;
     
     syncWithMiniPlayerWidget();
+    syncTrayPlaybackState();
 
     let coverUrl = currentTrack.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${currentTrack.id}/cover` : null;
     
@@ -1729,6 +1841,7 @@ async function toggleLike() {
         showNotification('Connection failed', 'error');
     }
 }
+
 // Render queue panel
 function renderQueue() {
     const listEl = document.getElementById('queueList');
@@ -1796,7 +1909,9 @@ function toggleQueue() {
 function toggleFullscreen() {
     isFullscreenPlayerOpen = !isFullscreenPlayerOpen;
     const player = document.getElementById('fullscreenPlayer');
-    if (player) player.classList.toggle('open', isFullscreenPlayerOpen);
+    if (player) {
+        player.classList.toggle('open', isFullscreenPlayerOpen);
+    }
 }
 
 // Toggle mini-player card
@@ -1927,6 +2042,7 @@ function promptDownloadFromUrl() {
     };
 }
 
+// Close download URL modal
 function closeDownloadUrlModal() {
     const modal = document.getElementById('downloadUrlModal');
     if (modal) modal.style.display = 'none';
@@ -2059,6 +2175,7 @@ function setupDragAndDrop() {
 
 // Set up all event listeners
 function setupEventListeners() {
+    // Window Buttons
     const winMinBtn = document.getElementById('winMinimizeBtn');
     const winMaxBtn = document.getElementById('winMaximizeBtn');
     const winCloseBtn = document.getElementById('winCloseBtn');
@@ -2114,16 +2231,84 @@ function setupEventListeners() {
         });
     }
     
-    // Keyboard shortcuts
+    // Keyboard shortcuts & System Media Keys
     window.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-            e.preventDefault();
-            const searchInput = document.getElementById('searchInput');
-            if (searchInput) searchInput.focus();
+        // Prevent hotkeys triggering if user is actively writing in text input fields
+        if (document.activeElement && (
+            document.activeElement.tagName === 'INPUT' || 
+            document.activeElement.tagName === 'TEXTAREA' ||
+            document.activeElement.isContentEditable
+        )) {
+            // Let Ctrl+K search focus still trigger globally inside search
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                const sInput = document.getElementById('searchInput');
+                if (sInput) sInput.focus();
+            }
+            return;
         }
-        if (e.code === 'Space' && document.activeElement !== searchInput) {
-            e.preventDefault();
-            togglePlay();
+
+        switch (e.key) {
+            case ' ':
+            case 'Spacebar':
+                e.preventDefault();
+                togglePlay();
+                break;
+            case 'ArrowRight':
+                e.preventDefault();
+                if (e.ctrlKey) {
+                    nextTrack();
+                } else if (audioElement) {
+                    audioElement.currentTime = Math.min(audioElement.duration || 0, audioElement.currentTime + 10);
+                }
+                break;
+            case 'ArrowLeft':
+                e.preventDefault();
+                if (e.ctrlKey) {
+                    prevTrack();
+                } else if (audioElement) {
+                    audioElement.currentTime = Math.max(0, audioElement.currentTime - 10);
+                }
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                setVolume(Math.min(1.0, volume + 0.05));
+                break;
+            case 'ArrowDown':
+                e.preventDefault();
+                setVolume(Math.max(0.0, volume - 0.05));
+                break;
+            case 'm':
+            case 'M':
+                toggleMute();
+                break;
+            case 'n':
+            case 'N':
+                nextTrack();
+                break;
+            case 'b':
+            case 'B':
+            case 'p':
+            case 'P':
+                prevTrack();
+                break;
+            case 's':
+            case 'S':
+                if (audioElement) {
+                    audioElement.pause();
+                    audioElement.currentTime = 0;
+                    setPlayState(false);
+                }
+                break;
+            case 'f':
+            case 'F':
+                toggleFullscreen();
+                break;
+            case 'Escape':
+                if (isFullscreenPlayerOpen) {
+                    toggleFullscreen();
+                }
+                break;
         }
     });
 
@@ -2150,7 +2335,13 @@ function setupEventListeners() {
         });
     }
 
-    // Playback controls
+    // Fullscreen Progress Bar Click Events
+    const fsMirrorProgress = document.getElementById('fsMirrorProgressContainer');
+    if (fsMirrorProgress) {
+        fsMirrorProgress.addEventListener('click', handleMirrorSeek);
+    }
+
+    // Playback controls (Base Interface)
     const mainPlayBtn = document.getElementById('mainPlayBtn');
     if (mainPlayBtn) mainPlayBtn.addEventListener('click', togglePlay);
 
@@ -2178,7 +2369,38 @@ function setupEventListeners() {
             repeatBtn.classList.toggle('active', repeatMode);
         });
     }
+
+    // Playback controls (Fullscreen / Cinematic UI elements)
+    const fsPlayBtn = document.getElementById('fsPlayBtn');
+    if (fsPlayBtn) fsPlayBtn.addEventListener('click', togglePlay);
+
+    const fsNextBtn = document.getElementById('fsNextBtn');
+    if (fsNextBtn) fsNextBtn.addEventListener('click', nextTrack);
+
+    const fsPrevBtn = document.getElementById('fsPrevBtn');
+    if (fsPrevBtn) fsPrevBtn.addEventListener('click', prevTrack);
+
+    const fsShuffleBtn = document.getElementById('fsShuffleBtn');
+    if (fsShuffleBtn) {
+        fsShuffleBtn.addEventListener('click', () => {
+            shuffleMode = !shuffleMode;
+            fsShuffleBtn.classList.toggle('active', shuffleMode);
+            const baseShuffle = document.getElementById('shuffleBtnK');
+            if (baseShuffle) baseShuffle.classList.toggle('active', shuffleMode);
+        });
+    }
+
+    const fsRepeatBtn = document.getElementById('fsRepeatBtn');
+    if (fsRepeatBtn) {
+        fsRepeatBtn.addEventListener('click', () => {
+            repeatMode = !repeatMode;
+            fsRepeatBtn.classList.toggle('active', repeatMode);
+            const baseRepeat = document.getElementById('repeatBtnK');
+            if (baseRepeat) baseRepeat.classList.toggle('active', repeatMode);
+        });
+    }
     
+    // Additional Playback triggers
     const likeBtn = document.getElementById('likeBtnK');
     if (likeBtn) likeBtn.addEventListener('click', toggleLike);
     
@@ -2214,6 +2436,22 @@ function setupEventListeners() {
             } else {
                 toggleMiniPlayer();
             }
+        });
+    }
+
+    const miniNextBtn = document.getElementById('miniNextBtn');
+    if (miniNextBtn) {
+        miniNextBtn.addEventListener('click', () => {
+            if (isMiniWindowMode) window.electronAPI.controlFromMini('next');
+            else nextTrack();
+        });
+    }
+
+    const miniPrevBtn = document.getElementById('miniPrevBtn');
+    if (miniPrevBtn) {
+        miniPrevBtn.addEventListener('click', () => {
+            if (isMiniWindowMode) window.electronAPI.controlFromMini('prev');
+            else prevTrack();
         });
     }
     
@@ -2342,7 +2580,7 @@ if ('mediaSession' in navigator) {
     navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack());
 }
 
-// Application initialization
+// Application initialization (Consolidated single DOMContentLoaded Listener)
 window.addEventListener('DOMContentLoaded', async () => {
     try {
         console.log('🚀 DOM loaded, initializing KORAI Player...');
@@ -2385,6 +2623,55 @@ window.addEventListener('DOMContentLoaded', async () => {
         updateBodyClasses();
         
         switchSection('home');
+
+        // ============== Handle files opened from system file association ==============
+        if (window.electronAPI && window.electronAPI.onFilesOpened) {
+            window.electronAPI.onFilesOpened(async (files) => {
+                console.log('📁 Files opened from system:', files);
+                
+                if (files && files.length > 0) {
+                    showImportProgress(files.length);
+                    
+                    try {
+                        const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ filePaths: files })
+                        });
+                        
+                        if (res.ok) {
+                            const result = await res.json();
+                            updateImportProgress(100, `Imported ${result.imported} track(s)!`);
+                            
+                            setTimeout(async () => {
+                                hideImportProgress();
+                                showNotification(`Successfully imported ${result.imported} track(s)`, 'success');
+                                await loadTracks();
+                                
+                                if (result.imported > 0 && tracks.length > 0) {
+                                    const lastTrack = tracks[tracks.length - 1];
+                                    console.log('🎵 Auto-playing last imported track:', lastTrack.title);
+                                    setTimeout(() => {
+                                        playTrack(lastTrack.id);
+                                    }, 300);
+                                }
+                                
+                                switchSection(currentActiveSection);
+                            }, 500);
+                            
+                        } else {
+                            hideImportProgress();
+                            const error = await res.json();
+                            showNotification(`Import failed: ${error.error || 'Unknown error'}`, 'error');
+                        }
+                    } catch (err) {
+                        console.error('File association import error:', err);
+                        hideImportProgress();
+                        showNotification('Error importing files opened from system', 'error');
+                    }
+                }
+            });
+        }
 
         // Splash screen fade out and first-launch welcome screen
         setTimeout(async () => {
@@ -2447,41 +2734,10 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 
 // ============== Tray Menu Handlers ==============
-
-// Send playback state to system tray for menu update
-function syncTrayPlaybackState() {
-    if (window.electronAPI) {
-        window.electronAPI.syncTrayState({
-            isPlaying: isPlaying,
-            track: currentTrack
-        });
-    }
-}
-
-// Override setPlayState and updatePlayerUI to sync with Tray
-const originalSetPlayState = setPlayState;
-setPlayState = function(playing) {
-    originalSetPlayState(playing);
-    syncTrayPlaybackState();
-};
-
-const originalUpdatePlayerUI = updatePlayerUI;
-updatePlayerUI = function() {
-    originalUpdatePlayerUI();
-    syncTrayPlaybackState();
-};
-
-// Handlers received from Tray menu
 if (window.electronAPI) {
     // Handle open mini-player request from Tray
     window.electronAPI.onTrayOpenMiniPlayer((track, playing) => {
-        if (track) {
-            // If track exists, use it
-            toggleMiniPlayer();
-        } else {
-            // If no track is playing, just open mini-player
-            toggleMiniPlayer();
-        }
+        toggleMiniPlayer();
     });
     
     // Handle cinematic mode request from Tray

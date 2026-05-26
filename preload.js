@@ -2,7 +2,8 @@
  * preload.js - KORAI Music Player
  * 
  * Exposes secure IPC bridges between renderer and main process.
- * Provides safe APIs for file dialogs, window controls, and mini-player.
+ * Provides safe APIs for file dialogs, window controls, mini-player,
+ * and file association handling.
  */
 
 const { contextBridge, ipcRenderer } = require('electron');
@@ -31,6 +32,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getServerPort: getServerPort,
     selectAudioFiles: () => ipcRenderer.invoke('select-audio-files'),
     selectAudioFolder: () => ipcRenderer.invoke('select-audio-folder'),
+    
+    // File association - receive files opened from system
+    onFilesOpened: (callback) => {
+        ipcRenderer.on('files-opened', (event, files) => callback(files));
+    },
     
     // Global shortcut handler
     onGlobalShortcut: (callback) => {

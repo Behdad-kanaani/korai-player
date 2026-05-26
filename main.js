@@ -6,7 +6,7 @@
 // #   Description:                                                               #
 // #       KORAI Music Player - Electron Main Process                             #
 // #       Handles window creation, IPC communication, system tray,              #
-// #       file dialogs, and mini-player window management.                      #
+// #       file dialogs, mini-player window management, and file associations.   #
 // #                                                                              #
 // ################################################################################
 
@@ -15,13 +15,44 @@ const path = require('path');
 const fs = require('fs');
 const findFreePort = require('find-free-port');
 
-// Global references to prevent garbage collection
+// =============================================================================
+// GLOBAL ERROR HANDLERS
+// =============================================================================
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    // Don't crash the app, just log the error
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+    console.error('❌ Uncaught Exception:', error);
+    // Don't crash the app, just log the error
+});
+
+// =============================================================================
+// SINGLE INSTANCE LOCK - Prevent multiple instances of the app
+// =============================================================================
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+    // Another instance is already running, exit this one
+    console.log('Another instance is already running. Exiting...');
+    app.quit();
+    process.exit(0);
+}
+
+// =============================================================================
+// GLOBAL REFERENCES
+// =============================================================================
 let mainWindow;
 let miniPlayerWindow = null;
 let httpServer;
 let serverPort;
 let tray = null;
 let isQuitting = false;
+let pendingFiles = [];  // Store files opened before window is ready
 
 // Import the backend HTTP server
 const { startServer } = require('./src/backend/server');
@@ -34,6 +65,87 @@ let currentTrayState = {
 
 // Current language for tray menu (default: English)
 let currentLanguage = 'en';
+
+// =============================================================================
+// FILE ASSOCIATION HANDLING
+// =============================================================================
+
+/**
+ * Process pending files that were opened while app was starting
+ * Sends files to renderer process for import and playback
+ */
+async function processPendingFiles() {
+    if (pendingFiles.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
+        const files = [...pendingFiles];
+        pendingFiles = [];
+        
+        // Wait for page to fully load
+        setTimeout(async () => {
+            try {
+                console.log('📁 Processing pending files:', files);
+                mainWindow.webContents.send('files-opened', files);
+            } catch (err) {
+                console.error('Error processing opened files:', err);
+            }
+        }, 2000);
+    }
+}
+
+/**
+ * Parse command line arguments to extract audio files
+ * Filters out .exe and electron internal arguments
+ */
+function handleFileOpen() {
+    const files = process.argv.slice(1).filter(arg => {
+        return arg.match(/\.(mp3|wav|ogg|m4a|flac)$/i) && 
+               !arg.includes('.exe') && 
+               !arg.includes('electron');
+    });
+    
+    if (files.length > 0) {
+        console.log('📁 Files opened via command line:', files);
+        pendingFiles = files;
+    }
+}
+
+// macOS: Handle files opened when app is already running
+app.on('open-file', (event, filePath) => {
+    event.preventDefault();
+    console.log('📁 File opened on macOS:', filePath);
+    pendingFiles.push(filePath);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        processPendingFiles();
+    }
+});
+
+// Handle second instance attempt (when user double-clicks a file while app is running)
+app.on('second-instance', (event, commandLine, workingDirectory) => {
+    console.log('🔄 Second instance detected, focusing main window...');
+    
+    // Focus the main window
+    if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+        
+        // Extract audio files from command line
+        const files = commandLine.slice(1).filter(arg => {
+            return arg.match(/\.(mp3|wav|ogg|m4a|flac)$/i) && 
+                   !arg.includes('.exe') && 
+                   !arg.includes('electron');
+        });
+        
+        if (files.length > 0) {
+            console.log('📁 Files from second instance:', files);
+            pendingFiles = files;
+            processPendingFiles();
+        }
+    }
+});
+
+// =============================================================================
+// TRAY MENU FUNCTIONS
+// =============================================================================
 
 // Load saved language from settings file
 async function loadTrayLanguage() {
@@ -114,12 +226,10 @@ function rebuildTrayMenu() {
             label: text.miniPlayer,
             click: () => {
                 if (mainWindow && currentTrayState.currentTrack) {
-                    // Send event to renderer to open mini-player
                     mainWindow.webContents.send('tray-open-mini-player', currentTrayState.currentTrack, isPlaying);
                 } else if (mainWindow) {
                     mainWindow.webContents.send('tray-open-mini-player', null, false);
                 }
-                // Show mini-player if already open
                 if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
                     miniPlayerWindow.show();
                 }
@@ -136,7 +246,6 @@ function rebuildTrayMenu() {
         {
             label: text.player,
             click: () => {
-                // Close mini-player and show main player
                 if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
                     miniPlayerWindow.close();
                     miniPlayerWindow = null;
@@ -158,7 +267,7 @@ function rebuildTrayMenu() {
         
         menuTemplate.push({
             label: `${text.nowPlaying} ${nowPlayingText}`,
-            enabled: false  // Disabled, display only
+            enabled: false
         });
         
         menuTemplate.push({
@@ -201,7 +310,6 @@ function rebuildTrayMenu() {
             click: () => {
                 saveTrayLanguage('en');
                 rebuildTrayMenu();
-                // Notify renderer to change language
                 if (mainWindow) {
                     mainWindow.webContents.send('tray-change-language', 'en');
                 }
@@ -245,7 +353,6 @@ function updateTrayPlaybackState(isPlaying, track) {
     currentTrayState.currentTrack = track;
     rebuildTrayMenu();
     
-    // Update tooltip
     if (tray) {
         let tooltip = 'KORAI Music Player';
         if (track && track.title) {
@@ -258,18 +365,15 @@ function updateTrayPlaybackState(isPlaying, track) {
 
 /**
  * Creates system tray icon with context menu
- * Shows now playing, playback controls, mini-player, cinematic mode, language selection
  */
 async function createSystemTray() {
-    // Load saved language
     await loadTrayLanguage();
     
-    // Find tray icon
+    // Look for tray icon in multiple locations
     const possiblePaths = [
-        path.join(__dirname, 'src/frontend/assets/icons/tray_icon.png'),
-        path.join(__dirname, 'src/frontend/assets/icons/icon.png'),
-        path.join(__dirname, 'icon.png'),
         path.join(__dirname, 'korai.png'),
+        path.join(__dirname, 'icon.png'),
+        path.join(__dirname, 'src/frontend/assets/icons/icon.png'),
         path.join(__dirname, 'assets/icon.png')
     ];
     
@@ -277,42 +381,36 @@ async function createSystemTray() {
     for (const p of possiblePaths) {
         if (fs.existsSync(p)) {
             iconPath = p;
+            console.log('✅ Tray icon found at:', p);
             break;
         }
     }
     
-    // Create fallback icon if none exists
     let trayIcon = null;
     if (iconPath && fs.existsSync(iconPath)) {
-        trayIcon = nativeImage.createFromPath(iconPath);
-        // Resize to 16x16 for taskbar
-        trayIcon = trayIcon.resize({ width: 16, height: 16 });
+        const img = nativeImage.createFromPath(iconPath);
+        // Resize to appropriate size for tray
+        trayIcon = img.resize({ width: 16, height: 16 });
     } else {
-        // Create a simple placeholder icon (green circle)
-        console.log('⚠️ No tray icon found, using fallback');
+        console.log('⚠️ No tray icon found, creating fallback');
+        // Create a green fallback icon using Buffer
         const size = 16;
-        const svg = `
+        const svg = Buffer.from(`
             <svg width="${size}" height="${size}" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
                 <circle cx="8" cy="8" r="7" fill="#1db954" stroke="#ffffff" stroke-width="1"/>
                 <circle cx="8" cy="8" r="3" fill="#ffffff"/>
             </svg>
-        `;
-        trayIcon = nativeImage.createFromDataURL(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`);
+        `);
+        trayIcon = nativeImage.createFromBuffer(svg);
     }
     
     try {
         tray = new Tray(trayIcon);
         rebuildTrayMenu();
         
-        // Double-click: show main window
-        tray.on('double-click', () => {
-            if (mainWindow) {
-                mainWindow.show();
-                mainWindow.focus();
-            }
-        });
+        tray.setToolTip('KORAI Music Player');
         
-        // Left click: show/hide main window
+        // Handle left click - show/hide window
         tray.on('click', () => {
             if (mainWindow) {
                 if (mainWindow.isVisible()) {
@@ -324,15 +422,30 @@ async function createSystemTray() {
             }
         });
         
+        // Handle right click - show context menu
+        tray.on('right-click', () => {
+            tray.popUpContextMenu();
+        });
+        
+        // Handle double click
+        tray.on('double-click', () => {
+            if (mainWindow) {
+                mainWindow.show();
+                mainWindow.focus();
+            }
+        });
+        
     } catch (e) {
         console.log('⚠️ Could not initialize tray icon:', e.message);
     }
 }
 
+// =============================================================================
+// MAIN WINDOW CREATION
+// =============================================================================
+
 /**
  * Creates the main application window
- * Sets up frameless window with custom title bar
- * Initializes HTTP server on available port
  */
 async function createWindow() {
     try {
@@ -403,11 +516,13 @@ async function createWindow() {
         const htmlPath = path.join(__dirname, 'src/frontend/index.html');
         mainWindow.loadFile(htmlPath);
 
-        // Send server port to renderer after load
+        // Send server port to renderer after load and process pending files
         mainWindow.webContents.on('did-finish-load', () => {
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('server-port', serverPort);
                 setZoom();
+                // Process any pending files opened before window loaded
+                processPendingFiles();
             }
         });
 
@@ -432,7 +547,9 @@ async function createWindow() {
     }
 }
 
-// ============== IPC Handlers for Tray ==============
+// =============================================================================
+// IPC HANDLERS
+// =============================================================================
 
 // Receive playback state from renderer to update tray menu
 ipcMain.on('tray-update-state', (event, { isPlaying, track }) => {
@@ -445,14 +562,14 @@ ipcMain.on('tray-language-changed', (event, lang) => {
     rebuildTrayMenu();
 });
 
-// ============== Mini-Player Functions ==============
+// =============================================================================
+// MINI-PLAYER FUNCTIONS
+// =============================================================================
 
-// Store last track state for sync
 let lastTrackState = null;
 
 /**
  * Opens the mini-player window
- * Creates a compact, always-on-top window with rounded corners
  */
 ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
     if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
@@ -465,35 +582,26 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width } = primaryDisplay.workAreaSize;
 
-    // Create borderless window with rounded corners support
-miniPlayerWindow = new BrowserWindow({
-    width: 380,
-    height: 68,
+    miniPlayerWindow = new BrowserWindow({
+        width: 380,
+        height: 68,
+        frame: false,
+        transparent: false,
+        backgroundColor: '#0f2b1d',
+        roundedCorners: true,
+        hasShadow: true,
+        alwaysOnTop: true,
+        resizable: false,
+        skipTaskbar: false,
+        webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            preload: path.join(__dirname, 'preload.js'),
+        }
+    });
 
-    frame: false,
-
-    transparent: false,
-
-    backgroundColor: '#0f2b1d',
-
-    roundedCorners: true,
-    hasShadow: true,
-
-    alwaysOnTop: true,
-    resizable: false,
-    skipTaskbar: false,
-
-    webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        preload: path.join(__dirname, 'preload.js'),
-    }
-});
-
-    // Remove window background completely
     miniPlayerWindow.setBackgroundColor('#00000000');
     
-    // Enable visible on all workspaces on Windows
     if (process.platform === 'win32') {
         miniPlayerWindow.setVisibleOnAllWorkspaces(true);
     }
@@ -507,55 +615,37 @@ miniPlayerWindow = new BrowserWindow({
     
     setMiniZoom();
 
-    // Position window at top center
     miniPlayerWindow.setPosition(Math.floor((width - 380) / 2), 20);
 
-    // Load with mini mode query parameter
     const htmlPath = path.join(__dirname, 'src/frontend/index.html');
     miniPlayerWindow.loadURL(`file://${htmlPath}?mode=mini`);
 
-    // Send current track state to mini-player
     miniPlayerWindow.webContents.on('did-finish-load', () => {
         if (lastTrackState && miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
             miniPlayerWindow.webContents.send('state-updated', lastTrackState);
         }
         setMiniZoom();
         
-        // Inject CSS for proper rounded corners and window styling
+        // Inject CSS for proper rounded corners
         miniPlayerWindow.webContents.insertCSS(`
-            html,
-body {
-    margin: 0;
-    padding: 0;
-
-    width: 100%;
-    height: 100%;
-
-    overflow: hidden;
-
-    border-radius: 32px;
-
-    background: #0f2b1d;
-}
-
-body {
-    -webkit-app-region: drag;
-}
-
-button {
-    -webkit-app-region: no-drag;
-}
-
-.miniplayer-floating-card {
-    width: 100%;
-    height: 100%;
-
-    border-radius: 32px;
-
-    overflow: hidden;
-
-    background: linear-gradient(135deg, #0f2b1d 0%, #0a1c24 100%);
-}
+            html, body {
+                margin: 0;
+                padding: 0;
+                width: 100%;
+                height: 100%;
+                overflow: hidden;
+                border-radius: 32px;
+                background: #0f2b1d;
+            }
+            body { -webkit-app-region: drag; }
+            button { -webkit-app-region: no-drag; }
+            .miniplayer-floating-card {
+                width: 100%;
+                height: 100%;
+                border-radius: 32px;
+                overflow: hidden;
+                background: linear-gradient(135deg, #0f2b1d 0%, #0a1c24 100%);
+            }
         `);
     });
 
@@ -563,10 +653,8 @@ button {
         miniPlayerWindow = null;
     });
 
-    // Handle blur/focus to prevent disappearing behind taskbar
     miniPlayerWindow.on('blur', () => {
         if (miniPlayerWindow && !miniPlayerWindow.isDestroyed() && !miniPlayerWindow.isFocused()) {
-            // Keep window visible but slightly dim if needed
             miniPlayerWindow.webContents.executeJavaScript(`
                 document.body.style.opacity = '0.95';
             `).catch(() => {});
@@ -581,13 +669,11 @@ button {
         }
     });
 
-    // Hide main window when mini-player opens
     if (mainWindow) {
         mainWindow.hide();
     }
 });
 
-// Close mini-player and show main window
 ipcMain.on('close-mini-player', () => {
     if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
         miniPlayerWindow.close();
@@ -599,50 +685,26 @@ ipcMain.on('close-mini-player', () => {
     }
 });
 
-// Sync playback state to mini-player
 ipcMain.on('sync-state-to-mini', (event, data) => {
     lastTrackState = data;
     if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
         miniPlayerWindow.webContents.send('state-updated', data);
     }
-    // Also update state for tray menu
     updateTrayPlaybackState(data.isPlaying, data.track);
 });
 
-// Forward control commands from mini-player to main window
 ipcMain.on('control-from-mini', (event, command) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('execute-control', command);
     }
 });
 
-// App lifecycle handlers
-app.whenReady().then(() => {
-    createWindow();
-});
-
-app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
-    }
-});
-
-app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        if (httpServer) {
-            httpServer.close(() => {
-                console.log('🛑 Server closed');
-            });
-        }
-        app.quit();
-    }
-});
-
-// ============== File Dialog Handlers ==============
+// =============================================================================
+// FILE DIALOG HANDLERS
+// =============================================================================
 
 /**
  * File dialog handler for selecting audio files
- * Returns array of file paths for MP3, WAV, OGG, M4A, FLAC
  */
 ipcMain.handle('select-audio-files', async () => {
     if (!mainWindow) return [];
@@ -657,7 +719,6 @@ ipcMain.handle('select-audio-files', async () => {
 
 /**
  * Recursive directory scanner for audio files
- * Non-blocking async implementation
  */
 async function scanDirAsync(dir, audioExtensions, files) {
     try {
@@ -681,7 +742,6 @@ async function scanDirAsync(dir, audioExtensions, files) {
 
 /**
  * Folder selection dialog handler
- * Recursively scans selected folder for all audio files
  */
 ipcMain.handle('select-audio-folder', async () => {
     if (!mainWindow) return [];
@@ -698,7 +758,9 @@ ipcMain.handle('select-audio-folder', async () => {
     return files;
 });
 
-// ============== Window Control Handlers ==============
+// =============================================================================
+// WINDOW CONTROL HANDLERS
+// =============================================================================
 
 ipcMain.on('minimize-window', () => {
     if (mainWindow) mainWindow.minimize();
@@ -718,8 +780,35 @@ ipcMain.on('close-window', () => {
     if (mainWindow) mainWindow.close();
 });
 
-// Open external links in default browser
 ipcMain.on('open-external', (event, url) => {
     const { shell } = require('electron');
     shell.openExternal(url);
+});
+
+// =============================================================================
+// APP LIFECYCLE
+// =============================================================================
+
+// Parse command line arguments for file association before app is ready
+handleFileOpen();
+
+app.whenReady().then(() => {
+    createWindow();
+});
+
+app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+    }
+});
+
+app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+        if (httpServer) {
+            httpServer.close(() => {
+                console.log('🛑 Server closed');
+            });
+        }
+        app.quit();
+    }
 });

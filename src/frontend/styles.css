@@ -1385,11 +1385,11 @@ body.ltr .library-tracks-table tr td:last-child {
     z-index: 10000;
     width: 380px;
     background: rgba(18, 18, 22, 0.95) !important;
-    backdrop-filter: blur(32px) !important;
-    -webkit-backdrop-filter: blur(32px) !important;
+    /* backdrop-filter: blur(32px) !important; */
+    /* -webkit-backdrop-filter: blur(32px) !important; */
     border: 1px solid rgba(255, 255, 255, 0.15) !important;
     border-radius: 48px !important;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    /* box-shadow: 0 10px 30px rgba(0,0,0,0.5); */
     padding: 8px 20px;
     opacity: 0;
     transition: var(--transition-bounce);
@@ -2980,8 +2980,8 @@ body.mini-window-active .miniplayer-floating-card {
     opacity: 1 !important;
     border-radius: 20px !important;
     margin: 0 !important;
-    background: rgba(255, 255, 255, 0.02) !important;
-    backdrop-filter: blur(25px) !important;
+    /* background: rgba(255, 255, 255, 0.02) !important; */
+    /* backdrop-filter: blur(25px) !important; */
 }
 
 body.mini-window-active .miniplayer-glass-content {
@@ -3017,4 +3017,127 @@ body.mini-window-active .mini-timeline-bar {
     .volume-widget { display: none; }
     .immersive-layout-grid { grid-template-columns: 1fr; gap: 24px; }
     .immersive-vinyl-case { width: 200px; height: 200px; }
+}
+
+/* Mini-window mode adjustments to clear window corner issues and style background */
+body.mini-window-active {
+    background: transparent !important;
+    overflow: hidden !important;
+    /* Use flex layout to center the mini-player inside the slightly larger transparent window space */
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+body.mini-window-active .korai-app-container,
+body.mini-window-active .premium-playback-bar,
+body.mini-window-active .context-menu,
+body.mini-window-active .queue-drawer-panel,
+body.mini-window-active .fullscreen-immersive-player,
+body.mini-window-active .custom-title-bar {
+    display: none !important;
+}
+
+body.mini-window-active .miniplayer-floating-card {
+    /* Changed position to relative to prevent stretching and stay centered in the container */
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: 380px !important; /* Fixed inner content size */
+    height: 68px !important;
+    transform: none !important;
+    opacity: 1 !important;
+    border-radius: 32px !important; /* Elegant rounded card corners */
+    margin: 0 !important;
+    /* Beautiful emerald green/cyan dark translucent gradient theme */
+    background: linear-gradient(135deg, rgba(16, 44, 30, 0.96) 0%, rgba(10, 26, 36, 0.96) 100%) !important;
+    /* backdrop-filter: blur(25px) !important; */
+    /* Soft glowing border in alignment with the application's green accent */
+    border: 1px solid rgba(29, 185, 84, 0.35) !important;
+    /* box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important; */
+    pointer-events: all !important;
+}
+
+/* Mini-window mode adjustments - Removed shadow and blur filters completely to eliminate fuzzy artifacts */
+body.mini-window-active {
+    background: transparent !important;
+    overflow: hidden !important;
+    /* Center layout alignment within the safe padding window size */
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+body.mini-window-active .korai-app-container,
+body.mini-window-active .premium-playback-bar,
+body.mini-window-active .context-menu,
+body.mini-window-active .queue-drawer-panel,
+body.mini-window-active .fullscreen-immersive-player,
+body.mini-window-active .custom-title-bar {
+    display: none !important;
+}
+
+body.mini-window-active .miniplayer-floating-card {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: 380px !important; /* Fixed inner content width */
+    height: 68px !important;
+    transform: none !important;
+    opacity: 1 !important;
+    border-radius: 32px !important;
+    margin: 0 !important;
+    /* Solid, opaque emerald green to deep slate gradient theme with NO transparency */
+    background: linear-gradient(135deg, #0f2b1d 0%, #0a1c24 100%) !important;
+    /* Absolutely disabled shadow and blur filters to prevent OS compositing halos */
+    /* box-shadow: none !important; */
+    /* backdrop-filter: none !important; */
+    /* -webkit-backdrop-filter: none !important; */
+    /* Sharp glowing solid border aligned with active brand green */
+    border: 1px solid rgba(29, 185, 84, 0.5) !important;
+    pointer-events: all !important;
+}
+
+/* Mini-window mode - Card fills entire window with no extra box */
+body.mini-window-active {
+    background: transparent !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+body.mini-window-active .korai-app-container,
+body.mini-window-active .premium-playback-bar,
+body.mini-window-active .context-menu,
+body.mini-window-active .queue-drawer-panel,
+body.mini-window-active .fullscreen-immersive-player,
+body.mini-window-active .custom-title-bar {
+    display: none !important;
+}
+
+body.mini-window-active .miniplayer-floating-card {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    background: linear-gradient(135deg, #0f2b1d 0%, #0a1c24 100%) !important;
+    border: none !important;
+    box-shadow: none !important;
 }

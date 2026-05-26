@@ -2445,3 +2445,74 @@ window.addEventListener('DOMContentLoaded', async () => {
         showNotification('Initialization failed', 'error');
     }
 });
+
+// ============== Tray Menu Handlers ==============
+
+// Send playback state to system tray for menu update
+function syncTrayPlaybackState() {
+    if (window.electronAPI) {
+        window.electronAPI.syncTrayState({
+            isPlaying: isPlaying,
+            track: currentTrack
+        });
+    }
+}
+
+// Override setPlayState and updatePlayerUI to sync with Tray
+const originalSetPlayState = setPlayState;
+setPlayState = function(playing) {
+    originalSetPlayState(playing);
+    syncTrayPlaybackState();
+};
+
+const originalUpdatePlayerUI = updatePlayerUI;
+updatePlayerUI = function() {
+    originalUpdatePlayerUI();
+    syncTrayPlaybackState();
+};
+
+// Handlers received from Tray menu
+if (window.electronAPI) {
+    // Handle open mini-player request from Tray
+    window.electronAPI.onTrayOpenMiniPlayer((track, playing) => {
+        if (track) {
+            // If track exists, use it
+            toggleMiniPlayer();
+        } else {
+            // If no track is playing, just open mini-player
+            toggleMiniPlayer();
+        }
+    });
+    
+    // Handle cinematic mode request from Tray
+    window.electronAPI.onTrayCinematicMode(() => {
+        toggleFullscreen();
+    });
+    
+    // Handle language change request from Tray
+    window.electronAPI.onTrayChangeLanguage((lang) => {
+        if (lang !== currentLanguage) {
+            changeClientLanguage(lang);
+        }
+    });
+    
+    // Handle play/pause toggle request from Tray
+    window.electronAPI.onTrayTogglePlayback(() => {
+        togglePlay();
+    });
+    
+    // Handle next track request from Tray
+    window.electronAPI.onTrayNextTrack(() => {
+        nextTrack();
+    });
+    
+    // Handle previous track request from Tray
+    window.electronAPI.onTrayPreviousTrack(() => {
+        prevTrack();
+    });
+}
+
+// Send initial state to Tray
+setTimeout(() => {
+    syncTrayPlaybackState();
+}, 1000);

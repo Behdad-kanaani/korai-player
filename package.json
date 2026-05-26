@@ -6,12 +6,12 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
+    "build:portable": "electron-builder --win portable",
     "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux"
+    "build:all": "electron-builder --win --linux --mac"
   },
-  "author": "KORAI",
-  "license": "MIT",
+  "author": "Behdad Kanaani",
+  "license": "Apache-2.0",
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.18.2",
@@ -22,20 +22,41 @@
     "sharp": "^0.33.5"
   },
   "devDependencies": {
+    "electron": "^28.0.0",
     "electron-builder": "^24.9.1"
   },
   "build": {
-  "appId": "com.korai.player",
-  "win": {
-    "target": "NSIS",
-    "icon": "korai.png"
-  },
-  "mac": {
-    "icon": "korai.png"
-  },
-  "linux": {
-    "target": ["AppImage", "deb"],
-    "icon": "korai.png"
+    "appId": "com.korai.player",
+    "productName": "KORAI Player",
+    "copyright": "Copyright © 2026 Behdad Kanaani",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "korai.png"
+    },
+    "portable": {
+      "artifactName": "KORAI-Player-Portable.exe",
+      "requestExecutionLevel": "user"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "icon": "korai.png"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "korai.png"
+    }
   }
-}
 }

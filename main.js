@@ -8,17 +8,9 @@
 // #       Handles window creation, IPC communication, system tray,              #
 // #       file dialogs, and mini-player window management.                      #
 // #                                                                              #
-// #   Features:                                                                 #
-// #       - Custom frameless window with title bar controls                     #
-// #       - HTTP server integration for API endpoints                           #
-// #       - Mini-player window with always-on-top behavior                      #
-// #       - System tray with show/quit options                                  #
-// #       - Recursive folder scanning for audio files                           #
-// #       - IPC bridge between renderer and main process                        #
-// #                                                                              #
 // ################################################################################
 
-const { app, BrowserWindow, ipcMain, dialog, Tray, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const findFreePort = require('find-free-port');
@@ -33,6 +25,309 @@ let isQuitting = false;
 
 // Import the backend HTTP server
 const { startServer } = require('./src/backend/server');
+
+// Store current playback state for tray menu
+let currentTrayState = {
+    isPlaying: false,
+    currentTrack: null
+};
+
+// Current language for tray menu (default: English)
+let currentLanguage = 'en';
+
+// Load saved language from settings file
+async function loadTrayLanguage() {
+    try {
+        const userDataPath = app.getPath('userData');
+        const settingsPath = path.join(userDataPath, 'korai_data_v2.json');
+        if (fs.existsSync(settingsPath)) {
+            const data = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+            if (data.settings && data.settings.savedLanguage) {
+                currentLanguage = data.settings.savedLanguage;
+            }
+        }
+    } catch (err) {
+        console.log('Could not load language setting:', err);
+    }
+}
+
+// Save language setting
+async function saveTrayLanguage(lang) {
+    try {
+        const userDataPath = app.getPath('userData');
+        const settingsPath = path.join(userDataPath, 'korai_data_v2.json');
+        if (fs.existsSync(settingsPath)) {
+            const data = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+            if (!data.settings) data.settings = {};
+            data.settings.savedLanguage = lang;
+            fs.writeFileSync(settingsPath, JSON.stringify(data, null, 2));
+        }
+        currentLanguage = lang;
+    } catch (err) {
+        console.log('Could not save language setting:', err);
+    }
+}
+
+// Get menu text based on current language
+function getTrayMenuText() {
+    const isRTL = currentLanguage === 'fa';
+    
+    return {
+        showApp: isRTL ? 'نمایش برنامه' : 'Show App',
+        miniPlayer: isRTL ? 'مینی پلیر' : 'Mini Player',
+        cinematicMode: isRTL ? 'حالت سینمایی' : 'Cinematic Mode',
+        player: isRTL ? 'پلیر اصلی' : 'Main Player',
+        nowPlaying: isRTL ? 'در حال پخش:' : 'Now Playing:',
+        notPlaying: isRTL ? 'در حال پخش نیست' : 'Not Playing',
+        play: isRTL ? 'پخش' : 'Play',
+        pause: isRTL ? 'مکث' : 'Pause',
+        next: isRTL ? 'بعدی' : 'Next',
+        previous: isRTL ? 'قبلی' : 'Previous',
+        quit: isRTL ? 'خروج از KORAI' : 'Quit KORAI',
+        language: isRTL ? 'تغییر زبان' : 'Change Language',
+        persian: isRTL ? 'فارسی' : 'Persian',
+        english: isRTL ? 'انگلیسی' : 'English'
+    };
+}
+
+// Rebuild the tray context menu
+function rebuildTrayMenu() {
+    if (!tray) return;
+    
+    const text = getTrayMenuText();
+    const isPlaying = currentTrayState.isPlaying;
+    const hasTrack = currentTrayState.currentTrack && currentTrayState.currentTrack.title;
+    
+    // Menu template structure
+    const menuTemplate = [
+        {
+            label: text.showApp,
+            click: () => {
+                if (mainWindow) {
+                    mainWindow.show();
+                    mainWindow.focus();
+                }
+            }
+        },
+        { type: 'separator' },
+        {
+            label: text.miniPlayer,
+            click: () => {
+                if (mainWindow && currentTrayState.currentTrack) {
+                    // Send event to renderer to open mini-player
+                    mainWindow.webContents.send('tray-open-mini-player', currentTrayState.currentTrack, isPlaying);
+                } else if (mainWindow) {
+                    mainWindow.webContents.send('tray-open-mini-player', null, false);
+                }
+                // Show mini-player if already open
+                if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
+                    miniPlayerWindow.show();
+                }
+            }
+        },
+        {
+            label: text.cinematicMode,
+            click: () => {
+                if (mainWindow) {
+                    mainWindow.webContents.send('tray-cinematic-mode');
+                }
+            }
+        },
+        {
+            label: text.player,
+            click: () => {
+                // Close mini-player and show main player
+                if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
+                    miniPlayerWindow.close();
+                    miniPlayerWindow = null;
+                }
+                if (mainWindow) {
+                    mainWindow.show();
+                    mainWindow.focus();
+                }
+            }
+        },
+        { type: 'separator' }
+    ];
+    
+    // Now Playing section (only if a track is playing)
+    if (hasTrack) {
+        const trackTitle = currentTrayState.currentTrack.title || 'Untitled';
+        const trackArtist = currentTrayState.currentTrack.artist || '';
+        const nowPlayingText = trackArtist ? `${trackTitle} - ${trackArtist}` : trackTitle;
+        
+        menuTemplate.push({
+            label: `${text.nowPlaying} ${nowPlayingText}`,
+            enabled: false  // Disabled, display only
+        });
+        
+        menuTemplate.push({
+            label: isPlaying ? text.pause : text.play,
+            click: () => {
+                if (mainWindow) {
+                    mainWindow.webContents.send('tray-toggle-playback');
+                }
+            }
+        });
+        
+        menuTemplate.push(
+            {
+                label: text.previous,
+                click: () => {
+                    if (mainWindow) {
+                        mainWindow.webContents.send('tray-previous-track');
+                    }
+                }
+            },
+            {
+                label: text.next,
+                click: () => {
+                    if (mainWindow) {
+                        mainWindow.webContents.send('tray-next-track');
+                    }
+                }
+            }
+        );
+        
+        menuTemplate.push({ type: 'separator' });
+    }
+    
+    // Language submenu
+    const languageSubmenu = [
+        {
+            label: text.english,
+            type: 'radio',
+            checked: currentLanguage === 'en',
+            click: () => {
+                saveTrayLanguage('en');
+                rebuildTrayMenu();
+                // Notify renderer to change language
+                if (mainWindow) {
+                    mainWindow.webContents.send('tray-change-language', 'en');
+                }
+            }
+        },
+        {
+            label: text.persian,
+            type: 'radio',
+            checked: currentLanguage === 'fa',
+            click: () => {
+                saveTrayLanguage('fa');
+                rebuildTrayMenu();
+                if (mainWindow) {
+                    mainWindow.webContents.send('tray-change-language', 'fa');
+                }
+            }
+        }
+    ];
+    
+    menuTemplate.push({
+        label: text.language,
+        submenu: languageSubmenu
+    });
+    
+    menuTemplate.push({ type: 'separator' });
+    menuTemplate.push({
+        label: text.quit,
+        click: () => {
+            isQuitting = true;
+            app.quit();
+        }
+    });
+    
+    const contextMenu = Menu.buildFromTemplate(menuTemplate);
+    tray.setContextMenu(contextMenu);
+}
+
+// Update playback state from renderer
+function updateTrayPlaybackState(isPlaying, track) {
+    currentTrayState.isPlaying = isPlaying;
+    currentTrayState.currentTrack = track;
+    rebuildTrayMenu();
+    
+    // Update tooltip
+    if (tray) {
+        let tooltip = 'KORAI Music Player';
+        if (track && track.title) {
+            const status = isPlaying ? '▶' : '⏸';
+            tooltip = `${status} ${track.title} - ${track.artist || 'KORAI'}`;
+        }
+        tray.setToolTip(tooltip);
+    }
+}
+
+/**
+ * Creates system tray icon with context menu
+ * Shows now playing, playback controls, mini-player, cinematic mode, language selection
+ */
+async function createSystemTray() {
+    // Load saved language
+    await loadTrayLanguage();
+    
+    // Find tray icon
+    const possiblePaths = [
+        path.join(__dirname, 'src/frontend/assets/icons/tray_icon.png'),
+        path.join(__dirname, 'src/frontend/assets/icons/icon.png'),
+        path.join(__dirname, 'icon.png'),
+        path.join(__dirname, 'korai.png'),
+        path.join(__dirname, 'assets/icon.png')
+    ];
+    
+    let iconPath = null;
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+            iconPath = p;
+            break;
+        }
+    }
+    
+    // Create fallback icon if none exists
+    let trayIcon = null;
+    if (iconPath && fs.existsSync(iconPath)) {
+        trayIcon = nativeImage.createFromPath(iconPath);
+        // Resize to 16x16 for taskbar
+        trayIcon = trayIcon.resize({ width: 16, height: 16 });
+    } else {
+        // Create a simple placeholder icon (green circle)
+        console.log('⚠️ No tray icon found, using fallback');
+        const size = 16;
+        const svg = `
+            <svg width="${size}" height="${size}" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="8" cy="8" r="7" fill="#1db954" stroke="#ffffff" stroke-width="1"/>
+                <circle cx="8" cy="8" r="3" fill="#ffffff"/>
+            </svg>
+        `;
+        trayIcon = nativeImage.createFromDataURL(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`);
+    }
+    
+    try {
+        tray = new Tray(trayIcon);
+        rebuildTrayMenu();
+        
+        // Double-click: show main window
+        tray.on('double-click', () => {
+            if (mainWindow) {
+                mainWindow.show();
+                mainWindow.focus();
+            }
+        });
+        
+        // Left click: show/hide main window
+        tray.on('click', () => {
+            if (mainWindow) {
+                if (mainWindow.isVisible()) {
+                    mainWindow.hide();
+                } else {
+                    mainWindow.show();
+                    mainWindow.focus();
+                }
+            }
+        });
+        
+    } catch (e) {
+        console.log('⚠️ Could not initialize tray icon:', e.message);
+    }
+}
 
 /**
  * Creates the main application window
@@ -64,7 +359,7 @@ async function createWindow() {
             height: 850,
             minWidth: 1000,
             minHeight: 700,
-            frame: false,           // Custom frameless window
+            frame: false,
             show: true,
             titleBarStyle: 'default',
             webPreferences: {
@@ -137,13 +432,32 @@ async function createWindow() {
     }
 }
 
+// ============== IPC Handlers for Tray ==============
+
+// Receive playback state from renderer to update tray menu
+ipcMain.on('tray-update-state', (event, { isPlaying, track }) => {
+    updateTrayPlaybackState(isPlaying, track);
+});
+
+// Receive language change request from renderer
+ipcMain.on('tray-language-changed', (event, lang) => {
+    saveTrayLanguage(lang);
+    rebuildTrayMenu();
+});
+
+// ============== Mini-Player Functions ==============
+
+// Store last track state for sync
+let lastTrackState = null;
+
 /**
  * Opens the mini-player window
- * Creates a compact, always-on-top window for minimal playback control
+ * Creates a compact, always-on-top window with rounded corners
  */
 ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
-    if (miniPlayerWindow) {
+    if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
         miniPlayerWindow.show();
+        miniPlayerWindow.focus();
         return;
     }
 
@@ -151,24 +465,38 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width } = primaryDisplay.workAreaSize;
 
-    // Create mini-player window (compact size, transparent)
-    miniPlayerWindow = new BrowserWindow({
-        width: 380,
-        height: 68,
-        frame: false,
-        transparent: true,
-        backgroundColor: '#00000000',
-        hasShadow: false,
-        alwaysOnTop: true,
-        resizable: false,
-        skipTaskbar: true,
-        webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-            preload: path.join(__dirname, 'preload.js'),
-            zoomFactor: 0.4
-        }
-    });
+    // Create borderless window with rounded corners support
+miniPlayerWindow = new BrowserWindow({
+    width: 380,
+    height: 68,
+
+    frame: false,
+
+    transparent: false,
+
+    backgroundColor: '#0f2b1d',
+
+    roundedCorners: true,
+    hasShadow: true,
+
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: false,
+
+    webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, 'preload.js'),
+    }
+});
+
+    // Remove window background completely
+    miniPlayerWindow.setBackgroundColor('#00000000');
+    
+    // Enable visible on all workspaces on Windows
+    if (process.platform === 'win32') {
+        miniPlayerWindow.setVisibleOnAllWorkspaces(true);
+    }
 
     const setMiniZoom = () => {
         if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
@@ -179,7 +507,7 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
     
     setMiniZoom();
 
-    // Position at top center of screen
+    // Position window at top center
     miniPlayerWindow.setPosition(Math.floor((width - 380) / 2), 20);
 
     // Load with mini mode query parameter
@@ -192,10 +520,65 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
             miniPlayerWindow.webContents.send('state-updated', lastTrackState);
         }
         setMiniZoom();
+        
+        // Inject CSS for proper rounded corners and window styling
+        miniPlayerWindow.webContents.insertCSS(`
+            html,
+body {
+    margin: 0;
+    padding: 0;
+
+    width: 100%;
+    height: 100%;
+
+    overflow: hidden;
+
+    border-radius: 32px;
+
+    background: #0f2b1d;
+}
+
+body {
+    -webkit-app-region: drag;
+}
+
+button {
+    -webkit-app-region: no-drag;
+}
+
+.miniplayer-floating-card {
+    width: 100%;
+    height: 100%;
+
+    border-radius: 32px;
+
+    overflow: hidden;
+
+    background: linear-gradient(135deg, #0f2b1d 0%, #0a1c24 100%);
+}
+        `);
     });
 
     miniPlayerWindow.on('closed', () => {
         miniPlayerWindow = null;
+    });
+
+    // Handle blur/focus to prevent disappearing behind taskbar
+    miniPlayerWindow.on('blur', () => {
+        if (miniPlayerWindow && !miniPlayerWindow.isDestroyed() && !miniPlayerWindow.isFocused()) {
+            // Keep window visible but slightly dim if needed
+            miniPlayerWindow.webContents.executeJavaScript(`
+                document.body.style.opacity = '0.95';
+            `).catch(() => {});
+        }
+    });
+    
+    miniPlayerWindow.on('focus', () => {
+        if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
+            miniPlayerWindow.webContents.executeJavaScript(`
+                document.body.style.opacity = '1';
+            `).catch(() => {});
+        }
     });
 
     // Hide main window when mini-player opens
@@ -206,24 +589,24 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
 
 // Close mini-player and show main window
 ipcMain.on('close-mini-player', () => {
-    if (miniPlayerWindow) {
+    if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
         miniPlayerWindow.close();
         miniPlayerWindow = null;
     }
     if (mainWindow) {
         mainWindow.show();
+        mainWindow.focus();
     }
 });
-
-// Store last track state for sync
-let lastTrackState = null;
 
 // Sync playback state to mini-player
 ipcMain.on('sync-state-to-mini', (event, data) => {
     lastTrackState = data;
-    if (miniPlayerWindow && !miniWindow.isDestroyed()) {
+    if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
         miniPlayerWindow.webContents.send('state-updated', data);
     }
+    // Also update state for tray menu
+    updateTrayPlaybackState(data.isPlaying, data.track);
 });
 
 // Forward control commands from mini-player to main window
@@ -232,66 +615,6 @@ ipcMain.on('control-from-mini', (event, command) => {
         mainWindow.webContents.send('execute-control', command);
     }
 });
-
-/**
- * Creates system tray icon with context menu
- * Allows showing app or quitting from tray
- */
-function createSystemTray() {
-    const possiblePaths = [
-        path.join(__dirname, 'src/frontend/assets/icons/tray_icon.png'),
-        path.join(__dirname, 'icon.png'),
-        path.join(__dirname, 'korai.png')
-    ];
-    
-    let iconPath = null;
-    for (const p of possiblePaths) {
-        if (fs.existsSync(p)) {
-            iconPath = p;
-            break;
-        }
-    }
-    
-    if (!iconPath) {
-        console.log('⚠️ No tray icon found. Tray not created.');
-        return;
-    }
-    
-    try {
-        tray = new Tray(iconPath);
-        const contextMenu = Menu.buildFromTemplate([
-            { 
-                label: 'Show App', 
-                click: () => {
-                    if (mainWindow) {
-                        mainWindow.show();
-                        mainWindow.focus();
-                    }
-                } 
-            },
-            { type: 'separator' },
-            { 
-                label: 'Quit', 
-                click: () => {
-                    isQuitting = true;
-                    app.quit();
-                } 
-            }
-        ]);
-
-        tray.setToolTip('KORAI Premium Player');
-        tray.setContextMenu(contextMenu);
-
-        tray.on('double-click', () => {
-            if (mainWindow) {
-                mainWindow.show();
-                mainWindow.focus();
-            }
-        });
-    } catch (e) {
-        console.log('⚠️ Could not initialize tray icon:', e.message);
-    }
-}
 
 // App lifecycle handlers
 app.whenReady().then(() => {
@@ -314,6 +637,8 @@ app.on('window-all-closed', () => {
         app.quit();
     }
 });
+
+// ============== File Dialog Handlers ==============
 
 /**
  * File dialog handler for selecting audio files
@@ -373,7 +698,8 @@ ipcMain.handle('select-audio-folder', async () => {
     return files;
 });
 
-// Window control handlers
+// ============== Window Control Handlers ==============
+
 ipcMain.on('minimize-window', () => {
     if (mainWindow) mainWindow.minimize();
 });

@@ -48,6 +48,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     syncStateToMini: (data) => ipcRenderer.send('sync-state-to-mini', data),
     controlFromMini: (command) => ipcRenderer.send('control-from-mini', command),
     
+    // Tray menu sync
+    syncTrayState: (data) => ipcRenderer.send('tray-update-state', data),
+    onTrayOpenMiniPlayer: (callback) => ipcRenderer.on('tray-open-mini-player', (event, track, playing) => callback(track, playing)),
+    onTrayCinematicMode: (callback) => ipcRenderer.on('tray-cinematic-mode', () => callback()),
+    onTrayChangeLanguage: (callback) => ipcRenderer.on('tray-change-language', (event, lang) => callback(lang)),
+    onTrayTogglePlayback: (callback) => ipcRenderer.on('tray-toggle-playback', () => callback()),
+    onTrayNextTrack: (callback) => ipcRenderer.on('tray-next-track', () => callback()),
+    onTrayPreviousTrack: (callback) => ipcRenderer.on('tray-previous-track', () => callback()),
+    trayLanguageChanged: (lang) => ipcRenderer.send('tray-language-changed', lang),
+    
     // State synchronization
     onStateUpdated: (callback) => ipcRenderer.on('state-updated', (event, data) => callback(data)),
     onExecuteControl: (callback) => ipcRenderer.on('execute-control', (event, command) => callback(command)),

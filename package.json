@@ -1,0 +1,172 @@
+{
+  "name": "korai-player",
+  "version": "1.0.0",
+  "description": "KORAI Advanced Music Player",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux",
+    "dist:all": "electron-builder --win --mac --linux"
+  },
+  "author": "Behdad Kanaani",
+  "license": "Apache-2.0 WITH Commons-Clause",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "find-free-port": "^2.0.0",
+    "multer": "^1.4.5-lts.1",
+    "music-metadata": "^7.14.0",
+    "node-id3": "^0.2.9",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.korai.player",
+    "productName": "KORAI Player",
+    "copyright": "Copyright © 2026 Behdad Kanaani",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "!**/*.map",
+      "!**/.vscode/**",
+      "!**/test/**",
+      "!**/tests/**",
+      "!**/__tests__/**",
+      "!**/docs/**",
+      "!**/example/**",
+      "!**/*.log",
+      "!**/.git/**"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "korai.png",
+      "fileAssociations": [
+        {
+          "ext": "mp3",
+          "name": "MP3 Audio File",
+          "description": "KORAI Music Player - MP3",
+          "icon": "korai.png",
+          "role": "Player"
+        },
+        {
+          "ext": "wav",
+          "name": "WAV Audio File",
+          "description": "KORAI Music Player - WAV",
+          "icon": "korai.png",
+          "role": "Player"
+        },
+        {
+          "ext": "flac",
+          "name": "FLAC Audio File",
+          "description": "KORAI Music Player - FLAC",
+          "icon": "korai.png",
+          "role": "Player"
+        },
+        {
+          "ext": "ogg",
+          "name": "OGG Audio File",
+          "description": "KORAI Music Player - OGG",
+          "icon": "korai.png",
+          "role": "Player"
+        },
+        {
+          "ext": "m4a",
+          "name": "M4A Audio File",
+          "description": "KORAI Music Player - M4A",
+          "icon": "korai.png",
+          "role": "Player"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "perMachine": true,
+      "runAfterFinish": true,
+      "artifactName": "KORAI-Player-Setup.exe",
+      "license": "build/license.txt"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "korai.png",
+      "category": "public.app-category.music",
+      "fileAssociations": [
+        {
+          "ext": "mp3",
+          "role": "Editor"
+        },
+        {
+          "ext": "wav",
+          "role": "Editor"
+        },
+        {
+          "ext": "flac",
+          "role": "Editor"
+        },
+        {
+          "ext": "ogg",
+          "role": "Editor"
+        },
+        {
+          "ext": "m4a",
+          "role": "Editor"
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "korai.png",
+      "category": "Audio",
+      "fileAssociations": [
+        {
+          "ext": "mp3",
+          "mimeType": "audio/mpeg"
+        },
+        {
+          "ext": "wav",
+          "mimeType": "audio/wav"
+        },
+        {
+          "ext": "flac",
+          "mimeType": "audio/flac"
+        },
+        {
+          "ext": "ogg",
+          "mimeType": "audio/ogg"
+        },
+        {
+          "ext": "m4a",
+          "mimeType": "audio/mp4"
+        }
+      ]
+    }
+  }
+}

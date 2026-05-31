@@ -3,7 +3,8 @@
  * 
  * Exposes secure IPC bridges between renderer and main process.
  * Provides safe APIs for file dialogs, window controls, mini-player,
- * and file association handling.
+ * file association handling, tag editing, playlist export/import,
+ * advanced search, and CUE sheet support.
  */
 
 const { contextBridge, ipcRenderer } = require('electron');
@@ -69,7 +70,35 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onExecuteControl: (callback) => ipcRenderer.on('execute-control', (event, command) => callback(command)),
     
     // External links
-    openExternalLink: (url) => ipcRenderer.send('open-external', url)
+    openExternalLink: (url) => ipcRenderer.send('open-external', url),
+
+    // ===================== NEW APIs =====================
+    
+    // Tag editor
+    onOpenTagEditor: (callback) => ipcRenderer.on('open-tag-editor', (event, trackId) => callback(trackId)),
+    
+    // Advanced search
+    advancedSearch: (query) => ipcRenderer.invoke('advanced-search', query),
+    
+    // Playlist export/import    exportPlaylist: (playlistId, format) => ipcRenderer.invoke('export-playlist', playlistId, format),
+    importPlaylist: (filePath, format) => ipcRenderer.invoke('import-playlist', filePath, format),
+    
+    // Library export
+    exportLibrary: () => ipcRenderer.invoke('export-library'),
+    
+    // CUE sheet
+    parseCueSheet: (cuePath) => ipcRenderer.invoke('parse-cue', cuePath),
+    
+    // Playback settings
+    getPlaybackSettings: () => ipcRenderer.invoke('get-playback-settings'),
+    setPlaybackSettings: (settings) => ipcRenderer.invoke('set-playback-settings', settings),
+    
+    // Crossfade
+    setCrossfade: (duration) => ipcRenderer.send('set-crossfade', duration),
+    onCrossfadeChanged: (callback) => ipcRenderer.on('crossfade-changed', (event, duration) => callback(duration)),
+    
+    // Real BPM detection
+    detectRealBPM: (trackId) => ipcRenderer.invoke('detect-real-bpm', trackId)
 });
 
 console.log('✅ Preload script loaded');

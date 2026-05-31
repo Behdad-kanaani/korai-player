@@ -8,6 +8,7 @@
 const translations = {
     en: {
         // Navigation & UI
+        navArtistsText: "Artists",
         githubBtnText: "Star on GitHub",
         profileName: "KORAI Personal Space",
         profileBio: "Sleek and minimalist local audio player & manager.",
@@ -152,7 +153,16 @@ const translations = {
         genreElectronic: "Synthwave / Electronic",
 
         similarity: "Similarity",
-        recommended: "Recommended"
+        recommended: "Recommended",
+
+        // New Sorting & Filtering Translations
+        sortByLabel: "Sort By:",
+        sortDateAdded: "Date Added",
+        sortTitle: "Title",
+        sortArtist: "Artist",
+        sortBpm: "BPM",
+        sortDuration: "Duration",
+        allGenres: "All Genres"
     },
     fa: {
         // Navigation & UI
@@ -165,6 +175,7 @@ const translations = {
         navLibText: "کتابخانه من",
         navFavText: "مورد علاقه‌ها",
         navStatsText: "تله‌متری زنده",
+        navArtistsText: "آرتیست‌ها",
         
         // AI Panel
         aiPanelTitle: "هوش مصنوعی صوتی",
@@ -236,7 +247,7 @@ const translations = {
         totalPlaysLabel: "کل دفعات پخش ثبت شده",
         popularLabel: "آثار مورد علاقه",
         topTrackLabel: "این اثر بر اساس تله‌متری سیستم پخش شما در صدر قرار دارد",
-        liveSpectrumLabel: "آنالایزر طیف فرکانس زنده صوتی",
+        liveSpectrumLabel: "Live Spectrum Telemetry Analyzer",
         statsError: "خطا در دریافت اطلاعات آمار از سرور اصلی",
         playedTimes: "بار پخش",
         
@@ -300,6 +311,15 @@ const translations = {
         genreElectronic: "سینث‌ویو / الکترونیک",
 
         similarity: "شباهت",
-        recommended: "توصیه شده"
+        recommended: "توصیه شده",
+
+        // New Sorting & Filtering Translations
+        sortByLabel: "مرتب‌سازی بر اساس:",
+        sortDateAdded: "تاریخ اضافه شدن",
+        sortTitle: "عنوان آهنگ",
+        sortArtist: "خواننده",
+        sortBpm: "ضربان (BPM)",
+        sortDuration: "مدت زمان",
+        allGenres: "همه سبک‌ها"
     }
 };

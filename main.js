@@ -19,25 +19,20 @@ const findFreePort = require('find-free-port');
 // GLOBAL ERROR HANDLERS
 // =============================================================================
 
-// Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
     console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-    // Don't crash the app, just log the error
 });
 
-// Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
     console.error('❌ Uncaught Exception:', error);
-    // Don't crash the app, just log the error
 });
 
 // =============================================================================
-// SINGLE INSTANCE LOCK - Prevent multiple instances of the app
+// SINGLE INSTANCE LOCK
 // =============================================================================
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
-    // Another instance is already running, exit this one
     console.log('Another instance is already running. Exiting...');
     app.quit();
     process.exit(0);
@@ -52,34 +47,27 @@ let httpServer;
 let serverPort;
 let tray = null;
 let isQuitting = false;
-let pendingFiles = [];  // Store files opened before window is ready
+let pendingFiles = [];
+let lastTrackState = null;
 
-// Import the backend HTTP server
 const { startServer } = require('./src/backend/server');
 
-// Store current playback state for tray menu
 let currentTrayState = {
     isPlaying: false,
     currentTrack: null
 };
 
-// Current language for tray menu (default: English)
 let currentLanguage = 'en';
 
 // =============================================================================
 // FILE ASSOCIATION HANDLING
 // =============================================================================
 
-/**
- * Process pending files that were opened while app was starting
- * Sends files to renderer process for import and playback
- */
 async function processPendingFiles() {
     if (pendingFiles.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
         const files = [...pendingFiles];
         pendingFiles = [];
         
-        // Wait for page to fully load
         setTimeout(async () => {
             try {
                 console.log('📁 Processing pending files:', files);
@@ -91,10 +79,6 @@ async function processPendingFiles() {
     }
 }
 
-/**
- * Parse command line arguments to extract audio files
- * Filters out .exe and electron internal arguments
- */
 function handleFileOpen() {
     const files = process.argv.slice(1).filter(arg => {
         return arg.match(/\.(mp3|wav|ogg|m4a|flac)$/i) && 
@@ -108,7 +92,6 @@ function handleFileOpen() {
     }
 }
 
-// macOS: Handle files opened when app is already running
 app.on('open-file', (event, filePath) => {
     event.preventDefault();
     console.log('📁 File opened on macOS:', filePath);
@@ -118,17 +101,14 @@ app.on('open-file', (event, filePath) => {
     }
 });
 
-// Handle second instance attempt (when user double-clicks a file while app is running)
 app.on('second-instance', (event, commandLine, workingDirectory) => {
     console.log('🔄 Second instance detected, focusing main window...');
     
-    // Focus the main window
     if (mainWindow) {
         if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.show();
         mainWindow.focus();
         
-        // Extract audio files from command line
         const files = commandLine.slice(1).filter(arg => {
             return arg.match(/\.(mp3|wav|ogg|m4a|flac)$/i) && 
                    !arg.includes('.exe') && 
@@ -147,7 +127,6 @@ app.on('second-instance', (event, commandLine, workingDirectory) => {
 // TRAY MENU FUNCTIONS
 // =============================================================================
 
-// Load saved language from settings file
 async function loadTrayLanguage() {
     try {
         const userDataPath = app.getPath('userData');
@@ -163,7 +142,6 @@ async function loadTrayLanguage() {
     }
 }
 
-// Save language setting
 async function saveTrayLanguage(lang) {
     try {
         const userDataPath = app.getPath('userData');
@@ -180,7 +158,6 @@ async function saveTrayLanguage(lang) {
     }
 }
 
-// Get menu text based on current language
 function getTrayMenuText() {
     const isRTL = currentLanguage === 'fa';
     
@@ -202,7 +179,6 @@ function getTrayMenuText() {
     };
 }
 
-// Rebuild the tray context menu
 function rebuildTrayMenu() {
     if (!tray) return;
     
@@ -210,7 +186,6 @@ function rebuildTrayMenu() {
     const isPlaying = currentTrayState.isPlaying;
     const hasTrack = currentTrayState.currentTrack && currentTrayState.currentTrack.title;
     
-    // Menu template structure
     const menuTemplate = [
         {
             label: text.showApp,
@@ -259,7 +234,6 @@ function rebuildTrayMenu() {
         { type: 'separator' }
     ];
     
-    // Now Playing section (only if a track is playing)
     if (hasTrack) {
         const trackTitle = currentTrayState.currentTrack.title || 'Untitled';
         const trackArtist = currentTrayState.currentTrack.artist || '';
@@ -301,7 +275,6 @@ function rebuildTrayMenu() {
         menuTemplate.push({ type: 'separator' });
     }
     
-    // Language submenu
     const languageSubmenu = [
         {
             label: text.english,
@@ -347,7 +320,6 @@ function rebuildTrayMenu() {
     tray.setContextMenu(contextMenu);
 }
 
-// Update playback state from renderer
 function updateTrayPlaybackState(isPlaying, track) {
     currentTrayState.isPlaying = isPlaying;
     currentTrayState.currentTrack = track;
@@ -363,13 +335,9 @@ function updateTrayPlaybackState(isPlaying, track) {
     }
 }
 
-/**
- * Creates system tray icon with context menu
- */
 async function createSystemTray() {
     await loadTrayLanguage();
     
-    // Look for tray icon in multiple locations
     const possiblePaths = [
         path.join(__dirname, 'korai.png'),
         path.join(__dirname, 'icon.png'),
@@ -389,11 +357,9 @@ async function createSystemTray() {
     let trayIcon = null;
     if (iconPath && fs.existsSync(iconPath)) {
         const img = nativeImage.createFromPath(iconPath);
-        // Resize to appropriate size for tray
         trayIcon = img.resize({ width: 16, height: 16 });
     } else {
         console.log('⚠️ No tray icon found, creating fallback');
-        // Create a green fallback icon using Buffer
         const size = 16;
         const svg = Buffer.from(`
             <svg width="${size}" height="${size}" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
@@ -410,7 +376,6 @@ async function createSystemTray() {
         
         tray.setToolTip('KORAI Music Player');
         
-        // Handle left click - show/hide window
         tray.on('click', () => {
             if (mainWindow) {
                 if (mainWindow.isVisible()) {
@@ -422,12 +387,10 @@ async function createSystemTray() {
             }
         });
         
-        // Handle right click - show context menu
         tray.on('right-click', () => {
             tray.popUpContextMenu();
         });
         
-        // Handle double click
         tray.on('double-click', () => {
             if (mainWindow) {
                 mainWindow.show();
@@ -444,35 +407,28 @@ async function createSystemTray() {
 // MAIN WINDOW CREATION
 // =============================================================================
 
-/**
- * Creates the main application window
- */
 async function createWindow() {
     try {
         console.log('🚀 Creating Electron window...');
         
-        // Find an available port between 3000-3100
         const [port] = await findFreePort(3000, 3100);
         serverPort = port;
         console.log(`✅ Port found: ${serverPort}`);
 
-        // Start the HTTP server with user data path
         const userDataPath = app.getPath('userData');
         httpServer = await startServer(serverPort, userDataPath);
         console.log('✅ HTTP Server started');
 
-        // Expose port to renderer process
         ipcMain.handle('get-server-port', () => {
             return serverPort;
         });
 
-        // Create the main browser window
         mainWindow = new BrowserWindow({
             width: 1300,
             height: 850,
             minWidth: 1000,
             minHeight: 700,
-            frame: false,
+            frame: true,
             show: true,
             titleBarStyle: 'default',
             webPreferences: {
@@ -483,7 +439,6 @@ async function createWindow() {
             }
         });
 
-        // Prevent zooming with Ctrl+/- shortcuts
         const setZoom = () => {
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.setZoomFactor(0.4);
@@ -493,7 +448,6 @@ async function createWindow() {
         
         setZoom();
         
-        // Block browser zoom shortcuts
         mainWindow.webContents.on('before-input-event', (event, input) => {
             const isZoomShortcut = (input.control || input.meta) && 
                 (input.key === '+' || input.key === '-' || input.key === '0' || 
@@ -506,27 +460,22 @@ async function createWindow() {
             }
         });
 
-        // Prevent zoom events
         mainWindow.webContents.on('zoom-changed', (event, zoomDirection) => {
             event.preventDefault();
             setZoom();
         });
 
-        // Load the HTML file
         const htmlPath = path.join(__dirname, 'src/frontend/index.html');
         mainWindow.loadFile(htmlPath);
 
-        // Send server port to renderer after load and process pending files
         mainWindow.webContents.on('did-finish-load', () => {
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('server-port', serverPort);
                 setZoom();
-                // Process any pending files opened before window loaded
                 processPendingFiles();
             }
         });
 
-        // Handle window close - hide to tray instead of quit
         mainWindow.on('close', (event) => {
             if (!isQuitting) {
                 event.preventDefault();
@@ -551,12 +500,10 @@ async function createWindow() {
 // IPC HANDLERS
 // =============================================================================
 
-// Receive playback state from renderer to update tray menu
 ipcMain.on('tray-update-state', (event, { isPlaying, track }) => {
     updateTrayPlaybackState(isPlaying, track);
 });
 
-// Receive language change request from renderer
 ipcMain.on('tray-language-changed', (event, lang) => {
     saveTrayLanguage(lang);
     rebuildTrayMenu();
@@ -566,11 +513,6 @@ ipcMain.on('tray-language-changed', (event, lang) => {
 // MINI-PLAYER FUNCTIONS
 // =============================================================================
 
-let lastTrackState = null;
-
-/**
- * Opens the mini-player window
- */
 ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
     if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
         miniPlayerWindow.show();
@@ -586,8 +528,8 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
         width: 380,
         height: 68,
         frame: false,
-        transparent: false,
-        backgroundColor: '#0f2b1d',
+        transparent: true,
+        backgroundColor: '#00000000',
         roundedCorners: true,
         hasShadow: true,
         alwaysOnTop: true,
@@ -626,7 +568,6 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
         }
         setMiniZoom();
         
-        // Inject CSS for proper rounded corners
         miniPlayerWindow.webContents.insertCSS(`
             html, body {
                 margin: 0;
@@ -651,6 +592,7 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
 
     miniPlayerWindow.on('closed', () => {
         miniPlayerWindow = null;
+        lastTrackState = null;
     });
 
     miniPlayerWindow.on('blur', () => {
@@ -676,6 +618,7 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
 
 ipcMain.on('close-mini-player', () => {
     if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
+        lastTrackState = null;
         miniPlayerWindow.close();
         miniPlayerWindow = null;
     }
@@ -703,9 +646,6 @@ ipcMain.on('control-from-mini', (event, command) => {
 // FILE DIALOG HANDLERS
 // =============================================================================
 
-/**
- * File dialog handler for selecting audio files
- */
 ipcMain.handle('select-audio-files', async () => {
     if (!mainWindow) return [];
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -717,9 +657,6 @@ ipcMain.handle('select-audio-files', async () => {
     return result.filePaths;
 });
 
-/**
- * Recursive directory scanner for audio files
- */
 async function scanDirAsync(dir, audioExtensions, files) {
     try {
         const list = await fs.promises.readdir(dir);
@@ -740,9 +677,6 @@ async function scanDirAsync(dir, audioExtensions, files) {
     }
 }
 
-/**
- * Folder selection dialog handler
- */
 ipcMain.handle('select-audio-folder', async () => {
     if (!mainWindow) return [];
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -785,11 +719,149 @@ ipcMain.on('open-external', (event, url) => {
     shell.openExternal(url);
 });
 
+// ===================== NEW IPC HANDLERS =====================
+
+ipcMain.on('open-tag-editor', (event, trackId) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('open-tag-editor', trackId);
+    }
+});
+
+ipcMain.handle('advanced-search', async (event, query) => {
+    try {
+        const response = await fetch(`http://127.0.0.1:${serverPort}/api/search/advanced`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query })
+        });
+        return await response.json();
+    } catch (err) {
+        console.error('Search error:', err);
+        return { results: [] };
+    }
+});
+
+ipcMain.handle('export-playlist', async (event, playlistId, format) => {
+    const result = await dialog.showSaveDialog(mainWindow, {
+        title: 'Export Playlist',
+        defaultPath: `playlist.${format}`,
+        filters: [
+            { name: format.toUpperCase(), extensions: [format] }
+        ]
+    });
+    
+    if (result.canceled || !result.filePath) return null;
+    
+    try {
+        const response = await fetch(`http://127.0.0.1:${serverPort}/api/playlists/${playlistId}/export`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ format, outputPath: result.filePath })
+        });
+        return await response.json();
+    } catch (err) {
+        console.error('Export error:', err);
+        return null;
+    }
+});
+
+ipcMain.handle('import-playlist', async (event, filePath, format) => {
+    try {
+        const response = await fetch(`http://127.0.0.1:${serverPort}/api/playlists/import`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filePath, format })
+        });
+        return await response.json();
+    } catch (err) {
+        console.error('Import error:', err);
+        return null;
+    }
+});
+
+ipcMain.handle('export-library', async () => {
+    const result = await dialog.showSaveDialog(mainWindow, {
+        title: 'Export Library',
+        defaultPath: `korai_library_${Date.now()}.csv`,
+        filters: [
+            { name: 'CSV', extensions: ['csv'] }
+        ]
+    });
+    
+    if (result.canceled || !result.filePath) return null;
+    
+    try {
+        const response = await fetch(`http://127.0.0.1:${serverPort}/api/library/export`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ outputPath: result.filePath })
+        });
+        return await response.json();
+    } catch (err) {
+        console.error('Library export error:', err);
+        return null;
+    }
+});
+
+ipcMain.handle('parse-cue', async (event, cuePath) => {
+    try {
+        const response = await fetch(`http://127.0.0.1:${serverPort}/api/cue/parse`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cuePath })
+        });
+        return await response.json();
+    } catch (err) {
+        console.error('CUE parse error:', err);
+        return null;
+    }
+});
+
+ipcMain.handle('get-playback-settings', async () => {
+    try {
+        const response = await fetch(`http://127.0.0.1:${serverPort}/api/playback/settings`);
+        return await response.json();
+    } catch (err) {
+        return { gaplessEnabled: true, crossfadeDuration: 0 };
+    }
+});
+
+ipcMain.handle('set-playback-settings', async (event, settings) => {
+    try {
+        const response = await fetch(`http://127.0.0.1:${serverPort}/api/playback/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings)
+        });
+        return await response.json();
+    } catch (err) {
+        console.error('Settings error:', err);
+        return null;
+    }
+});
+
+ipcMain.on('set-crossfade', (event, duration) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('crossfade-changed', duration);
+    }
+});
+
+ipcMain.handle('detect-real-bpm', async (event, trackId) => {
+    try {
+        const response = await fetch(`http://127.0.0.1:${serverPort}/api/tracks/${trackId}/detect-bpm`, {
+            method: 'POST'
+        });
+        return await response.json();
+    } catch (err) {
+        console.error('BPM detection error:', err);
+        return { success: false, bpm: 120 };
+    }
+});
+
 // =============================================================================
 // APP LIFECYCLE
 // =============================================================================
 
-// Parse command line arguments for file association before app is ready
 handleFileOpen();
 
 app.whenReady().then(() => {

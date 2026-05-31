@@ -38,6 +38,9 @@ let currentActiveSection = 'home';
 let currentActivePlaylistId = null;
 let currentLanguage = localStorage.getItem('user_lang') || 'en';
 let currentSkin = localStorage.getItem('user_skin') || 'default';
+if (currentSkin !== 'default' && currentSkin !== 'liquid-glass') {
+    currentSkin = 'default';
+}
 let currentVinylRotation = 0;
 let lastVinylUpdateTime = 0;
 let importProgressElement = null;
@@ -47,6 +50,11 @@ let vinylRotationInterval = null;
 let shuffleHistory = [];  
 let shuffleSessionActive = false;
 let remainingUnplayedTracks = [];
+
+// Filtering & Sorting Library states
+let librarySortKey = 'createdAt'; // 'createdAt', 'title', 'artist', 'bpm', 'duration'
+let librarySortOrder = 'desc';    // 'asc', 'desc'
+let libraryGenreFilter = 'all';
 
 // Web Audio API nodes
 let audioCtx = null;
@@ -137,170 +145,80 @@ function getGenreTranslation(genreName) {
 
 /**
  * Initialize or reset shuffle session
- * Creates a shuffled queue where each track plays only once until all are played
+ * Shuffles the queue, keeping currently playing track at index 0.
+ * Backs up the original queue to allow proper restoration when shuffle is disabled.
  */
 function initShuffleSession() {
     if (!shuffleMode) return;
     
     console.log('🔄 Initializing shuffle session...');
     
-    // Get all available tracks (current queue or full library)
-    let sourceTracks = [];
-    if (queue.length > 0) {
-        sourceTracks = [...queue];
-    } else if (tracks.length > 0) {
-        sourceTracks = [...tracks];
-    }
-    
-    if (sourceTracks.length === 0) return;
-    
-    // Backup original queue if needed
+    // Backup original queue if we haven't already
     if (!shuffleSessionActive || originalQueueBackup.length === 0) {
-        originalQueueBackup = [...queue];
+        originalQueueBackup = queue.length > 0 ? [...queue] : [...tracks];
     }
     
-    // Create a shuffled copy of all tracks
-    const shuffledTracks = [...sourceTracks];
-    for (let i = shuffledTracks.length - 1; i > 0; i--) {
+    // Create new queue to be shuffled
+    let baseTracks = queue.length > 0 ? [...queue] : [...tracks];
+    if (baseTracks.length === 0) return;
+    
+    let shuffled = [...baseTracks];
+    const playingTrack = currentTrackId ? shuffled.find(t => t.id === currentTrackId) : null;
+    
+    // Extract currently playing track to keep it at top
+    if (playingTrack) {
+        shuffled = shuffled.filter(t => t.id !== currentTrackId);
+    }
+    
+    // Fisher-Yates shuffle
+    for (let i = shuffled.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        [shuffledTracks[i], shuffledTracks[j]] = [shuffledTracks[j], shuffledTracks[i]];
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
     
-    // Set the new shuffled queue
-    queue = shuffledTracks;
-    queueIndex = 0;
-    shuffleHistory = [];
-    remainingUnplayedTracks = [...queue.map(t => t.id)];
+    // Set queue
+    if (playingTrack) {
+        queue = [playingTrack, ...shuffled];
+        queueIndex = 0;
+    } else {
+        queue = shuffled;
+        queueIndex = 0;
+    }
+    
+    shuffleHistory = currentTrackId ? [currentTrackId] : [];
+    remainingUnplayedTracks = queue.filter(t => t.id !== currentTrackId).map(t => t.id);
     shuffleSessionActive = true;
     
-    // Find current track position if it exists in shuffled queue
-    if (currentTrackId) {
-        const newIndex = queue.findIndex(t => t.id === currentTrackId);
-        if (newIndex !== -1) {
-            queueIndex = newIndex;
-            // Mark current track as played
-            if (!shuffleHistory.includes(currentTrackId)) {
-                shuffleHistory.push(currentTrackId);
-                remainingUnplayedTracks = remainingUnplayedTracks.filter(id => id !== currentTrackId);
-            }
-        }
-    }
-    
     renderQueue();
-    console.log(`✅ Shuffle session initialized with ${queue.length} tracks, ${remainingUnplayedTracks.length} unplayed`);
+    console.log(`✅ Shuffle queue generated with ${queue.length} tracks.`);
 }
 
 /**
- * Get next track in shuffle mode (ensures no repeats until all tracks played)
- */
-function getNextShuffleTrack() {
-    if (!shuffleMode) return null;
-    
-    // If we have remaining unplayed tracks, pick one randomly
-    if (remainingUnplayedTracks.length > 0) {
-        // Choose a random unplayed track
-        const randomIndex = Math.floor(Math.random() * remainingUnplayedTracks.length);
-        const nextTrackId = remainingUnplayedTracks[randomIndex];
-        const nextTrackIndex = queue.findIndex(t => t.id === nextTrackId);
-        
-        if (nextTrackIndex !== -1) {
-            return { trackId: nextTrackId, index: nextTrackIndex };
-        }
-    }
-    
-    // All tracks have been played in this shuffle session
-    console.log('🔄 Shuffle session complete, reshuffling...');
-    
-    // Reshuffle all tracks (excluding current track to avoid immediate repeat)
-    const currentId = currentTrackId;
-    const otherTracks = queue.filter(t => t.id !== currentId);
-    
-    if (otherTracks.length === 0) return null;
-    
-    // Shuffle the remaining tracks
-    for (let i = otherTracks.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [otherTracks[i], otherTracks[j]] = [otherTracks[j], otherTracks[i]];
-    }
-    
-    // Rebuild queue with current track first, then shuffled others
-    const currentTrackObj = queue.find(t => t.id === currentId);
-    if (currentTrackObj) {
-        queue = [currentTrackObj, ...otherTracks];
-    } else {
-        queue = otherTracks;
-    }
-    
-    // Reset shuffle history (current track is played, others are unplayed)
-    shuffleHistory = currentId ? [currentId] : [];
-    remainingUnplayedTracks = queue.filter(t => t.id !== currentId).map(t => t.id);
-    queueIndex = 0;
-    
-    renderQueue();
-    
-    // Return first unplayed track
-    if (remainingUnplayedTracks.length > 0) {
-        const nextTrackId = remainingUnplayedTracks[0];
-        const nextTrackIndex = queue.findIndex(t => t.id === nextTrackId);
-        return { trackId: nextTrackId, index: nextTrackIndex };
-    }
-    
-    return null;
-}
-
-/**
- * Get previous track in shuffle mode
- */
-function getPrevShuffleTrack() {
-    if (!shuffleMode) return null;
-    
-    // In shuffle, previous track goes back in history
-    if (shuffleHistory.length >= 2) {
-        const prevTrackId = shuffleHistory[shuffleHistory.length - 2];
-        const prevTrackIndex = queue.findIndex(t => t.id === prevTrackId);
-        
-        if (prevTrackIndex !== -1) {
-            // Remove current from history (will be re-added when playing)
-            shuffleHistory.pop();
-            return { trackId: prevTrackId, index: prevTrackIndex };
-        }
-    }
-    
-    // No history, can't go back
-    return null;
-}
-
-/**
- * Mark a track as played in shuffle history
- */
-function markTrackAsPlayedInShuffle(trackId) {
-    if (!shuffleMode) return;
-    
-    if (!shuffleHistory.includes(trackId)) {
-        shuffleHistory.push(trackId);
-        remainingUnplayedTracks = remainingUnplayedTracks.filter(id => id !== trackId);
-        console.log(`📝 Shuffle history: ${shuffleHistory.length}/${queue.length} played, ${remainingUnplayedTracks.length} remaining`);
-    }
-}
-
-/**
- * Reset shuffle session (called when shuffle mode is disabled)
+ * End/Deactivate shuffle session
+ * Restores original queue backup and finds index of current track.
  */
 function resetShuffleSession() {
     if (originalQueueBackup.length > 0) {
         queue = [...originalQueueBackup];
-        queueIndex = Math.max(0, queue.findIndex(t => t.id === currentTrackId));
+        if (currentTrackId) {
+            const originalIdx = queue.findIndex(t => t.id === currentTrackId);
+            if (originalIdx !== -1) {
+                queueIndex = originalIdx;
+            }
+        } else {
+            queueIndex = 0;
+        }
         originalQueueBackup = [];
-        renderQueue();
     }
     shuffleHistory = [];
     remainingUnplayedTracks = [];
     shuffleSessionActive = false;
-    console.log('🔀 Shuffle session ended, restored original queue');
+    renderQueue();
+    console.log('🔀 Shuffle disabled. Restored original queue structure.');
 }
 
 /**
- * Enhanced nextTrack function with proper shuffle support
+ * Enhanced nextTrack function with proper shuffle and fallback sequence
  */
 async function nextTrackEnhanced() {
     if (isMiniWindowMode) {
@@ -310,46 +228,28 @@ async function nextTrackEnhanced() {
         return;
     }
     
-    // Shuffle mode logic
-    if (shuffleMode) {
-        // Initialize shuffle session if not active
-        if (!shuffleSessionActive && tracks.length > 0) {
-            initShuffleSession();
-        }
-        
-        const nextShuffle = getNextShuffleTrack();
-        if (nextShuffle) {
-            queueIndex = nextShuffle.index;
-            await playTrack(nextShuffle.trackId);
-            markTrackAsPlayedInShuffle(nextShuffle.trackId);
-            return;
-        } else if (tracks.length > 0) {
-            // Fallback to random track
-            const randomIndex = Math.floor(Math.random() * tracks.length);
-            await playTrack(tracks[randomIndex].id);
-            return;
-        }
-        return;
+    if (queue.length === 0 && tracks.length > 0) {
+        // Automatically build queue if empty
+        queue = [...tracks];
+        queueIndex = -1;
     }
     
-    // Normal queue mode
-    if (queue.length > 0 && queueIndex < queue.length - 1) {
-        queueIndex++;
-        await playTrack(queue[queueIndex].id);
-    } else if (repeatMode && currentTrackId) {
-        // Repeat single track
-        await playTrack(currentTrackId);
-    } else if (tracks.length > 0) {
-        // Loop back to first track
-        const currentIndex = tracks.findIndex(t => t.id === currentTrackId);
-        let nextIndex = currentIndex + 1;
-        if (nextIndex >= tracks.length) nextIndex = 0;
-        await playTrack(tracks[nextIndex].id);
+    if (queue.length > 0) {
+        if (repeatMode && currentTrackId) {
+            await playTrack(currentTrackId);
+        } else if (queueIndex < queue.length - 1) {
+            queueIndex++;
+            await playTrack(queue[queueIndex].id);
+        } else {
+            // Loop back to index 0
+            queueIndex = 0;
+            await playTrack(queue[0].id);
+        }
     }
 }
 
 /**
- * Enhanced prevTrack function with proper shuffle support
+ * Enhanced prevTrack function with proper shuffle and fallback sequence
  */
 async function prevTrackEnhanced() {
     if (isMiniWindowMode) {
@@ -359,30 +259,24 @@ async function prevTrackEnhanced() {
         return;
     }
     
-    // Shuffle mode logic
-    if (shuffleMode && shuffleSessionActive) {
-        const prevShuffle = getPrevShuffleTrack();
-        if (prevShuffle) {
-            queueIndex = prevShuffle.index;
-            await playTrack(prevShuffle.trackId);
-            return;
-        }
+    if (queue.length === 0 && tracks.length > 0) {
+        queue = [...tracks];
+        queueIndex = 0;
     }
     
-    // Normal queue mode
-    if (queue.length > 0 && queueIndex > 0) {
-        queueIndex--;
-        await playTrack(queue[queueIndex].id);
-    } else if (tracks.length > 0) {
-        // Loop to last track
-        const currentIndex = tracks.findIndex(t => t.id === currentTrackId);
-        let prevIndex = currentIndex - 1;
-        if (prevIndex < 0) prevIndex = tracks.length - 1;
-        await playTrack(tracks[prevIndex].id);
+    if (queue.length > 0) {
+        if (queueIndex > 0) {
+            queueIndex--;
+            await playTrack(queue[queueIndex].id);
+        } else {
+            // Loop back to the end of queue
+            queueIndex = queue.length - 1;
+            await playTrack(queue[queueIndex].id);
+        }
     }
 }
 
-// Override global functions
+// Override global actions
 window.nextTrack = nextTrackEnhanced;
 window.prevTrack = prevTrackEnhanced;
 
@@ -399,34 +293,15 @@ function toggleShuffleEnhanced() {
     if (fsShuffleBtn) fsShuffleBtn.classList.toggle('active', shuffleMode);
     
     if (shuffleMode) {
-        console.log('🔀 Shuffle mode enabled');
-        if (queue.length === 0 && currentTrackId) {
-            const currentIndex = tracks.findIndex(t => t.id === currentTrackId);
-            if (currentIndex !== -1) {
-                queue = [...tracks.slice(currentIndex), ...tracks.slice(0, currentIndex)];
-                queueIndex = 0;
-            }
-        }
         initShuffleSession();
-        showNotification('Shuffle mode enabled - each track plays once', 'success');
+        showNotification(currentLanguage === 'fa' ? 'پخش تصادفی فعال شد (ترتیب صف تغییر یافت)' : 'Shuffle enabled (Queue randomized)', 'success');
     } else {
-        console.log('🔀 Shuffle mode disabled');
         resetShuffleSession();
-        showNotification('Shuffle mode disabled', 'info');
+        showNotification(currentLanguage === 'fa' ? 'پخش تصادفی غیرفعال شد (ترتیب اصلی بازنشانی شد)' : 'Shuffle disabled (Original order restored)', 'info');
     }
 }
 
 window.toggleShuffle = toggleShuffleEnhanced;
-
-// Override playTrack to mark tracks in shuffle mode
-const originalPlayTrack = window.playTrack;
-window.playTrack = async function(trackId) {
-    const result = await originalPlayTrack(trackId);
-    if (shuffleMode && currentTrackId === trackId) {
-        markTrackAsPlayedInShuffle(trackId);
-    }
-    return result;
-};
 
 // Translate entire page UI
 function translatePage() {
@@ -1423,42 +1298,6 @@ function setPlayState(playing) {
     }
 }
 
-// Keep original functions for compatibility
-function nextTrack() {
-    if (isMiniWindowMode) {
-        window.electronAPI.controlFromMini('next');
-        return;
-    }
-    if (queue.length > 0 && queueIndex < queue.length - 1) {
-        queueIndex++;
-        playTrack(queue[queueIndex].id);
-    } else if (shuffleMode && tracks.length > 0) {
-        const randIndex = Math.floor(Math.random() * tracks.length);
-        playTrack(tracks[randIndex].id);
-    } else if (tracks.length > 0) {
-        const currentIndex = tracks.findIndex(t => t.id === currentTrackId);
-        let nextIndex = currentIndex + 1;
-        if (nextIndex >= tracks.length) nextIndex = 0;
-        playTrack(tracks[nextIndex].id);
-    }
-}
-
-function prevTrack() {
-    if (isMiniWindowMode) {
-        window.electronAPI.controlFromMini('prev');
-        return;
-    }
-    if (queue.length > 0 && queueIndex > 0) {
-        queueIndex--;
-        playTrack(queue[queueIndex].id);
-    } else if (tracks.length > 0) {
-        const currentIndex = tracks.findIndex(t => t.id === currentTrackId);
-        let prevIndex = currentIndex - 1;
-        if (prevIndex < 0) prevIndex = tracks.length - 1;
-        playTrack(tracks[prevIndex].id);
-    }
-}
-
 function syncWithMiniPlayerWidget() {
     if (!isMiniWindowMode && window.electronAPI && typeof window.electronAPI.syncStateToMini === 'function') {
         window.electronAPI.syncStateToMini({
@@ -1604,118 +1443,139 @@ function toggleMute() {
     }
 }
 
-function switchSection(sectionName) {
-    if (isMiniWindowMode) return;
-    currentActiveSection = sectionName;
-    currentActivePlaylistId = null;
-    
-    document.querySelectorAll('.sidebar-nav .nav-item, .sidebar-playlist-item').forEach(item => {
-        item.classList.remove('active');
-    });
-    
-    const navHome = document.getElementById('navHome');
-    const navLibrary = document.getElementById('navLibrary');
-    const navFavorites = document.getElementById('navFavorites');
-    const navStats = document.getElementById('navStats');
-    
-    if (sectionName === 'home' && navHome) navHome.classList.add('active');
-    if (sectionName === 'library' && navLibrary) navLibrary.classList.add('active');
-    if (sectionName === 'favorites' && navFavorites) navFavorites.classList.add('active');
-    if (sectionName === 'stats' && navStats) navStats.classList.add('active');
-    
-    if (sectionName === 'home') renderHomeDashboard();
-    if (sectionName === 'library') renderLibrary();
-    if (sectionName === 'favorites') renderFavorites();
-    if (sectionName === 'stats') {
-        renderStats().then(() => {
-            if (audioCtx && analyser) {
-                startLiveSpectrumAnalyzer();
-            }
-        });
+function applyGlobalSkin(skinName) {
+    if (skinName !== 'default' && skinName !== 'liquid-glass') {
+        skinName = 'default';
     }
+    currentSkin = skinName;
+    localStorage.setItem('user_skin', skinName);
+    updateBodyClasses();
 }
 
-function renderHomeDashboard() {
-    const mainSection = document.getElementById('dynamicSectionContainer');
-    if (!mainSection) return;
+function setSleepTimer(minutes) {
+    cancelSleepTimer();
+    sleepTimeRemaining = minutes * 60;
+    const display = document.getElementById('sleepTimerVal');
+    const cancelBtn = document.getElementById('cancelSleepBtn');
+    if (cancelBtn) cancelBtn.style.display = 'block';
     
-    const hour = new Date().getHours();
-    let welcomeText = t('welcomeEvening');
-    if (hour < 12) welcomeText = t('welcomeMorning');
-    else if (hour < 18) welcomeText = t('welcomeAfternoon');
+    showNotification(`Sleep timer set to ${minutes} minutes.`, 'success');
+
+    sleepIntervalId = setInterval(() => {
+        sleepTimeRemaining--;
+        if (display) display.innerText = formatTime(sleepTimeRemaining);
+
+        if (sleepTimeRemaining <= 60 && sleepTimeRemaining > 0) {
+            const fadeVolume = (sleepTimeRemaining / 60) * volume;
+            if (audioElement) audioElement.volume = fadeVolume;
+        }
+
+        if (sleepTimeRemaining <= 0) {
+            clearInterval(sleepIntervalId);
+            if (audioElement) {
+                audioElement.pause();
+                setPlayState(false);
+                audioElement.volume = volume;
+            }
+            cancelSleepTimer();
+            showNotification('Playback paused by sleep timer.', 'info');
+        }
+    }, 1000);
+}
+
+function cancelSleepTimer() {
+    if (sleepIntervalId) {
+        clearInterval(sleepIntervalId);
+        sleepIntervalId = null;
+    }
+    sleepTimeRemaining = 0;
+    const display = document.getElementById('sleepTimerVal');
+    if (display) display.innerText = t('sleepOff');
+    const cancelBtn = document.getElementById('cancelSleepBtn');
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    if (audioElement) audioElement.volume = volume;
+}
+
+function setupDragAndDrop() {
+    const container = document.getElementById('appContainer');
+    if (!container) return;
     
-    let shortcutsHtml = '';
-    const topTracks = tracks.slice(0, 6);
-    
-    topTracks.forEach(track => {
-        const coverUrl = track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null;
-        shortcutsHtml += `
-            <div class="shortcut-pill-card" onclick="playTrack(${track.id})">
-                <div class="shortcut-cover">
-                    ${coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music"></i>'}
-                </div>
-                <div class="shortcut-title-info">
-                    <h4>${escapeHtml(track.title || 'Untitled')}</h4>
-                    <div class="shortcut-play-btn">
-                        <i class="fa-solid fa-play"></i>
-                    </div>
-                </div>
-            </div>
-        `;
+    window.addEventListener('dragover', (e) => {
+        e.preventDefault();
     });
-
-    let recentGridHtml = '';
-    const recentTracks = tracks.slice(0, 4);
-    recentTracks.forEach(track => {
-        const coverUrl = track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null;
-        const isActive = currentTrackId === track.id;
-        recentGridHtml += `
-            <div class="spotify-music-card ${isActive ? 'active' : ''}" data-track-id="${track.id}">
-                <div class="card-image-box" onclick="playTrack(${track.id})" oncontextmenu="event.preventDefault(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
-                    ${coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music"></i>'}
-                    <div class="hover-play-bubble">
-                        <i class="fa-solid ${isActive && isPlaying ? 'fa-pause' : 'fa-play'}"></i>
-                    </div>
-                </div>
-                <div class="card-details-info" onclick="playTrack(${track.id})">
-                    <h4>${escapeHtml(track.title || 'Untitled')}</h4>
-                    <p>${escapeHtml(track.artist || 'Unknown Artist')}</p>
-                </div>
-                <div class="card-additional-meta">
-                    <span class="bpm-indicator"><i class="fa-solid fa-heartbeat"></i> ${track.bpm || '120'} BPM</span>
-                    <span>${formatTime(track.duration)}</span>
-                </div>
-            </div>
-        `;
-    });
-
-    const noTracksFound = t('emptyLibraryDesc');
-
-    mainSection.innerHTML = `
-        <div class="home-welcome-section">
-            <h2 class="section-welcome-title">${welcomeText}</h2>
-            <div class="top-shortcuts-grid">
-                ${shortcutsHtml || `<p class="no-tracks-info">${noTracksFound}</p>`}
-            </div>
-        </div>
+    
+    window.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        if (isMiniWindowMode) return;
         
-        <div class="spotify-row-title">
-            <h3>${t('dailySuggestions')}</h3>
-            <span class="view-all-link" onclick="switchSection('library')">${currentLanguage === 'fa' ? 'مشاهده همه' : 'View All'}</span>
-        </div>
-        <div class="cards-responsive-grid">
-            ${recentGridHtml || `<p class="no-tracks-info">${noTracksFound}</p>`}
-        </div>
-    `;
+        const files = Array.from(e.dataTransfer.files);
+        const audioExtensions = ['mp3', 'wav', 'ogg', 'm4a', 'flac'];
+        
+        const filePaths = files
+            .map(file => file.path || file.name)
+            .filter(p => {
+                if (!p) return false;
+                const ext = p.split('.').pop().toLowerCase();
+                return audioExtensions.includes(ext);
+            });
+            
+        if (filePaths.length === 0) return;
+        
+        showNotification(t('dragNotify'), 'info');
+        
+        try {
+            const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filePaths })
+            });
+            
+            if (!res.ok) throw new Error();
+            const result = await res.json();
+            
+            showNotification(`${result.imported} ${t('dragSuccess')}`, 'success');
+            await loadTracks();
+            switchSection(currentActiveSection);
+        } catch (err) {
+            console.error('Drag Import error:', err);
+            showNotification(t('dragError'), 'error');
+        }
+    });
 }
 
+// Render library with precise filtering, sorting UI and options
 function renderLibrary(filteredTracks = null) {
     const mainSection = document.getElementById('dynamicSectionContainer');
     if (!mainSection) return;
     
-    const listToRender = filteredTracks !== null ? filteredTracks : tracks;
+    let listToRender = filteredTracks !== null ? filteredTracks : [...tracks];
     
-    if (listToRender.length === 0) {
+    // Extract unique existing genres for custom dynamic genre filters
+    const existingGenres = [...new Set(tracks.map(t => t.genre).filter(Boolean))];
+
+    // Filter list if genre is selected
+    if (libraryGenreFilter !== 'all') {
+        listToRender = listToRender.filter(t => t.genre === libraryGenreFilter);
+    }
+
+    // Sort list according to key and order
+    listToRender.sort((a, b) => {
+        let valA = a[librarySortKey];
+        let valB = b[librarySortKey];
+
+        if (valA === undefined || valA === null) valA = '';
+        if (valB === undefined || valB === null) valB = '';
+
+        if (typeof valA === 'string') {
+            return librarySortOrder === 'asc' 
+                ? valA.localeCompare(valB, undefined, { sensitivity: 'base' })
+                : valB.localeCompare(valA, undefined, { sensitivity: 'base' });
+        } else {
+            return librarySortOrder === 'asc' ? valA - valB : valB - valA;
+        }
+    });
+    
+    if (tracks.length === 0) {
         mainSection.innerHTML = `
             <div class="empty-illustration-state">
                 <i class="fa-solid fa-compact-disc"></i>
@@ -1725,12 +1585,50 @@ function renderLibrary(filteredTracks = null) {
         `;
         return;
     }
+
+    // Create the Sort & Filter Controller bar HTML
+    let genreFilterChipsHtml = `
+        <button class="filter-chip ${libraryGenreFilter === 'all' ? 'active' : ''}" onclick="setLibraryGenreFilter('all')">
+            ${t('allGenres')}
+        </button>
+    `;
     
+    existingGenres.forEach(genre => {
+        genreFilterChipsHtml += `
+            <button class="filter-chip ${libraryGenreFilter === genre ? 'active' : ''}" onclick="setLibraryGenreFilter('${genre}')">
+                ${getGenreTranslation(genre) || genre}
+            </button>
+        `;
+    });
+
     mainSection.innerHTML = `
-        <div class="spotify-row-title">
-            <h3>${t('libraryArchive')} (<span id="libCount">${listToRender.length}</span>)</h3>
-            <span style="font-size: 0.75rem; color: var(--spotify-text-muted);">${t('rightClickTip')}</span>
+        <div class="spotify-row-title library-header-panel">
+            <div class="title-meta-box">
+                <h3>${t('libraryArchive')} (<span id="libCount">${listToRender.length}</span>)</h3>
+                <span class="right-click-tip-lbl">${t('rightClickTip')}</span>
+            </div>
+            
+            <div class="library-filter-controls">
+                <div class="sort-action-group">
+                    <label class="sort-select-lbl">${t('sortByLabel')}</label>
+                    <select id="libSortSelect" class="sort-dropdown-custom" onchange="changeLibrarySorting(this.value)">
+                        <option value="createdAt" ${librarySortKey === 'createdAt' ? 'selected' : ''}>${t('sortDateAdded')}</option>
+                        <option value="title" ${librarySortKey === 'title' ? 'selected' : ''}>${t('sortTitle')}</option>
+                        <option value="artist" ${librarySortKey === 'artist' ? 'selected' : ''}>${t('sortArtist')}</option>
+                        <option value="bpm" ${librarySortKey === 'bpm' ? 'selected' : ''}>${t('sortBpm')}</option>
+                        <option value="duration" ${librarySortKey === 'duration' ? 'selected' : ''}>${t('sortDuration')}</option>
+                    </select>
+                    <button class="sort-dir-toggle-btn" onclick="toggleLibrarySortOrder()" title="Toggle Order">
+                        <i class="fa-solid ${librarySortOrder === 'asc' ? 'fa-arrow-up-wide-short' : 'fa-arrow-down-wide-short'}"></i>
+                    </button>
+                </div>
+            </div>
         </div>
+
+        <div class="genre-filter-wrapper-bar">
+            ${genreFilterChipsHtml}
+        </div>
+
         <div class="library-table-wrapper">
             <table class="library-tracks-table">
                 <thead>
@@ -1809,6 +1707,22 @@ function renderLibrary(filteredTracks = null) {
     }
 }
 
+// Controller function hooks for live filters & sorting
+window.setLibraryGenreFilter = function(genre) {
+    libraryGenreFilter = genre;
+    renderLibrary();
+};
+
+window.changeLibrarySorting = function(key) {
+    librarySortKey = key;
+    renderLibrary();
+};
+
+window.toggleLibrarySortOrder = function() {
+    librarySortOrder = librarySortOrder === 'asc' ? 'desc' : 'asc';
+    renderLibrary();
+};
+
 function deleteTrack(trackId, event) {
     event.stopPropagation();
     const alertTitle = currentLanguage === 'fa' ? 'حذف قطعه از کتابخانه' : 'Delete track from library';
@@ -1880,6 +1794,80 @@ function renderFavorites() {
     `;
 }
 
+function renderHomeDashboard() {
+    const mainSection = document.getElementById('dynamicSectionContainer');
+    if (!mainSection) return;
+    
+    const hour = new Date().getHours();
+    let welcomeText = t('welcomeEvening');
+    if (hour < 12) welcomeText = t('welcomeMorning');
+    else if (hour < 18) welcomeText = t('welcomeAfternoon');
+    
+    let shortcutsHtml = '';
+    const topTracks = tracks.slice(0, 6);
+    
+    topTracks.forEach(track => {
+        const coverUrl = track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null;
+        shortcutsHtml += `
+            <div class="shortcut-pill-card" onclick="playTrack(${track.id})">
+                <div class="shortcut-cover">
+                    ${coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music"></i>'}
+                </div>
+                <div class="shortcut-title-info">
+                    <h4>${escapeHtml(track.title || 'Untitled')}</h4>
+                    <div class="shortcut-play-btn">
+                        <i class="fa-solid fa-play"></i>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+
+    let recentGridHtml = '';
+    const recentTracks = tracks.slice(0, 4);
+    recentTracks.forEach(track => {
+        const coverUrl = track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null;
+        const isActive = currentTrackId === track.id;
+        recentGridHtml += `
+            <div class="spotify-music-card ${isActive ? 'active' : ''}" data-track-id="${track.id}">
+                <div class="card-image-box" onclick="playTrack(${track.id})" oncontextmenu="event.preventDefault(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
+                    ${coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music"></i>'}
+                    <div class="hover-play-bubble">
+                        <i class="fa-solid ${isActive && isPlaying ? 'fa-pause' : 'fa-play'}"></i>
+                    </div>
+                </div>
+                <div class="card-details-info" onclick="playTrack(${track.id})">
+                    <h4>${escapeHtml(track.title || 'Untitled')}</h4>
+                    <p>${escapeHtml(track.artist || 'Unknown Artist')}</p>
+                </div>
+                <div class="card-additional-meta">
+                    <span class="bpm-indicator"><i class="fa-solid fa-heartbeat"></i> ${track.bpm || '120'} BPM</span>
+                    <span>${formatTime(track.duration)}</span>
+                </div>
+            </div>
+        `;
+    });
+
+    const noTracksFound = t('emptyLibraryDesc');
+
+    mainSection.innerHTML = `
+        <div class="home-welcome-section">
+            <h2 class="section-welcome-title">${welcomeText}</h2>
+            <div class="top-shortcuts-grid">
+                ${shortcutsHtml || `<p class="no-tracks-info">${noTracksFound}</p>`}
+            </div>
+        </div>
+        
+        <div class="spotify-row-title">
+            <h3>${t('dailySuggestions')}</h3>
+            <span class="view-all-link" onclick="switchSection('library')">${currentLanguage === 'fa' ? 'مشاهده همه' : 'View All'}</span>
+        </div>
+        <div class="cards-responsive-grid">
+            ${recentGridHtml || `<p class="no-tracks-info">${noTracksFound}</p>`}
+        </div>
+    `;
+}
+
 async function renderStats() {
     const mainSection = document.getElementById('dynamicSectionContainer');
     if (!mainSection) return;
@@ -1929,99 +1917,6 @@ async function renderStats() {
         `;
     } catch {
         mainSection.innerHTML = `<p class="stats-error">${t('statsError')}</p>`;
-    }
-}
-
-// Original AI recommendation handler (kept for compatibility but overridden)
-async function handleAiRecommendations() {
-    if (!currentTrackId) {
-        showNotification('Play a track first.', 'warning');
-        return;
-    }
-    
-    showNotification('Analyzing acoustic profiles...', 'info');
-    
-    try {
-        const res = await fetch(`http://127.0.0.1:${apiPort}/api/recommend/${currentTrackId}/detailed`);
-        if (!res.ok) throw new Error();
-        const data = await res.json();
-        
-        if (!data.recommendations || data.recommendations.length === 0) {
-            showNotification('No similar tracks found.', 'info');
-            return;
-        }
-        
-        const mainSection = document.getElementById('dynamicSectionContainer');
-        if (!mainSection) return;
-        
-        const translatedGenreName = getGenreTranslation(data.sourceTrack.genre);
-        
-        const sourceGenreHtml = `
-            <div class="source-genre-badge" style="background: ${data.sourceTrack.genreIcon === 'fa-saxophone' ? '#4a90e2' : data.sourceTrack.genreIcon === 'fa-guitar' ? '#f5a623' : data.sourceTrack.genreIcon === 'fa-drum' ? '#1db954' : '#888'};">
-                <i class="fa-solid ${data.sourceTrack.genreIcon || 'fa-music'}"></i>
-                <span>${t('genreDetected')}: ${translatedGenreName || data.sourceTrack.genre}</span>
-                <small>${data.sourceTrack.bpm} ${t('bpmBadge')} • ${Math.round((data.sourceTrack.energy || 0.5) * 100)}% ${t('energyBadge')}</small>
-            </div>
-        `;
-        
-        let gridHtml = '';
-        for (const track of data.recommendations) {
-            const coverUrl = track.coverUrl ? `http://127.0.0.1:${apiPort}${track.coverUrl}` : null;
-            const isActive = currentTrackId === track.id;
-            
-            let translatedReason = track.reason;
-            if (currentLanguage === 'fa') {
-                if (track.reason.includes('BPM')) translatedReason = 'BPM بسیار نزدیک';
-                else if (track.reason.includes('energy')) translatedReason = 'انرژی صوتی هم‌سو';
-                else if (track.reason.includes('genre')) translatedReason = `${getGenreTranslation(track.detectedGenre)} (سبک یکسان)`;
-                else translatedReason = 'توصیه الگوریتمی KORAI';
-            }
-            
-            gridHtml += `
-                <div class="spotify-music-card ${isActive ? 'active' : ''}" data-track-id="${track.id}">
-                    <div class="card-image-box" onclick="playTrack(${track.id})" oncontextmenu="event.preventDefault(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
-                        ${coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music"></i>'}
-                        <div class="hover-play-bubble">
-                            <i class="fa-solid ${isActive && isPlaying ? 'fa-pause' : 'fa-play'}"></i>
-                        </div>
-                    </div>
-                    <div class="card-details-info" onclick="playTrack(${track.id})">
-                        <h4>${escapeHtml(track.title || 'Untitled')}</h4>
-                        <p>${escapeHtml(track.artist || 'Unknown Artist')}</p>
-                    </div>
-                    <div class="card-additional-meta">
-                        <span class="similarity-badge" style="background: ${track.genreColor || '#1db954'}20; color: ${track.genreColor || '#1db954'}">
-                            <i class="fa-solid ${track.genreIcon || 'fa-chart-line'}"></i> ${track.similarity}% ${t('similarity')}
-                        </span>
-                        <span class="bpm-indicator"><i class="fa-solid fa-heartbeat"></i> ${track.bpm || '120'} BPM</span>
-                    </div>
-                    <div class="recommend-reason">
-                        <small><i class="fa-solid fa-info-circle"></i> ${translatedReason || t('recommended')}</small>
-                    </div>
-                </div>
-            `;
-        }
-        
-        mainSection.innerHTML = `
-            <div class="spotify-row-title">
-                <h3><i class="fa-solid fa-wand-magic-sparkles" style="color: var(--accent-cyan);"></i> ${t('smartRecommendations')}</h3>
-                <div style="display: flex; gap: 12px;">
-                    <button class="create-similar-playlist-btn" onclick="createSimilarPlaylistFromCurrent()">
-                        <i class="fa-solid fa-list-music"></i> ${t('similarPlaylist')}
-                    </button>
-                    <span class="view-all-link" onclick="switchSection('home')">${t('backToHome')}</span>
-                </div>
-            </div>
-            ${sourceGenreHtml}
-            <div class="cards-responsive-grid">
-                ${gridHtml}
-            </div>
-        `;
-        showNotification('Recommendations populated', 'success');
-        
-    } catch (err) {
-        console.error('Recommendation error:', err);
-        showNotification('Error calculating match states', 'error');
     }
 }
 
@@ -2421,105 +2316,9 @@ function changeClientLanguage(targetLang) {
 
 function updateBodyClasses() {
     const dirClass = currentLanguage === 'fa' ? 'rtl' : 'ltr';
+    const skinClass = `theme-${currentSkin}`;
     const miniClass = isMiniWindowMode ? 'mini-window-active' : '';
-    document.body.className = `theme-${currentSkin} ${dirClass} ${miniClass}`;
-}
-
-function applyGlobalSkin(skinName) {
-    currentSkin = skinName;
-    localStorage.setItem('user_skin', skinName);
-    updateBodyClasses();
-}
-
-function setSleepTimer(minutes) {
-    cancelSleepTimer();
-    sleepTimeRemaining = minutes * 60;
-    const display = document.getElementById('sleepTimerVal');
-    const cancelBtn = document.getElementById('cancelSleepBtn');
-    if (cancelBtn) cancelBtn.style.display = 'block';
-    
-    showNotification(`Sleep timer set to ${minutes} minutes.`, 'success');
-
-    sleepIntervalId = setInterval(() => {
-        sleepTimeRemaining--;
-        if (display) display.innerText = formatTime(sleepTimeRemaining);
-
-        if (sleepTimeRemaining <= 60 && sleepTimeRemaining > 0) {
-            const fadeVolume = (sleepTimeRemaining / 60) * volume;
-            if (audioElement) audioElement.volume = fadeVolume;
-        }
-
-        if (sleepTimeRemaining <= 0) {
-            clearInterval(sleepIntervalId);
-            if (audioElement) {
-                audioElement.pause();
-                setPlayState(false);
-                audioElement.volume = volume;
-            }
-            cancelSleepTimer();
-            showNotification('Playback paused by sleep timer.', 'info');
-        }
-    }, 1000);
-}
-
-function cancelSleepTimer() {
-    if (sleepIntervalId) {
-        clearInterval(sleepIntervalId);
-        sleepIntervalId = null;
-    }
-    sleepTimeRemaining = 0;
-    const display = document.getElementById('sleepTimerVal');
-    if (display) display.innerText = t('sleepOff');
-    const cancelBtn = document.getElementById('cancelSleepBtn');
-    if (cancelBtn) cancelBtn.style.display = 'none';
-    if (audioElement) audioElement.volume = volume;
-}
-
-function setupDragAndDrop() {
-    const container = document.getElementById('appContainer');
-    if (!container) return;
-    
-    window.addEventListener('dragover', (e) => {
-        e.preventDefault();
-    });
-    
-    window.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        if (isMiniWindowMode) return;
-        
-        const files = Array.from(e.dataTransfer.files);
-        const audioExtensions = ['mp3', 'wav', 'ogg', 'm4a', 'flac'];
-        
-        const filePaths = files
-            .map(file => file.path || file.name)
-            .filter(p => {
-                if (!p) return false;
-                const ext = p.split('.').pop().toLowerCase();
-                return audioExtensions.includes(ext);
-            });
-            
-        if (filePaths.length === 0) return;
-        
-        showNotification(t('dragNotify'), 'info');
-        
-        try {
-            const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filePaths })
-            });
-            
-            if (!res.ok) throw new Error();
-            const result = await res.json();
-            
-            showNotification(`${result.imported} ${t('dragSuccess')}`, 'success');
-            await loadTracks();
-            switchSection(currentActiveSection);
-        } catch (err) {
-            console.error('Drag Import error:', err);
-            showNotification(t('dragError'), 'error');
-        }
-    });
+    document.body.className = `${skinClass} ${dirClass} ${miniClass}`;
 }
 
 function setupEventListeners() {
@@ -2540,13 +2339,20 @@ function setupEventListeners() {
     }
 
     const skinBtns = document.querySelectorAll('.skin-btn');
-    skinBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            skinBtns.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            applyGlobalSkin(btn.dataset.skin);
+    if (skinBtns.length) {
+        skinBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const skinValue = btn.dataset.skin;
+                let newSkin = skinValue;
+                if (skinValue === 'apple') newSkin = 'liquid-glass';
+                if (skinValue !== 'default' && skinValue !== 'liquid-glass') newSkin = 'default';
+                
+                skinBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                applyGlobalSkin(newSkin);
+            });
         });
-    });
+    }
     
     const createSimilarBtn = document.getElementById('createSimilarPlaylistBtn');
     if (createSimilarBtn) {
@@ -2695,10 +2501,7 @@ function setupEventListeners() {
     
     const shuffleBtn = document.getElementById('shuffleBtnK');
     if (shuffleBtn) {
-        shuffleBtn.addEventListener('click', () => {
-            shuffleMode = !shuffleMode;
-            shuffleBtn.classList.toggle('active', shuffleMode);
-        });
+        shuffleBtn.addEventListener('click', toggleShuffleEnhanced);
     }
     
     const repeatBtn = document.getElementById('repeatBtnK');
@@ -2720,12 +2523,7 @@ function setupEventListeners() {
 
     const fsShuffleBtn = document.getElementById('fsShuffleBtn');
     if (fsShuffleBtn) {
-        fsShuffleBtn.addEventListener('click', () => {
-            shuffleMode = !shuffleMode;
-            fsShuffleBtn.classList.toggle('active', shuffleMode);
-            const baseShuffle = document.getElementById('shuffleBtnK');
-            if (baseShuffle) baseShuffle.classList.toggle('active', shuffleMode);
-        });
+        fsShuffleBtn.addEventListener('click', toggleShuffleEnhanced);
     }
 
     const fsRepeatBtn = document.getElementById('fsRepeatBtn');
@@ -3089,3 +2887,218 @@ if (window.electronAPI) {
 setTimeout(() => {
     syncTrayPlaybackState();
 }, 1000);
+
+// =============================================================================
+// ARTISTS SECTION - FEATURE
+// =============================================================================
+
+/**
+ * Renders the artists view, grouping tracks by artist
+ */
+function renderArtists() {
+    const mainSection = document.getElementById('dynamicSectionContainer');
+    if (!mainSection) return;
+    
+    if (tracks.length === 0) {
+        mainSection.innerHTML = `
+            <div class="empty-illustration-state">
+                <i class="fa-solid fa-microphone"></i>
+                <h3>${t('emptyArtistsState') || 'No Artists Found'}</h3>
+                <p>${t('emptyArtistsDesc') || 'Add some music tracks to see your artists.'}</p>
+            </div>
+        `;
+        return;
+    }
+    
+    // Group tracks by artist
+    const artistsMap = new Map();
+    
+    tracks.forEach(track => {
+        const artistName = track.artist || 'Unknown Artist';
+        if (!artistsMap.has(artistName)) {
+            artistsMap.set(artistName, {
+                name: artistName,
+                tracks: [],
+                coverImage: track.coverImage || null,
+                hasCover: track.hasCover || false,
+                coverUrl: track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null
+            });
+        }
+        artistsMap.get(artistName).tracks.push(track);
+        
+        // Use first track's cover as artist cover if available
+        const artistData = artistsMap.get(artistName);
+        if (!artistData.coverImage && track.coverImage && track.coverImage.length > 0) {
+            artistData.coverImage = track.coverImage;
+            artistData.hasCover = track.hasCover;
+            artistData.coverUrl = track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null;
+        }
+    });
+    
+    const artists = Array.from(artistsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    
+    let artistsHtml = '';
+    artists.forEach(artist => {
+        const trackCount = artist.tracks.length;
+        const coverHtml = artist.coverUrl 
+            ? `<img src="${artist.coverUrl}" alt="${escapeHtml(artist.name)}">` 
+            : `<i class="fa-solid fa-microphone-alt"></i>`;
+        
+        artistsHtml += `
+            <div class="artist-card" onclick="showArtistDetail('${escapeHtml(artist.name)}')">
+                <div class="artist-avatar">
+                    ${coverHtml}
+                </div>
+                <div class="artist-name truncate-text">${escapeHtml(artist.name)}</div>
+                <div class="artist-tracks-count">${trackCount} ${t('tracksCount') || 'tracks'}</div>
+            </div>
+        `;
+    });
+    
+    mainSection.innerHTML = `
+        <div class="spotify-row-title">
+            <h3><i class="fa-solid fa-microphone"></i> ${t('artistsTitle') || 'Artists'} (${artists.length})</h3>
+        </div>
+        <div class="artists-grid" id="artistsGrid">
+            ${artistsHtml}
+        </div>
+    `;
+}
+
+/**
+ * Shows detailed view for a specific artist with all their tracks
+ */
+function showArtistDetail(artistName) {
+    const artistTracks = tracks.filter(track => (track.artist || 'Unknown Artist') === artistName);
+    if (artistTracks.length === 0) return;
+    
+    const mainSection = document.getElementById('dynamicSectionContainer');
+    if (!mainSection) return;
+    
+    let artistCover = null;
+    for (const track of artistTracks) {
+        if (track.hasCover && track.coverImage) {
+            artistCover = `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover`;
+            break;
+        }
+    }
+    
+    const coverHtml = artistCover 
+        ? `<img src="${artistCover}" alt="${escapeHtml(artistName)}">` 
+        : `<i class="fa-solid fa-microphone-alt"></i>`;
+    
+    let tracksTableHtml = '';
+    artistTracks.forEach((track, index) => {
+        const coverUrl = track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null;
+        const isActive = currentTrackId === track.id;
+        const indexText = isActive && isPlaying ? '<i class="fa-solid fa-pause"></i>' : index + 1;
+        
+        tracksTableHtml += `
+            <tr class="track-row ${isActive ? 'active' : ''}" data-track-id="${track.id}" onclick="playTrack(${track.id})" oncontextmenu="event.preventDefault(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
+                <td class="track-play-cell">${indexText}</td>
+                <td class="track-info-cell">
+                    <div class="table-song-cover">
+                        ${coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music"></i>'}
+                    </div>
+                    <div class="table-song-meta">
+                        <span class="table-song-title">${escapeHtml(track.title || 'Untitled')}</span>
+                    </div>
+                </td>
+                <td class="track-album-cell">${escapeHtml(track.album || '—')}</td>
+                <td class="track-bpm-cell">${track.bpm || '120'}</td>
+                <td class="track-time-cell">${formatTime(track.duration)}</td>
+                <td class="track-actions-cell">
+                    <button class="table-action-btn like" onclick="event.stopPropagation(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    mainSection.innerHTML = `
+        <div class="artist-detail-view">
+            <button class="back-to-artists-btn" onclick="renderArtists()">
+                <i class="fa-solid fa-arrow-right"></i> ${t('backToArtists') || 'Back to Artists'}
+            </button>
+            <div class="artist-header">
+                <div class="artist-header-avatar">
+                    ${coverHtml}
+                </div>
+                <div class="artist-header-info">
+                    <h2>${escapeHtml(artistName)}</h2>
+                    <p>${artistTracks.length} ${t('tracksCount') || 'tracks'}</p>
+                    <button class="play-artist-btn" onclick="playArtist('${escapeHtml(artistName)}')">
+                        <i class="fa-solid fa-play"></i> ${t('playArtist') || 'Play All'}
+                    </button>
+                </div>
+            </div>
+            <div class="library-table-wrapper">
+                <table class="library-tracks-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 50px;">#</th>
+                            <th>${t('trackTitle') || 'Title'}</th>
+                            <th>${t('albumTitle') || 'Album'}</th>
+                            <th style="width: 80px;">BPM</th>
+                            <th style="width: 80px;"><i class="fa-regular fa-clock"></i></th>
+                            <th style="width: 100px;">${t('actions') || 'Actions'}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tracksTableHtml}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Plays all tracks of an artist
+ */
+function playArtist(artistName) {
+    const artistTracks = tracks.filter(track => (track.artist || 'Unknown Artist') === artistName);
+    if (artistTracks.length === 0) return;
+    
+    queue = [...artistTracks];
+    queueIndex = 0;
+    playTrack(queue[0].id);
+    renderQueue();
+    showNotification(`${t('playingArtist') || 'Playing'} ${artistName} (${artistTracks.length} ${t('tracks') || 'tracks'})`, 'success');
+}
+
+// Update switchSection function to include artists
+window.switchSection = function(sectionName) {
+    if (isMiniWindowMode) return;
+    currentActiveSection = sectionName;
+    currentActivePlaylistId = null;
+    
+    document.querySelectorAll('.sidebar-nav .nav-item, .sidebar-playlist-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    
+    const navHome = document.getElementById('navHome');
+    const navLibrary = document.getElementById('navLibrary');
+    const navArtists = document.getElementById('navArtists');
+    const navFavorites = document.getElementById('navFavorites');
+    const navStats = document.getElementById('navStats');
+    
+    if (sectionName === 'home' && navHome) navHome.classList.add('active');
+    if (sectionName === 'library' && navLibrary) navLibrary.classList.add('active');
+    if (sectionName === 'artists' && navArtists) navArtists.classList.add('active');
+    if (sectionName === 'favorites' && navFavorites) navFavorites.classList.add('active');
+    if (sectionName === 'stats' && navStats) navStats.classList.add('active');
+    
+    if (sectionName === 'home') renderHomeDashboard();
+    if (sectionName === 'library') renderLibrary();
+    if (sectionName === 'artists') renderArtists();
+    if (sectionName === 'favorites') renderFavorites();
+    if (sectionName === 'stats') {
+        renderStats().then(() => {
+            if (audioCtx && analyser) {
+                startLiveSpectrumAnalyzer();
+            }
+        });
+    }
+};

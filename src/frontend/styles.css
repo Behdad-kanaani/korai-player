@@ -2,7 +2,7 @@
  * styles.css - KORAI Music Player Complete Styling
  * 
  * Contains all visual styles including:
- * - Theme system (Spotify Dark / Liquid Glass)
+ * - Theme system (Spotify Dark / Liquid Glass Remastered)
  * - RTL/LTR layout support
  * - Responsive design for all screen sizes
  * - Animations and transitions
@@ -27,12 +27,106 @@
     
     --dynamic-color-1: rgba(29, 185, 84, 0.06);
     --dynamic-color-2: rgba(18, 18, 18, 0.05);
+    
+    /* SVG filter reference for glass distortion */
+    --glass-filter-url: url(#glass-distortion);
+}
+
+/* ==========================================================================
+   DYNAMIC AMBIENT FLUID GLASS BLOBS (HIGH ROTATION & DRIFT)
+   ========================================================================== */
+
+.glass-bg-blobs-container {
+    position: fixed;
+    inset: 0;
+    z-index: -3;
+    overflow: hidden;
+    pointer-events: none;
+    display: none; /* Active only in theme-liquid-glass */
+    background: radial-gradient(circle at 50% 50%, #06060c 0%, #020204 100%);
+}
+
+body.theme-liquid-glass .glass-bg-blobs-container {
+    display: block;
+}
+
+.glass-blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(130px);
+    opacity: 0.55;
+    mix-blend-mode: screen;
+    will-change: transform;
+}
+
+/* انیمیشن‌های پویا، پرسرعت‌تر و متحرک‌تر برای گوی‌های نئونی صوتی */
+.glass-blob-1 {
+    top: -5%;
+    left: 8%;
+    width: 650px;
+    height: 650px;
+    background: radial-gradient(circle, rgba(0, 255, 213, 0.5) 0%, transparent 70%);
+    animation: floatBlob1 18s infinite ease-in-out alternate;
+}
+
+.glass-blob-2 {
+    bottom: -10%;
+    right: 12%;
+    width: 750px;
+    height: 750px;
+    background: radial-gradient(circle, rgba(244, 63, 94, 0.5) 0%, transparent 70%);
+    animation: floatBlob2 22s infinite ease-in-out alternate-reverse;
+}
+
+.glass-blob-3 {
+    top: 25%;
+    right: -8%;
+    width: 550px;
+    height: 550px;
+    background: radial-gradient(circle, rgba(168, 85, 247, 0.48) 0%, transparent 70%);
+    animation: floatBlob3 20s infinite ease-in-out alternate;
+}
+
+.glass-blob-4 {
+    bottom: 15%;
+    left: -8%;
+    width: 580px;
+    height: 580px;
+    background: radial-gradient(circle, rgba(59, 130, 246, 0.45) 0%, transparent 70%);
+    animation: floatBlob4 25s infinite ease-in-out alternate-reverse;
+}
+
+@keyframes floatBlob1 {
+    0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+    33% { transform: translate(180px, 120px) scale(1.3) rotate(90deg); }
+    66% { transform: translate(-140px, 220px) scale(0.8) rotate(180deg); }
+    100% { transform: translate(80px, -60px) scale(1.1) rotate(270deg); }
+}
+
+@keyframes floatBlob2 {
+    0% { transform: translate(0, 0) scale(1.1) rotate(0deg); }
+    33% { transform: translate(-200px, -150px) scale(0.85) rotate(-120deg); }
+    66% { transform: translate(120px, 110px) scale(1.25) rotate(180deg); }
+    100% { transform: translate(-50px, 90px) scale(1.0) rotate(360deg); }
+}
+
+@keyframes floatBlob3 {
+    0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+    50% { transform: translate(240px, -110px) scale(1.25) rotate(180deg); }
+    100% { transform: translate(-110px, 150px) scale(0.9) rotate(-180deg); }
+}
+
+@keyframes floatBlob4 {
+    0% { transform: translate(0, 0) scale(0.95) rotate(0deg); }
+    50% { transform: translate(-180px, 200px) scale(1.3) rotate(-90deg); }
+    100% { transform: translate(130px, -90px) scale(1.05) rotate(90deg); }
 }
 
 /* ==========================================================================
    THEME SYSTEM
    ========================================================================== */
 
+/* THEME 1: SPOTIFY DARK (DEFAULT) */
 body.theme-default {
     --bg-black: #09090b;
     --spotify-dark: #101014;
@@ -50,39 +144,339 @@ body.theme-default {
     --radius-sm: 6px;
     --radius-md: 10px;
     --radius-lg: 14px;
+    
+    /* Glass specific vars (not used in default theme) */
+    --glass-tint-color: 0, 0, 0;
+    --glass-tint-opacity: 0.85;
+    --glass-frost-blur: 0px;
+    --glass-shadow-blur: 0px;
+    --glass-shadow-spread: 0px;
+    --glass-shadow-color: transparent;
+    --glass-displacement-scale: 0;
 }
 
-body.theme-apple {
-    --bg-black: #0d0c12;
-    --spotify-dark: rgba(22, 21, 29, 0.95);
-    --spotify-grey: rgba(35, 33, 46, 0.85);
-    --spotify-light-grey: rgba(56, 52, 73, 0.6);
+/* ==========================================================================
+   THEME 2: LIQUID GLASS (OPTIMIZED - REDUCED LAG)
+   ========================================================================== */
+
+body.theme-liquid-glass {
+    --bg-black: rgba(8, 8, 15, 0.6);
+    --spotify-dark: rgba(14, 16, 28, 0.65);
+    --spotify-grey: rgba(23, 26, 45, 0.55);
+    --spotify-light-grey: rgba(46, 51, 84, 0.65);
     --spotify-text-active: #ffffff;
-    --spotify-text-muted: #9c97b5;
+    --spotify-text-muted: rgba(255, 255, 255, 0.65);
     
-    --accent-cyan: #fc3c44;
-    --accent-pink: #ff6b6b;
-    --accent-green: #34c759;
-    --accent-glow: rgba(252, 60, 68, 0.25);
-    --border-color: rgba(255, 255, 255, 0.1);
+    --accent-cyan: #00ffd5;
+    --accent-pink: #ff2a5f;
+    --accent-green: #00ffd5;
+    --accent-glow: rgba(0, 255, 213, 0.35);
+    --border-color: rgba(255, 255, 255, 0.15);
     
     --radius-sm: 8px;
     --radius-md: 14px;
     --radius-lg: 20px;
+    
+    /* OPTIMIZED Glass Effect Variables - Reduced intensity */
+    --glass-tint-color: 10, 11, 22; 
+    --glass-tint-opacity: 0.55;    /* Reduced from 0.65 */
+    --glass-frost-blur: 20px;      /* Reduced from 40px */
+    --glass-shadow-blur: 25px;     /* Reduced from 45px */
+    --glass-shadow-spread: 0px;
+    --glass-shadow-color: rgba(0, 0, 0, 0.55);
+    --glass-displacement-scale: 8;  /* Reduced from 15 */
 }
 
-body.theme-apple .spotify-sidebar,
-body.theme-apple .spotify-main-panel {
-    backdrop-filter: blur(20px);
-    background: rgba(22, 21, 29, 0.85);
+/* OPTIMIZED Glass-distortion - Lighter version with will-change */
+body.theme-liquid-glass .spotify-sidebar,
+body.theme-liquid-glass .spotify-main-panel,
+body.theme-liquid-glass .premium-playback-bar,
+body.theme-liquid-glass .queue-drawer-panel,
+body.theme-liquid-glass .dsp-drawer-panel,
+body.theme-liquid-glass .custom-modal-card,
+body.theme-liquid-glass .context-menu,
+body.theme-liquid-glass .fullscreen-immersive-player {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.01) 50%, rgba(13, 14, 25, 0.70) 51%, rgba(10, 11, 20, 0.80) 100%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4) !important;
+    backdrop-filter: blur(18px) saturate(150%) !important; /* Reduced blur */
+    -webkit-backdrop-filter: blur(18px) saturate(150%) !important;
+    will-change: transform; /* Performance hint */
+    transition: transform 0.2s ease, opacity 0.2s ease;
 }
+
+/* REMOVE expensive pseudo-element that causes double rendering */
+body.theme-liquid-glass .spotify-sidebar::before,
+body.theme-liquid-glass .spotify-main-panel::before,
+body.theme-liquid-glass .premium-playback-bar::before,
+body.theme-liquid-glass .queue-drawer-panel::before,
+body.theme-liquid-glass .dsp-drawer-panel::before,
+body.theme-liquid-glass .custom-modal-card::before,
+body.theme-liquid-glass .context-menu::before {
+    display: none; /* Disable expensive filter effect */
+}
+
+/* OPTIMIZED Animated blobs - reduced movement and opacity */
+.glass-bg-blobs-container {
+    position: fixed;
+    inset: 0;
+    z-index: -3;
+    overflow: hidden;
+    pointer-events: none;
+    display: none;
+}
+
+body.theme-liquid-glass .glass-bg-blobs-container {
+    display: block;
+}
+
+.glass-blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px); /* Reduced from 130px */
+    opacity: 0.35; /* Reduced from 0.55 */
+    mix-blend-mode: screen;
+    will-change: transform;
+}
+
+/* SIMPLIFIED animations - fewer steps, longer duration for smoother perf */
+.glass-blob-1 {
+    top: -5%;
+    left: 8%;
+    width: 500px; /* Reduced from 650px */
+    height: 500px;
+    background: radial-gradient(circle, rgba(0, 255, 213, 0.4) 0%, transparent 70%);
+    animation: floatBlob1 25s infinite ease-in-out alternate; /* Slower */
+}
+
+.glass-blob-2 {
+    bottom: -10%;
+    right: 12%;
+    width: 600px; /* Reduced from 750px */
+    height: 600px;
+    background: radial-gradient(circle, rgba(244, 63, 94, 0.4) 0%, transparent 70%);
+    animation: floatBlob2 30s infinite ease-in-out alternate-reverse; /* Slower */
+}
+
+.glass-blob-3 {
+    top: 25%;
+    right: -8%;
+    width: 450px; /* Reduced from 550px */
+    height: 450px;
+    background: radial-gradient(circle, rgba(168, 85, 247, 0.38) 0%, transparent 70%);
+    animation: floatBlob3 28s infinite ease-in-out alternate; /* Slower */
+}
+
+.glass-blob-4 {
+    bottom: 15%;
+    left: -8%;
+    width: 480px; /* Reduced from 580px */
+    height: 480px;
+    background: radial-gradient(circle, rgba(59, 130, 246, 0.35) 0%, transparent 70%);
+    animation: floatBlob4 32s infinite ease-in-out alternate-reverse; /* Slower */
+}
+
+/* SIMPLIFIED keyframes with fewer transforms */
+@keyframes floatBlob1 {
+    0% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(100px, 80px) scale(1.15); }
+    100% { transform: translate(-60px, 100px) scale(0.95); }
+}
+
+@keyframes floatBlob2 {
+    0% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(-120px, -80px) scale(0.9); }
+    100% { transform: translate(70px, 50px) scale(1.1); }
+}
+
+@keyframes floatBlob3 {
+    0% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(140px, -60px) scale(1.1); }
+    100% { transform: translate(-80px, 90px) scale(0.95); }
+}
+
+@keyframes floatBlob4 {
+    0% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(-100px, 120px) scale(1.12); }
+    100% { transform: translate(90px, -50px) scale(0.98); }
+}
+
+/* OPTIMIZED Cards in Glass mode - lighter effects */
+body.theme-liquid-glass .spotify-music-card {
+    background-color: rgba(255, 255, 255, 0.02) !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    backdrop-filter: blur(4px) !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+body.theme-liquid-glass .spotify-music-card:hover {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    border-color: var(--accent-cyan) !important;
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0, 255, 213, 0.1) !important;
+}
+
+/* FIX: Blur effect on cover images in Liquid Glass mode */
+body.theme-liquid-glass .card-image-box img,
+body.theme-liquid-glass .song-cover-frame img,
+body.theme-liquid-glass .shortcut-cover img,
+body.theme-liquid-glass .table-song-cover img,
+body.theme-liquid-glass .mini-art-box img,
+body.theme-liquid-glass .immersive-vinyl-disc img {
+    filter: blur(0) !important;
+    -webkit-filter: blur(0) !important;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+}
+
+/* FIX: Recommendations card styling in all themes */
+.recommendations-grid {
+    margin-top: 20px;
+}
+
+.recommendation-source-card {
+    background: linear-gradient(135deg, rgba(29, 185, 84, 0.05) 0%, rgba(29, 185, 84, 0.02) 100%);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 20px 24px;
+    margin-bottom: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.recommendation-source-card .source-track-badge {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--accent-cyan);
+    padding: 6px 16px;
+    border-radius: 40px;
+    color: #000;
+    font-weight: 700;
+    font-size: 0.8rem;
+}
+
+.recommendation-source-card .source-track-details {
+    flex: 1;
+}
+
+.recommendation-source-card .source-track-details h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.recommendation-source-card .source-track-details p {
+    font-size: 0.75rem;
+    color: var(--spotify-text-muted);
+    margin-bottom: 8px;
+}
+
+.recommendation-source-card .source-metrics {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.recommendation-source-card .metric-badge {
+    background: var(--spotify-grey);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--spotify-text-muted);
+}
+
+.recommendation-source-card .metric-badge.genre {
+    color: var(--accent-cyan);
+}
+
+.recommendation-stats {
+    background: rgba(0, 255, 213, 0.1);
+    padding: 8px 16px;
+    border-radius: 30px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--accent-cyan);
+}
+
+.similarity-indicator {
+    margin: 10px 0 6px;
+}
+
+.similarity-bar-bg {
+    height: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.similarity-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.similarity-percent {
+    font-size: 0.6rem;
+    font-weight: 600;
+    color: var(--spotify-text-muted);
+}
+
+.genre-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 20px;
+    font-size: 0.65rem;
+    font-weight: 600;
+}
+
+.recommend-reason {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-color);
+    text-align: center;
+}
+
+.recommend-reason small {
+    font-size: 0.65rem;
+    color: var(--spotify-text-muted);
+}
+
+body.theme-liquid-glass .recommendation-source-card {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(10px);
+}
+
+body.theme-liquid-glass .similarity-bar-fill {
+    background: var(--accent-cyan);
+    box-shadow: 0 0 6px var(--accent-cyan);
+}
+
+/* OPTIMIZED scrollbar - removed glow effect */
+body.theme-liquid-glass ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+}
+
+body.theme-liquid-glass ::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-cyan);
+}
+
 
 body {
     background-color: var(--bg-black);
     color: var(--spotify-text-active);
     height: 100vh;
     overflow: hidden;
-    transition: background-color 0.3s ease;
+    transition: background-color 0.3s ease, background-image 0.3s ease;
 }
 
 body.rtl, input, button {
@@ -95,8 +489,8 @@ body.ltr, input, button {
     direction: ltr;
 }
 
-/* Background gradient effect */
-body::before {
+/* Background gradient effect - only for default theme */
+body.theme-default::before {
     content: '';
     position: fixed;
     inset: 0;
@@ -127,14 +521,16 @@ body::before {
 }
 
 /* ==========================================================================
-   MAIN APP CONTAINER
+   MAIN APP CONTAINER (calc height and custom padding logic)
    ========================================================================== */
 
 .korai-app-container {
     display: flex;
-    height: 100vh;
-    padding: 44px 16px 116px 16px;
+    height: calc(100vh - 32px); /* فیت شدن کامل زیر تایتل بار ۳۲ پیکسلی */
+    margin-top: 32px;
+    padding: 16px 16px 128px 16px; /* افزایش فاصله پایین برای جلوگیری از تداخل با پلی‌بار */
     gap: 16px;
+    box-sizing: border-box;
 }
 
 /* ==========================================================================
@@ -152,7 +548,7 @@ body::before {
     flex-shrink: 0;
     transition: var(--transition-smooth);
     border: 1px solid var(--border-color);
-    overflow-y: auto;
+    overflow-y: auto !important;
 }
 
 .app-logo {
@@ -537,6 +933,7 @@ body.ltr .search-shortcut {
     overflow-y: auto;
     padding: 24px 28px;
 }
+
 /* ==========================================================================
    HOME DASHBOARD
    ========================================================================== */
@@ -954,16 +1351,16 @@ body.ltr .library-tracks-table tr td:last-child {
 }
 
 /* ==========================================================================
-   PREMIUM PLAYBACK BAR
+   PREMIUM PLAYBACK BAR (Optimized elevation and z-index alignment)
    ========================================================================== */
 
 .premium-playback-bar {
     position: fixed;
-    bottom: 16px;
-    left: 16px;
-    right: 16px;
-    height: 96px;
-    z-index: 999;
+    bottom: 20px; /* بالا بردن لایه جهت قرارگیری در کادر ایده آل مانیتور */
+    left: 20px;
+    right: 20px;
+    height: 90px;
+    z-index: 9999; /* تضمین دیده شدن روی تمامی المان‌های داینامیک پس‌زمینه */
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -973,7 +1370,7 @@ body.ltr .library-tracks-table tr td:last-child {
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--radius-lg);
     padding: 0 28px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 15px 45px rgba(0, 0, 0, 0.6);
     transition: var(--transition-smooth);
 }
 
@@ -1311,6 +1708,7 @@ body.ltr .library-tracks-table tr td:last-child {
     color: var(--spotify-text-active);
     background-color: var(--spotify-light-grey);
 }
+
 /* ==========================================================================
    CONTEXT MENU
    ========================================================================== */
@@ -1385,11 +1783,8 @@ body.ltr .library-tracks-table tr td:last-child {
     z-index: 10000;
     width: 380px;
     background: rgba(18, 18, 22, 0.95) !important;
-    /* backdrop-filter: blur(32px) !important; */
-    /* -webkit-backdrop-filter: blur(32px) !important; */
     border: 1px solid rgba(255, 255, 255, 0.15) !important;
     border-radius: 48px !important;
-    /* box-shadow: 0 10px 30px rgba(0,0,0,0.5); */
     padding: 8px 20px;
     opacity: 0;
     transition: var(--transition-bounce);
@@ -1916,6 +2311,7 @@ body.rtl .queue-drawer-panel.open {
     background-color: var(--accent-cyan);
     border-radius: 9999px;
 }
+
 /* ==========================================================================
    MODALS & NOTIFICATIONS
    ========================================================================== */
@@ -1925,7 +2321,7 @@ body.rtl .queue-drawer-panel.open {
     inset: 0;
     background-color: rgba(0, 0, 0, 0.85);
     backdrop-filter: blur(8px);
-    z-index: 10002;
+    z-index: 1002;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2885,6 +3281,170 @@ body.ltr .skin-selector-pill {
 }
 
 /* ==========================================================================
+   ARTISTS SECTION STYLES
+   ========================================================================== */
+
+.artists-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 24px;
+    margin-top: 20px;
+}
+
+.artist-card {
+    background: var(--spotify-grey);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.artist-card:hover {
+    transform: translateY(-5px);
+    background: var(--spotify-light-grey);
+    border-color: var(--accent-cyan);
+}
+
+.artist-avatar {
+    width: 120px;
+    height: 120px;
+    margin: 0 auto 15px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-pink) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.artist-avatar i {
+    font-size: 48px;
+    color: white;
+    opacity: 0.8;
+}
+
+.artist-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.artist-name {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.artist-tracks-count {
+    font-size: 0.7rem;
+    color: var(--spotify-text-muted);
+}
+
+/* Artists Detail View */
+.artist-detail-view {
+    animation: fadeInUp 0.4s ease;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.artist-header {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    margin-bottom: 30px;
+    padding: 20px;
+    background: linear-gradient(135deg, var(--spotify-grey) 0%, rgba(29, 185, 84, 0.05) 100%);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+}
+
+.artist-header-avatar {
+    width: 140px;
+    height: 140px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-pink) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.artist-header-avatar i {
+    font-size: 56px;
+    color: white;
+    opacity: 0.8;
+}
+
+.artist-header-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.artist-header-info h2 {
+    font-size: 2rem;
+    font-weight: 800;
+    margin-bottom: 8px;
+}
+
+.artist-header-info p {
+    color: var(--spotify-text-muted);
+    margin-bottom: 15px;
+}
+
+.play-artist-btn {
+    background: var(--accent-cyan);
+    border: none;
+    border-radius: 30px;
+    padding: 10px 24px;
+    font-weight: 700;
+    color: #000;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.2s ease;
+}
+
+.play-artist-btn:hover {
+    transform: scale(1.02);
+    filter: brightness(1.1);
+}
+
+.back-to-artists-btn {
+    background: var(--spotify-light-grey);
+    border: none;
+    border-radius: 30px;
+    padding: 8px 16px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--spotify-text-active);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+    transition: all 0.2s ease;
+}
+
+.back-to-artists-btn:hover {
+    background: var(--accent-cyan);
+    color: #000;
+}
+
+/* ==========================================================================
    UTILITY CLASSES & RESPONSIVE
    ========================================================================== */
 
@@ -2957,6 +3517,7 @@ body.ltr .skin-selector-pill {
 body.mini-window-active {
     background: transparent !important;
     overflow: hidden !important;
+    border-radius: 20px !important;
 }
 
 body.mini-window-active .korai-app-container,
@@ -2980,8 +3541,6 @@ body.mini-window-active .miniplayer-floating-card {
     opacity: 1 !important;
     border-radius: 20px !important;
     margin: 0 !important;
-    /* background: rgba(255, 255, 255, 0.02) !important; */
-    /* backdrop-filter: blur(25px) !important; */
 }
 
 body.mini-window-active .miniplayer-glass-content {
@@ -3023,52 +3582,6 @@ body.mini-window-active .mini-timeline-bar {
 body.mini-window-active {
     background: transparent !important;
     overflow: hidden !important;
-    /* Use flex layout to center the mini-player inside the slightly larger transparent window space */
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    margin: 0 !important;
-    padding: 0 !important;
-}
-
-body.mini-window-active .korai-app-container,
-body.mini-window-active .premium-playback-bar,
-body.mini-window-active .context-menu,
-body.mini-window-active .queue-drawer-panel,
-body.mini-window-active .fullscreen-immersive-player,
-body.mini-window-active .custom-title-bar {
-    display: none !important;
-}
-
-body.mini-window-active .miniplayer-floating-card {
-    /* Changed position to relative to prevent stretching and stay centered in the container */
-    position: relative !important;
-    top: auto !important;
-    left: auto !important;
-    right: auto !important;
-    bottom: auto !important;
-    width: 380px !important; /* Fixed inner content size */
-    height: 68px !important;
-    transform: none !important;
-    opacity: 1 !important;
-    border-radius: 32px !important; /* Elegant rounded card corners */
-    margin: 0 !important;
-    /* Beautiful emerald green/cyan dark translucent gradient theme */
-    background: linear-gradient(135deg, rgba(16, 44, 30, 0.96) 0%, rgba(10, 26, 36, 0.96) 100%) !important;
-    /* backdrop-filter: blur(25px) !important; */
-    /* Soft glowing border in alignment with the application's green accent */
-    border: 1px solid rgba(29, 185, 84, 0.35) !important;
-    /* box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important; */
-    pointer-events: all !important;
-}
-
-/* Mini-window mode adjustments - Removed shadow and blur filters completely to eliminate fuzzy artifacts */
-body.mini-window-active {
-    background: transparent !important;
-    overflow: hidden !important;
-    /* Center layout alignment within the safe padding window size */
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -3093,24 +3606,55 @@ body.mini-window-active .miniplayer-floating-card {
     left: auto !important;
     right: auto !important;
     bottom: auto !important;
-    width: 380px !important; /* Fixed inner content width */
+    width: 380px !important;
     height: 68px !important;
     transform: none !important;
     opacity: 1 !important;
     border-radius: 32px !important;
     margin: 0 !important;
-    /* Solid, opaque emerald green to deep slate gradient theme with NO transparency */
     background: linear-gradient(135deg, #0f2b1d 0%, #0a1c24 100%) !important;
-    /* Absolutely disabled shadow and blur filters to prevent OS compositing halos */
-    /* box-shadow: none !important; */
-    /* backdrop-filter: none !important; */
-    /* -webkit-backdrop-filter: none !important; */
-    /* Sharp glowing solid border aligned with active brand green */
+    border: 1px solid rgba(29, 185, 84, 0.35) !important;
+    pointer-events: all !important;
+}
+
+body.mini-window-active {
+    background: transparent !important;
+    overflow: hidden !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+body.mini-window-active .korai-app-container,
+body.mini-window-active .premium-playback-bar,
+body.mini-window-active .context-menu,
+body.mini-window-active .queue-drawer-panel,
+body.mini-window-active .fullscreen-immersive-player,
+body.mini-window-active .custom-title-bar {
+    display: none !important;
+}
+
+body.mini-window-active .miniplayer-floating-card {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: 380px !important;
+    height: 68px !important;
+    transform: none !important;
+    opacity: 1 !important;
+    border-radius: 32px !important;
+    margin: 0 !important;
+    background: linear-gradient(135deg, #0f2b1d 0%, #0a1c24 100%) !important;
     border: 1px solid rgba(29, 185, 84, 0.5) !important;
     pointer-events: all !important;
 }
 
-/* Mini-window mode - Card fills entire window with no extra box */
 body.mini-window-active {
     background: transparent !important;
     overflow: hidden !important;
@@ -3289,4 +3833,207 @@ body.mini-window-active .miniplayer-floating-card {
         transform: scaleY(1);
         opacity: 1;
     }
+}
+/* ==========================================================================
+   KORAI REBUILT LIBRARY SORTING, FILTERING & GLASS MODE OPTIMIZATIONS
+   ========================================================================== */
+
+/* Enhanced Library Toolbar */
+.library-header-panel {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 15px;
+    margin-bottom: 12px;
+}
+
+.title-meta-box {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.right-click-tip-lbl {
+    font-size: 0.72rem;
+    color: var(--spotify-text-muted);
+}
+
+.library-filter-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.sort-action-group {
+    display: flex;
+    align-items: center;
+    background-color: var(--spotify-grey);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 4px 12px;
+    gap: 8px;
+    transition: var(--transition-smooth);
+}
+
+.sort-action-group:hover, .sort-action-group:focus-within {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 10px rgba(0, 255, 213, 0.15);
+}
+
+.sort-select-lbl {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--spotify-text-muted);
+}
+
+.sort-dropdown-custom {
+    background: transparent;
+    border: none;
+    color: var(--spotify-text-active);
+    font-size: 0.75rem;
+    font-weight: 600;
+    outline: none;
+    cursor: pointer;
+    padding: 2px 4px;
+}
+
+.sort-dropdown-custom option {
+    background-color: var(--spotify-dark);
+    color: var(--spotify-text-active);
+}
+
+.sort-dir-toggle-btn {
+    background: transparent;
+    border: none;
+    color: var(--accent-cyan);
+    cursor: pointer;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    border-radius: 50%;
+    transition: var(--transition-bounce);
+}
+
+.sort-dir-toggle-btn:hover {
+    transform: scale(1.15);
+    background-color: rgba(255,255,255,0.05);
+}
+
+/* Dynamic Genre Filters Bar */
+.genre-filter-wrapper-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 4px 0 16px 0;
+    margin-bottom: 12px;
+    scrollbar-width: none; /* Firefox */
+}
+
+.genre-filter-wrapper-bar::-webkit-scrollbar {
+    display: none; /* Safari and Chrome */
+}
+
+.filter-chip {
+    background-color: var(--spotify-grey);
+    border: 1px solid var(--border-color);
+    color: var(--spotify-text-muted);
+    border-radius: 999px;
+    padding: 6px 16px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: var(--transition-smooth);
+}
+
+.filter-chip:hover {
+    border-color: var(--accent-cyan);
+    color: var(--spotify-text-active);
+    background-color: var(--spotify-light-grey);
+}
+
+.filter-chip.active {
+    background-color: var(--accent-cyan);
+    color: #000000;
+    border-color: var(--accent-cyan);
+    font-weight: 700;
+    box-shadow: 0 4px 12px var(--accent-glow);
+}
+
+/* Glass-Distortion optimized rendering to prevent lag */
+body.theme-liquid-glass {
+    --bg-black: radial-gradient(circle at 50% 50%, #030308 0%, #010103 100%) !important;
+}
+
+body.theme-liquid-glass .spotify-sidebar,
+body.theme-liquid-glass .spotify-main-panel,
+body.theme-liquid-glass .premium-playback-bar,
+body.theme-liquid-glass .queue-drawer-panel,
+body.theme-liquid-glass .dsp-drawer-panel,
+body.theme-liquid-glass .custom-modal-card,
+body.theme-liquid-glass .context-menu {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 60%, rgba(10, 11, 20, 0.8) 100%) !important;
+    backdrop-filter: blur(20px) saturate(140%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(140%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
+    will-change: transform, opacity;
+}
+
+/* Dynamic glow effect on hover in Glass Theme */
+body.theme-liquid-glass .spotify-music-card:hover {
+    border-color: rgba(0, 255, 213, 0.4) !important;
+    box-shadow: 0 8px 24px rgba(0, 255, 213, 0.12) !important;
+}
+
+body.theme-liquid-glass .filter-chip.active {
+    box-shadow: 0 0 15px rgba(0, 255, 213, 0.4);
+    background: linear-gradient(135deg, #00ffd5 0%, #00bfa5 100%);
+    color: #000;
+}
+
+/* Smooth active state borders in list table */
+.track-row {
+    border-radius: var(--radius-md);
+}
+
+.track-row.active td {
+    border-top: 1px solid rgba(29, 185, 84, 0.2);
+    border-bottom: 1px solid rgba(29, 185, 84, 0.2);
+}
+
+.track-row.active td:first-child {
+    border-left: 1px solid rgba(29, 185, 84, 0.2);
+}
+
+.track-row.active td:last-child {
+    border-right: 1px solid rgba(29, 185, 84, 0.2);
+}
+
+body.theme-liquid-glass .track-row.active td {
+    border-color: rgba(0, 255, 213, 0.3);
+}
+
+/* Custom design for responsive lists and layout optimization */
+.library-table-wrapper {
+    margin-top: 8px;
+    max-height: 520px;
+    overflow-y: auto;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    background-color: rgba(0, 0, 0, 0.15);
+}
+
+body.theme-liquid-glass .library-table-wrapper {
+    background-color: rgba(255, 255, 255, 0.01);
+}
+
+.track-info-cell{
+        padding: 23px 20px !important;
 }

@@ -9,6 +9,14 @@
 </head>
 <body class="theme-default rtl">
 
+    <!-- Ambient Moving Liquid Glass Blobs (Active only in Liquid Glass Theme) -->
+    <div class="glass-bg-blobs-container">
+        <div class="glass-blob glass-blob-1"></div>
+        <div class="glass-blob glass-blob-2"></div>
+        <div class="glass-blob glass-blob-3"></div>
+        <div class="glass-blob glass-blob-4"></div>
+    </div>
+
     <!-- Splash Screen -->
     <div class="splash-screen-overlay" id="koraiSplashScreen">
         <div class="splash-loader-box">
@@ -42,29 +50,29 @@
                     <p class="oobe-sub" data-translate="welcomeOobeSub">سیستم صوتی بومی و سینمایی طراحی شده برای علاقه‌مندان به موسیقی</p>
                 </div>
                 
-            <div class="oobe-content-grid">
-                <div class="oobe-info-block">
-                    <div class="oobe-block-title">
-                        <i class="fa-solid fa-bullseye"></i>
-                        <span data-translate="welcomeOobeGoalTitle">اهداف پروژه</span>
+                <div class="oobe-content-grid">
+                    <div class="oobe-info-block">
+                        <div class="oobe-block-title">
+                            <i class="fa-solid fa-bullseye"></i>
+                            <span data-translate="welcomeOobeGoalTitle">اهداف پروژه</span>
+                        </div>
+                        <p data-translate="welcomeOobeGoalDesc">
+                            پلیر موسیقی زیبا، مدرن و کاملاً رایگان. ساخته شده برای ارائه امکانات بی‌پایان و خفن، 
+                            قابل استفاده روی تمام کامپیوترها بدون هیچ محدودیتی. این پروژه آماده توسعه و دستیابی به اهداف بزرگ‌تر است.
+                        </p>
                     </div>
-                    <p data-translate="welcomeOobeGoalDesc">
-                        پلیر موسیقی زیبا، مدرن و کاملاً رایگان. ساخته شده برای ارائه امکانات بی‌پایان و خفن، 
-                        قابل استفاده روی تمام کامپیوترها بدون هیچ محدودیتی. این پروژه آماده توسعه و دستیابی به اهداف بزرگ‌تر است.
-                    </p>
-                </div>
 
-                <div class="oobe-info-block creator">
-                    <div class="oobe-block-title">
-                        <i class="fa-solid fa-code"></i>
-                        <span data-translate="welcomeOobeCreatorTitle">درباره سازنده</span>
+                    <div class="oobe-info-block creator">
+                        <div class="oobe-block-title">
+                            <i class="fa-solid fa-code"></i>
+                            <span data-translate="welcomeOobeCreatorTitle">درباره سازنده</span>
+                        </div>
+                        <p data-translate="welcomeOobeCreatorDesc">
+                            من بهداد کنعانی هستم، یک نوجوان برنامه‌نویس و عاشق موسیقی، هوش مصنوعی، بینایی کامپیوتر و هر چیزی که به برنامه‌نویسی و کامپیوتر ربط داشته باشد. 
+                            پروژه‌های زیادی دارم؛ برای دیدن آن‌ها به گیت‌هاب من سر بزنید.
+                        </p>
                     </div>
-                    <p data-translate="welcomeOobeCreatorDesc">
-                        من بهداد کنعانی هستم، یک نوجوان برنامه‌نویس و عاشق موسیقی، هوش مصنوعی، بینایی کامپیوتر و هر چیزی که به برنامه‌نویسی و کامپیوتر ربط داشته باشد. 
-                        پروژه‌های زیادی دارم؛ برای دیدن آن‌ها به گیت‌هاب من سر بزنید.
-                    </p>
                 </div>
-            </div>
 
                 <div class="oobe-footer">
                     <button class="oobe-start-btn" id="closeOobeBtn">
@@ -129,7 +137,7 @@
                 <span>KORAI</span>
                 <div class="skin-selector-pill" id="skinSelector">
                     <button class="skin-btn active" data-skin="default" title="Spotify Dark"><i class="fa-solid fa-circle"></i></button>
-                    <button class="skin-btn" data-skin="apple" title="Liquid Glass"><i class="fa-solid fa-snowflake"></i></button>
+                    <button class="skin-btn" data-skin="liquid-glass" title="Liquid Glass"><i class="fa-solid fa-snowflake"></i></button>
                 </div>
             </div>
 
@@ -142,6 +150,10 @@
                 <div class="nav-item" id="navLibrary" onclick="switchSection('library')">
                     <i class="fa-solid fa-music"></i>
                     <span id="navLibText" data-translate="navLibText">کتابخانه من</span>
+                </div>
+                <div class="nav-item" id="navArtists" onclick="switchSection('artists')">
+                    <i class="fa-solid fa-microphone"></i>
+                    <span id="navArtistsText" data-translate="navArtistsText">آرتیست‌ها</span>
                 </div>
                 <div class="nav-item" id="navFavorites" onclick="switchSection('favorites')">
                     <i class="fa-solid fa-heart"></i>
@@ -511,6 +523,17 @@
             </div>
         </div>
     </div>
+
+    <!-- SVG Filter for Liquid Glass effect -->
+    <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute; overflow:hidden; visibility: hidden;">
+        <defs>
+            <filter id="glass-distortion" x="-20%" y="-20%" width="140%" height="140%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.004 0.004" numOctaves="1" seed="92" result="noise" />
+                <feGaussianBlur in="noise" stdDeviation="5" result="blurredNoise" />
+                <feDisplacementMap in="SourceGraphic" in2="blurredNoise" scale="15" xChannelSelector="R" yChannelSelector="G" />
+            </filter>
+        </defs>
+    </svg>
 
     <script src="lang.js"></script>
     <script src="app.js"></script>

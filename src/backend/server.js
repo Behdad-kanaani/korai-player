@@ -7,6 +7,10 @@
  * - Audio streaming with range support
  * - File import (local files, downloads)
  * - Recommendations and statistics
+ * - Tag editing
+ * - Playlist export/import
+ * - Advanced search
+ * - CUE sheet support
  */
 
 const express = require('express');
@@ -19,6 +23,10 @@ const { URL } = require('url');
 const { initDatabase, getDb } = require('./database');
 const { analyzeAudioFile } = require('./analyzer');
 const { getRecommendations, getDiverseRecommendations, getHybridRecommendations, createSimilarPlaylist, detectGenre, calculateSimilarityScore } = require('./recommender');
+const { detectRealBPM } = require('./bpmDetector');
+const { exportToM3U, exportToPLS, exportLibraryToCSV, exportPlaylistToCSV, importFromM3U, importFromPLS } = require('./playlistExporter');
+const { getTracksFromCue, generateCueSheet } = require('./cueParser');
+const { advancedSearchFilter } = require('../frontend/advancedSearch');
 
 const app = express();
 let serverUserDataPath = null;
@@ -46,7 +54,6 @@ function downloadFile(fileUrl, destPath, redirectCount = 0) {
         client.get(fileUrl, (response) => {
             const statusCode = response.statusCode;
             
-            // Follow redirects
             if (statusCode >= 300 && statusCode < 400 && response.headers.location) {
                 const redirectUrl = new URL(response.headers.location, fileUrl).href;
                 return downloadFile(redirectUrl, destPath, redirectCount + 1)
@@ -142,7 +149,6 @@ function setupRoutes() {
             const fileSize = stat.size;
             const range = req.headers.range;
             
-            // Determine content type based on file extension
             const ext = path.extname(track.filePath).toLowerCase();
             let contentType = 'audio/mpeg';
             if (ext === '.wav') contentType = 'audio/wav';
@@ -150,7 +156,6 @@ function setupRoutes() {
             else if (ext === '.m4a') contentType = 'audio/mp4';
             else if (ext === '.flac') contentType = 'audio/flac';
             
-            // Handle range requests for seeking
             if (range) {
                 const parts = range.replace(/bytes=/, "").split("-");
                 const start = parseInt(parts[0], 10);
@@ -172,7 +177,6 @@ function setupRoutes() {
                 res.writeHead(206, head);
                 file.pipe(res);
             } else {
-                // Full file request
                 const head = {
                     'Content-Length': fileSize,
                     'Content-Type': contentType,
@@ -224,7 +228,10 @@ function setupRoutes() {
                         lyrics: analysis.lyrics,
                         sampleRate: analysis.sampleRate,
                         bitrate: analysis.bitrate,
-                        codec: analysis.codec
+                        codec: analysis.codec,
+                        composer: analysis.composer,
+                        year: analysis.year,
+                        trackNumber: analysis.trackNumber
                     }, false);
                     imported++;
                 } catch (err) {
@@ -590,6 +597,286 @@ function setupRoutes() {
             const db = getDb();
             res.json(db.getStats());
         } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // ===================== NEW ENDPOINTS =====================
+
+    // Edit track tags (metadata)
+    app.put('/api/tracks/:id/tags', async (req, res) => {
+        try {
+            const db = getDb();
+            const track = db.getTrackById(parseInt(req.params.id));
+            
+            if (!track) {
+                return res.status(404).json({ error: 'Track not found' });
+            }
+            
+            const { title, artist, album, genre, year, trackNumber, composer, lyrics } = req.body;
+            
+            if (title !== undefined) track.title = title;
+            if (artist !== undefined) track.artist = artist;
+            if (album !== undefined) track.album = album;
+            if (genre !== undefined) track.genre = genre;
+            if (year !== undefined) track.year = year;
+            if (trackNumber !== undefined) track.trackNumber = trackNumber;
+            if (composer !== undefined) track.composer = composer;
+            if (lyrics !== undefined) track.lyrics = lyrics;
+            
+            // Update physical file tags
+            const NodeID3 = require('node-id3');
+            
+            if (track.filePath && fs.existsSync(track.filePath) && track.filePath.toLowerCase().endsWith('.mp3')) {
+                try {
+                    const tags = {};
+                    if (title) tags.title = title;
+                    if (artist) tags.artist = artist;
+                    if (album) tags.album = album;
+                    if (genre) tags.genre = genre;
+                    if (year) tags.year = year;
+                    if (trackNumber) tags.trackNumber = trackNumber;
+                    if (composer) tags.composer = composer;
+                    if (lyrics) tags.unsynchronisedLyrics = lyrics;
+                    
+                    if (Object.keys(tags).length > 0) {
+                        NodeID3.update(tags, track.filePath);
+                    }
+                } catch (tagErr) {
+                    console.log('Could not update physical file tags:', tagErr.message);
+                }
+            }
+            
+            db.save();
+            res.json({ success: true, track });
+            
+        } catch (error) {
+            console.error('Tag update error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Export playlist endpoint
+    app.post('/api/playlists/:id/export', async (req, res) => {
+        try {
+            const db = getDb();
+            const playlist = db.getPlaylists().find(p => p.id === parseInt(req.params.id));
+            
+            if (!playlist) {
+                return res.status(404).json({ error: 'Playlist not found' });
+            }
+            
+            const { format, outputPath } = req.body;
+            const allTracks = db.getAllTracks();
+            
+            let resultPath;
+            switch (format) {
+                case 'm3u':
+                    resultPath = exportToM3U(playlist, allTracks, outputPath || `${playlist.name}.m3u`);
+                    break;
+                case 'm3u8':
+                    resultPath = exportToM3U(playlist, allTracks, outputPath || `${playlist.name}.m3u8`, true);
+                    break;
+                case 'pls':
+                    resultPath = exportToPLS(playlist, allTracks, outputPath || `${playlist.name}.pls`);
+                    break;
+                case 'csv':
+                    resultPath = exportPlaylistToCSV(playlist, allTracks, outputPath || `${playlist.name}.csv`);
+                    break;
+                default:
+                    return res.status(400).json({ error: 'Invalid format' });
+            }
+            
+            res.json({ success: true, path: resultPath });
+            
+        } catch (error) {
+            console.error('Export error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Import playlist endpoint
+    app.post('/api/playlists/import', async (req, res) => {
+        try {
+            const db = getDb();
+            const { filePath, format } = req.body;
+            
+            if (!fs.existsSync(filePath)) {
+                return res.status(404).json({ error: 'File not found' });
+            }
+            
+            let importedTracks;
+            if (format === 'm3u' || format === 'm3u8') {
+                importedTracks = await importFromM3U(filePath, path.dirname(filePath));
+            } else if (format === 'pls') {
+                importedTracks = importFromPLS(filePath);
+            } else {
+                return res.status(400).json({ error: 'Invalid format' });
+            }
+            
+            const playlistName = path.basename(filePath, path.extname(filePath));
+            const newPlaylist = db.createPlaylist(playlistName);
+            
+            let importedCount = 0;
+            for (const imported of importedTracks) {
+                let existing = db.getAllTracks().find(t => t.filePath === imported.filePath);
+                
+                if (!existing) {
+                    const { analyzeAudioFile } = require('./analyzer');
+                    const analysis = await analyzeAudioFile(imported.filePath);
+                    
+                    existing = db.addTrack({
+                        title: imported.title || analysis.title,
+                        artist: analysis.artist,
+                        filePath: imported.filePath,
+                        duration: analysis.duration,
+                        bpm: analysis.bpm,
+                        energy: analysis.energy,
+                        genre: analysis.genre,
+                        album: analysis.album,
+                        coverImage: analysis.coverImage
+                    }, false);
+                }
+                
+                if (existing) {
+                    db.addTrackToPlaylist(newPlaylist.id, existing.id);
+                    importedCount++;
+                }
+            }
+            
+            db.save();
+            res.json({ success: true, playlist: newPlaylist, importedCount });
+            
+        } catch (error) {
+            console.error('Import error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Export library to CSV
+    app.post('/api/library/export', async (req, res) => {
+        try {
+            const db = getDb();
+            const tracks = db.getAllTracks();
+            const outputPath = req.body.outputPath || `korai_library_${Date.now()}.csv`;
+            
+            const resultPath = exportLibraryToCSV(tracks, outputPath);
+            res.json({ success: true, path: resultPath });
+            
+        } catch (error) {
+            console.error('Library export error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Advanced search endpoint
+    app.post('/api/search/advanced', (req, res) => {
+        try {
+            const db = getDb();
+            const { query } = req.body;
+            
+            const tracks = db.getAllTracks();
+            const results = advancedSearchFilter(tracks, query);
+            
+            res.json({
+                query,
+                count: results.length,
+                results: results.map(t => ({
+                    id: t.id,
+                    title: t.title,
+                    artist: t.artist,
+                    album: t.album,
+                    duration: t.duration,
+                    bpm: t.bpm,
+                    energy: t.energy,
+                    genre: t.genre,
+                    year: t.year,
+                    playCount: t.playCount,
+                    likeCount: t.likeCount,
+                    coverUrl: t.hasCover ? `/api/tracks/${t.id}/cover` : null
+                }))
+            });
+            
+        } catch (error) {
+            console.error('Search error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // CUE sheet parse endpoint
+    app.post('/api/cue/parse', async (req, res) => {
+        try {
+            const { cuePath, audioBaseDir } = req.body;
+            
+            if (!fs.existsSync(cuePath)) {
+                return res.status(404).json({ error: 'CUE file not found' });
+            }
+            
+            const tracks = getTracksFromCue(cuePath, audioBaseDir);
+            res.json({ success: true, tracks });
+            
+        } catch (error) {
+            console.error('CUE parse error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // CUE sheet generate endpoint
+    app.post('/api/cue/generate', async (req, res) => {
+        try {
+            const db = getDb();
+            const { playlistId, outputPath } = req.body;
+            const playlist = db.getPlaylists().find(p => p.id === playlistId);
+            
+            if (!playlist) {
+                return res.status(404).json({ error: 'Playlist not found' });
+            }
+            
+            const tracks = db.getAllTracks();
+            const resultPath = generateCueSheet(playlist, tracks, outputPath || `${playlist.name}.cue`);
+            res.json({ success: true, path: resultPath });
+            
+        } catch (error) {
+            console.error('CUE generate error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Gapless playback settings
+    let gaplessEnabled = true;
+    let crossfadeDuration = 0;
+
+    app.get('/api/playback/settings', (req, res) => {
+        res.json({ gaplessEnabled, crossfadeDuration });
+    });
+
+    app.post('/api/playback/settings', (req, res) => {
+        const { gapless, crossfade } = req.body;
+        if (gapless !== undefined) gaplessEnabled = gapless;
+        if (crossfade !== undefined) crossfadeDuration = Math.min(12, Math.max(0, crossfade));
+        res.json({ gaplessEnabled, crossfadeDuration });
+    });
+
+    // Real BPM detection endpoint
+    app.post('/api/tracks/:id/detect-bpm', async (req, res) => {
+        try {
+            const db = getDb();
+            const track = db.getTrackById(parseInt(req.params.id));
+            
+            if (!track || !track.filePath) {
+                return res.status(404).json({ error: 'Track not found' });
+            }
+            
+            const realBpm = await detectRealBPM(track.filePath);
+            
+            // Update track with real BPM
+            track.bpm = realBpm;
+            db.save();
+            
+            res.json({ success: true, bpm: realBpm });
+            
+        } catch (error) {
+            console.error('BPM detection error:', error);
             res.status(500).json({ error: error.message });
         }
     });

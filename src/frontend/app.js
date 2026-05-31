@@ -69,6 +69,10 @@ let eqFilters = [];
 const eqBands = [60, 230, 910, 4000, 14000];
 let gainNode = null;
 
+// Gapless and crossfade settings
+let gaplessEnabled = true;
+let crossfadeDuration = 0;
+
 // Karaoke mode nodes
 let karaokeMode = false;
 let karaokeBypass = null;
@@ -335,6 +339,390 @@ function toggleShuffleEnhanced() {
 }
 
 window.toggleShuffle = toggleShuffleEnhanced;
+
+// =============================================================================
+// GAEPLESS & CROSSFADE FUNCTIONS
+// =============================================================================
+
+function setGaplessMode(enabled) {
+    gaplessEnabled = enabled;
+    if (window.electronAPI && window.electronAPI.setPlaybackSettings) {
+        window.electronAPI.setPlaybackSettings({ gapless: enabled, crossfade: crossfadeDuration });
+    }
+    showNotification(gaplessEnabled ? 'Gapless playback enabled' : 'Gapless playback disabled', 'info');
+}
+
+function setCrossfadeMode(duration) {
+    crossfadeDuration = Math.min(12, Math.max(0, duration));
+    if (window.electronAPI && window.electronAPI.setCrossfade) {
+        window.electronAPI.setCrossfade(crossfadeDuration);
+    }
+    showNotification(`Crossfade set to ${crossfadeDuration} seconds`, 'success');
+}
+
+function openTagEditor(trackId) {
+    if (!currentTrack) return;
+    
+    const modal = document.getElementById('tagEditorModal');
+    if (!modal) createTagEditorModal();
+    
+    const newModal = document.getElementById('tagEditorModal');
+    if (!newModal) return;
+    
+    document.getElementById('tagTitle').value = currentTrack.title || '';
+    document.getElementById('tagArtist').value = currentTrack.artist || '';
+    document.getElementById('tagAlbum').value = currentTrack.album || '';
+    document.getElementById('tagGenre').value = currentTrack.genre || '';
+    document.getElementById('tagYear').value = currentTrack.year || '';
+    document.getElementById('tagTrackNumber').value = currentTrack.trackNumber || '';
+    document.getElementById('tagComposer').value = currentTrack.composer || '';
+    document.getElementById('tagLyrics').value = currentTrack.lyrics || '';
+    
+    newModal.style.display = 'flex';
+}
+
+function createTagEditorModal() {
+    const existing = document.getElementById('tagEditorModal');
+    if (existing) return;
+    
+    const modal = document.createElement('div');
+    modal.id = 'tagEditorModal';
+    modal.className = 'custom-modal-overlay';
+    modal.style.display = 'none';
+    
+    modal.innerHTML = `
+        <div class="custom-modal-card" style="max-width: 500px; max-height: 80vh; overflow-y: auto;">
+            <div class="modal-indicator-header">
+                <i class="fa-solid fa-tag" style="color: var(--accent-cyan);"></i>
+                <h4>Edit Track Metadata</h4>
+                <button class="close-modal-btn" onclick="closeTagEditor()" style="margin-right: auto; background: none; border: none; color: var(--spotify-text-muted); cursor: pointer;">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            
+            <div class="tag-editor-form">
+                <div class="form-group">
+                    <label>Title</label>
+                    <input type="text" id="tagTitle" placeholder="Track title">
+                </div>
+                
+                <div class="form-group">
+                    <label>Artist</label>
+                    <input type="text" id="tagArtist" placeholder="Artist name">
+                </div>
+                
+                <div class="form-group">
+                    <label>Album</label>
+                    <input type="text" id="tagAlbum" placeholder="Album name">
+                </div>
+                
+                <div class="form-group-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Genre</label>
+                        <input type="text" id="tagGenre" placeholder="Genre">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Year</label>
+                        <input type="number" id="tagYear" placeholder="YYYY">
+                    </div>
+                    <div class="form-group" style="flex: 0.5;">
+                        <label>Track #</label>
+                        <input type="number" id="tagTrackNumber" placeholder="#">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Composer</label>
+                    <input type="text" id="tagComposer" placeholder="Composer">
+                </div>
+                
+                <div class="form-group">
+                    <label>Lyrics</label>
+                    <textarea id="tagLyrics" rows="4" placeholder="Song lyrics..."></textarea>
+                </div>
+            </div>
+            
+            <div class="modal-buttons-footer">
+                <button class="modal-btn cancel" onclick="closeTagEditor()">Cancel</button>
+                <button class="modal-btn confirm" id="saveTagBtn" style="background: var(--accent-cyan); color: #000;">Save Changes</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    document.getElementById('saveTagBtn').addEventListener('click', async () => {
+        await saveTagChanges();
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeTagEditor();
+    });
+}
+
+function closeTagEditor() {
+    const modal = document.getElementById('tagEditorModal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function saveTagChanges() {
+    if (!currentTrack) return;
+    
+    const updatedData = {
+        title: document.getElementById('tagTitle').value,
+        artist: document.getElementById('tagArtist').value,
+        album: document.getElementById('tagAlbum').value,
+        genre: document.getElementById('tagGenre').value,
+        year: parseInt(document.getElementById('tagYear').value) || null,
+        trackNumber: parseInt(document.getElementById('tagTrackNumber').value) || null,
+        composer: document.getElementById('tagComposer').value,
+        lyrics: document.getElementById('tagLyrics').value
+    };
+    
+    showNotification('Saving metadata...', 'info');
+    
+    try {
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/${currentTrack.id}/tags`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedData)
+        });
+        
+        if (!res.ok) throw new Error();
+        
+        Object.assign(currentTrack, updatedData);
+        const trackInList = tracks.find(t => t.id === currentTrack.id);
+        if (trackInList) Object.assign(trackInList, updatedData);
+        
+        showNotification('Metadata saved successfully!', 'success');
+        closeTagEditor();
+        
+        updatePlayerUI();
+        if (currentActiveSection === 'library') renderLibrary();
+        
+    } catch (err) {
+        console.error('Tag save error:', err);
+        showNotification('Failed to save metadata', 'error');
+    }
+}
+
+// =============================================================================
+// ADVANCED SEARCH FUNCTIONS
+// =============================================================================
+
+function openAdvancedSearch() {
+    const modal = document.getElementById('advancedSearchModal');
+    if (!modal) createAdvancedSearchModal();
+    
+    const newModal = document.getElementById('advancedSearchModal');
+    if (newModal) newModal.style.display = 'flex';
+    
+    const searchInput = document.getElementById('advSearchInput');
+    if (searchInput) {
+        searchInput.focus();
+        searchInput.value = '';
+    }
+    
+    const resultsContainer = document.getElementById('advSearchResults');
+    if (resultsContainer) resultsContainer.innerHTML = '';
+}
+
+function createAdvancedSearchModal() {
+    const existing = document.getElementById('advancedSearchModal');
+    if (existing) return;
+    
+    const modal = document.createElement('div');
+    modal.id = 'advancedSearchModal';
+    modal.className = 'custom-modal-overlay';
+    modal.style.display = 'none';
+    
+    modal.innerHTML = `
+        <div class="custom-modal-card" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+            <div class="modal-indicator-header">
+                <i class="fa-solid fa-magnifying-glass" style="color: var(--accent-cyan);"></i>
+                <h4>Advanced Search</h4>
+                <button class="close-modal-btn" onclick="closeAdvancedSearch()" style="margin-right: auto; background: none; border: none; color: var(--spotify-text-muted); cursor: pointer;">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            
+            <div class="adv-search-info">
+                <p style="font-size: 0.7rem; color: var(--spotify-text-muted); margin-bottom: 12px;">
+                    <i class="fa-regular fa-lightbulb"></i> Examples: 
+                    <code>bpm>120</code> <code>genre:rock</code> <code>energy>0.7</code> 
+                    <code>year:2020-2024</code> <code>artist:behdad</code>
+                </p>
+            </div>
+            
+            <div class="form-group">
+                <input type="text" id="advSearchInput" placeholder="Enter search query..." style="width: 100%; padding: 12px;">
+            </div>
+            
+            <div class="modal-buttons-footer" style="margin-top: 12px;">
+                <button class="modal-btn cancel" onclick="closeAdvancedSearch()">Cancel</button>
+                <button class="modal-btn confirm" id="executeAdvSearchBtn" style="background: var(--accent-cyan); color: #000;">Search</button>
+            </div>
+            
+            <div id="advSearchResults" style="margin-top: 20px;"></div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    document.getElementById('executeAdvSearchBtn').addEventListener('click', async () => {
+        const query = document.getElementById('advSearchInput').value;
+        if (!query.trim()) return;
+        
+        await executeAdvancedSearch(query);
+    });
+    
+    document.getElementById('advSearchInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            document.getElementById('executeAdvSearchBtn').click();
+        }
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeAdvancedSearch();
+    });
+}
+
+function closeAdvancedSearch() {
+    const modal = document.getElementById('advancedSearchModal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function executeAdvancedSearch(query) {
+    showNotification('Searching...', 'info');
+    
+    try {
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/search/advanced`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query })
+        });
+        
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        
+        const resultsContainer = document.getElementById('advSearchResults');
+        if (!resultsContainer) return;
+        
+        if (data.results.length === 0) {
+            resultsContainer.innerHTML = `<p class="no-results" style="text-align: center; color: var(--spotify-text-muted);">No results found for "${query}"</p>`;
+            return;
+        }
+        
+        let resultsHtml = `<h4 style="margin-bottom: 12px;">Found ${data.results.length} tracks</h4><div class="adv-search-results-list">`;
+        
+        data.results.forEach(track => {
+            const coverUrl = track.coverUrl ? `http://127.0.0.1:${apiPort}${track.coverUrl}` : null;
+            resultsHtml += `
+                <div class="adv-search-result-item" onclick="playTrack(${track.id})">
+                    <div class="adv-result-cover">
+                        ${coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music"></i>'}
+                    </div>
+                    <div class="adv-result-info">
+                        <div class="adv-result-title">${escapeHtml(track.title || 'Untitled')}</div>
+                        <div class="adv-result-artist">${escapeHtml(track.artist || 'Unknown Artist')}</div>
+                        <div class="adv-result-meta">
+                            <span><i class="fa-solid fa-heartbeat"></i> ${track.bpm || '120'}</span>
+                            <span><i class="fa-solid fa-bolt"></i> ${Math.round((track.energy || 0.5) * 100)}%</span>
+                            <span><i class="fa-regular fa-clock"></i> ${formatTime(track.duration)}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        resultsHtml += `</div>`;
+        resultsContainer.innerHTML = resultsHtml;
+        
+        showNotification(`Found ${data.results.length} results`, 'success');
+        
+    } catch (err) {
+        console.error('Search error:', err);
+        showNotification('Search failed', 'error');
+    }
+}
+
+// =============================================================================
+// CUE SHEET FUNCTIONS
+// =============================================================================
+
+function importCueSheet() {
+    if (!window.electronAPI || typeof window.electronAPI.selectAudioFiles !== 'function') {
+        showNotification('Cannot select CUE file', 'error');
+        return;
+    }
+    
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.cue';
+    input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        showNotification('Parsing CUE sheet...', 'info');
+        
+        try {
+            const res = await fetch(`http://127.0.0.1:${apiPort}/api/cue/parse`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cuePath: file.path })
+            });
+            
+            if (!res.ok) throw new Error();
+            const data = await res.json();
+            
+            if (data.tracks && data.tracks.length > 0) {
+                showNotification(`Found ${data.tracks.length} tracks in CUE sheet`, 'success');
+                
+                const playlistName = path.basename(file.path, '.cue');
+                const newPlaylist = await fetch(`http://127.0.0.1:${apiPort}/api/playlists`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: `CUE: ${playlistName}` })
+                });
+                
+                if (newPlaylist.ok) {
+                    await loadPlaylists();
+                    showNotification(`Created playlist from CUE sheet`, 'success');
+                }
+            } else {
+                showNotification('No valid tracks found in CUE sheet', 'warning');
+            }
+        } catch (err) {
+            console.error('CUE import error:', err);
+            showNotification('Failed to parse CUE sheet', 'error');
+        }
+    };
+    input.click();
+}
+
+// =============================================================================
+// LIBRARY EXPORT FUNCTION
+// =============================================================================
+
+async function exportLibraryToCSV() {
+    showNotification('Exporting library...', 'info');
+    
+    try {
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/library/export`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        
+        showNotification(`Library exported to: ${path.basename(data.path)}`, 'success');
+    } catch (err) {
+        console.error('Export error:', err);
+        showNotification('Export failed', 'error');
+    }
+}
 
 // Translate entire page UI
 function translatePage() {
@@ -778,11 +1166,15 @@ function playArtist(artistName) {
 }
 
 // Show playlist context menu on right-click
+// Show playlist context menu on right-click
 function showPlaylistContextMenu(trackId, x, y) {
     if (isMiniWindowMode) return;
     const menu = document.getElementById('playlistContextMenu');
     const container = document.getElementById('contextPlaylistItems');
     if (!menu || !container) return;
+    
+    // Store the current track ID for edit action
+    menu.setAttribute('data-current-track-id', trackId);
     
     if (playlists.length === 0) {
         container.innerHTML = `<div class="context-item empty">${currentLanguage === 'fa' ? 'پلی‌لیستی وجود ندارد' : 'No playlists available'}</div>`;
@@ -799,6 +1191,29 @@ function showPlaylistContextMenu(trackId, x, y) {
         container.innerHTML = html;
     }
     
+    // Add separator and Edit Tags option
+    const existingSeparator = document.querySelector('#playlistContextMenu .context-separator');
+    const existingEditBtn = document.querySelector('#playlistContextMenu .context-edit-item');
+    
+    if (!existingSeparator && !existingEditBtn) {
+        const separator = document.createElement('div');
+        separator.className = 'context-separator';
+        separator.style.height = '1px';
+        separator.style.backgroundColor = 'var(--border-color)';
+        separator.style.margin = '6px 0';
+        
+        const editItem = document.createElement('div');
+        editItem.className = 'context-item context-edit-item';
+        editItem.innerHTML = `<i class="fa-solid fa-pen"></i> <span>${currentLanguage === 'fa' ? 'ویرایش متادیتا' : 'Edit Tags'}</span>`;
+        editItem.onclick = () => {
+            menu.style.display = 'none';
+            openTagEditorFromContext(parseInt(menu.getAttribute('data-current-track-id')));
+        };
+        
+        menu.appendChild(separator);
+        menu.appendChild(editItem);
+    }
+    
     menu.style.display = 'block';
     menu.style.top = `${y}px`;
     menu.style.left = `${x}px`;
@@ -810,6 +1225,16 @@ function showPlaylistContextMenu(trackId, x, y) {
     setTimeout(() => {
         document.addEventListener('click', closeMenu);
     }, 50);
+}
+
+// New function to open tag editor from context menu
+function openTagEditorFromContext(trackId) {
+    const track = tracks.find(t => t.id === trackId);
+    if (!track) return;
+    
+    currentTrack = track;
+    currentTrackId = track.id;
+    openTagEditor(trackId);
 }
 
 // Add track to playlist
@@ -2853,6 +3278,35 @@ function setupEventListeners() {
     }
     
     startTimelineVisualizerLoop();
+
+    // Tag editor listener from main process
+    if (window.electronAPI && window.electronAPI.onOpenTagEditor) {
+        window.electronAPI.onOpenTagEditor((trackId) => {
+            const track = tracks.find(t => t.id === trackId);
+            if (track) {
+                currentTrack = track;
+                currentTrackId = track.id;
+                openTagEditor(trackId);
+            }
+        });
+    }
+
+    // Crossfade change listener
+    if (window.electronAPI && window.electronAPI.onCrossfadeChanged) {
+        window.electronAPI.onCrossfadeChanged((duration) => {
+            crossfadeDuration = duration;
+            console.log('Crossfade changed to:', duration);
+        });
+    }
+
+    // Global shortcut listener
+    if (window.electronAPI && window.electronAPI.onGlobalShortcut) {
+        window.electronAPI.onGlobalShortcut((command) => {
+            if (command === 'play-pause') togglePlay();
+            if (command === 'next') nextTrack();
+            if (command === 'prev') prevTrack();
+        });
+    }
 }
 
 if ('mediaSession' in navigator) {
@@ -2895,6 +3349,17 @@ window.addEventListener('DOMContentLoaded', async () => {
         await loadPlaylists();
         if (splashProgress) splashProgress.style.width = '100%';
 
+        // Load playback settings (gapless, crossfade)
+        try {
+            const playbackRes = await fetch(`http://127.0.0.1:${apiPort}/api/playback/settings`);
+            const playbackSettings = await playbackRes.json();
+            gaplessEnabled = playbackSettings.gaplessEnabled !== false;
+            crossfadeDuration = playbackSettings.crossfadeDuration || 0;
+            console.log('✅ Playback settings loaded:', { gaplessEnabled, crossfadeDuration });
+        } catch (err) {
+            console.log('Could not load playback settings, using defaults');
+        }
+
         setupEventListeners();
         setVolume(0.7);
         initAudio();
@@ -2904,6 +3369,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         
         switchSection('home');
 
+        // File association handler - opens files from system
         if (window.electronAPI && window.electronAPI.onFilesOpened) {
             window.electronAPI.onFilesOpened(async (files) => {
                 console.log('📁 Files opened from system:', files);
@@ -2929,13 +3395,11 @@ window.addEventListener('DOMContentLoaded', async () => {
                                 await loadPlaylists();
                                 
                                 if (result.imported > 0 && tracks.length > 0) {
-                                    // Find the newly added track (last one)
                                     const newTracks = tracks.slice(-result.imported);
                                     const lastTrack = newTracks[0];
                                     
                                     if (lastTrack) {
                                         console.log('🎵 Auto-playing imported track:', lastTrack.title);
-                                        // Play with 'file' source type
                                         setTimeout(() => {
                                             playTrack(lastTrack.id, 'file');
                                         }, 300);
@@ -2959,7 +3423,38 @@ window.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
+        // Tag editor listener from main process
+        if (window.electronAPI && window.electronAPI.onOpenTagEditor) {
+            window.electronAPI.onOpenTagEditor((trackId) => {
+                const track = tracks.find(t => t.id === trackId);
+                if (track) {
+                    currentTrack = track;
+                    currentTrackId = track.id;
+                    openTagEditor(trackId);
+                }
+            });
+        }
 
+        // Crossfade change listener
+        if (window.electronAPI && window.electronAPI.onCrossfadeChanged) {
+            window.electronAPI.onCrossfadeChanged((duration) => {
+                crossfadeDuration = duration;
+                console.log('Crossfade changed to:', duration);
+                const crossfadeVal = document.getElementById('crossfadeVal');
+                if (crossfadeVal) crossfadeVal.innerText = `${duration}s`;
+            });
+        }
+
+        // Global shortcut listener
+        if (window.electronAPI && window.electronAPI.onGlobalShortcut) {
+            window.electronAPI.onGlobalShortcut((command) => {
+                if (command === 'play-pause') togglePlay();
+                if (command === 'next') nextTrack();
+                if (command === 'prev') prevTrack();
+            });
+        }
+
+        // Splash screen and OOBE (First Launch)
         setTimeout(async () => {
             if (splash) {
                 splash.classList.add('fade-out');
@@ -3010,6 +3505,44 @@ window.addEventListener('DOMContentLoaded', async () => {
                 }, 600);
             }
         }, 1200);
+
+        // Initialize gapless/crossfade UI elements
+        const gaplessToggle = document.getElementById('gaplessToggle');
+        if (gaplessToggle) {
+            gaplessToggle.checked = gaplessEnabled;
+            gaplessToggle.addEventListener('change', (e) => {
+                setGaplessMode(e.target.checked);
+            });
+        }
+        
+        const crossfadeSlider = document.getElementById('crossfadeSlider');
+        if (crossfadeSlider) {
+            crossfadeSlider.value = crossfadeDuration;
+            crossfadeSlider.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                const crossfadeVal = document.getElementById('crossfadeVal');
+                if (crossfadeVal) crossfadeVal.innerText = `${val}s`;
+                setCrossfadeMode(val);
+            });
+        }
+        
+        // Export library button
+        const exportLibraryBtn = document.getElementById('exportLibraryBtn');
+        if (exportLibraryBtn) {
+            exportLibraryBtn.addEventListener('click', exportLibraryToCSV);
+        }
+        
+        // Import CUE button
+        const importCueBtn = document.getElementById('importCueBtn');
+        if (importCueBtn) {
+            importCueBtn.addEventListener('click', importCueSheet);
+        }
+        
+        // Advanced search button
+        const advSearchBtn = document.getElementById('navAdvancedSearch');
+        if (advSearchBtn) {
+            advSearchBtn.addEventListener('click', openAdvancedSearch);
+        }
 
         console.log('✅ KORAI Player initialized');
         

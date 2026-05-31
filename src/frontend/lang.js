@@ -162,7 +162,10 @@ const translations = {
         sortArtist: "Artist",
         sortBpm: "BPM",
         sortDuration: "Duration",
-        allGenres: "All Genres"
+        allGenres: "All Genres",
+        navAdvSearch: "Advanced Search",
+        exportLibrary: "Export Library",
+        importCue: "Import CUE Sheet",
     },
     fa: {
         // Navigation & UI
@@ -320,6 +323,9 @@ const translations = {
         sortArtist: "خواننده",
         sortBpm: "ضربان (BPM)",
         sortDuration: "مدت زمان",
-        allGenres: "همه سبک‌ها"
+        allGenres: "همه سبک‌ها",
+        navAdvSearch: "جستجوی پیشرفته",
+        exportLibrary: "خروجی کتابخانه",
+        importCue: "وارد کردن CUE Sheet",
     }
 };

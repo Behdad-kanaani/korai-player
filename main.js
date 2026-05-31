@@ -10,7 +10,7 @@
 // #                                                                              #
 // ################################################################################
 
-const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const findFreePort = require('find-free-port');
@@ -68,11 +68,9 @@ async function processPendingFiles() {
         const files = [...pendingFiles];
         pendingFiles = [];
         
-        // Increased delay to ensure app is fully loaded and ready
         setTimeout(async () => {
             try {
                 console.log('📁 Processing pending files:', files);
-                // Send files to renderer - renderer will handle import and auto-play
                 mainWindow.webContents.send('files-opened', files);
             } catch (err) {
                 console.error('Error processing opened files:', err);
@@ -83,7 +81,6 @@ async function processPendingFiles() {
 
 function handleFileOpen() {
     const files = process.argv.slice(1).filter(arg => {
-        // Match audio files and exclude electron/exe paths and app executables
         return arg.match(/\.(mp3|wav|ogg|m4a|flac)$/i) && 
                !arg.includes('.exe') && 
                !arg.includes('electron') &&
@@ -484,7 +481,6 @@ async function createWindow() {
                 mainWindow.webContents.send('server-port', serverPort);
                 setZoom();
                 
-                // Process any pending files that arrived before window loaded
                 if (pendingFiles.length > 0) {
                     setTimeout(() => processPendingFiles(), 500);
                 }
@@ -522,6 +518,10 @@ ipcMain.on('tray-update-state', (event, { isPlaying, track }) => {
 ipcMain.on('tray-language-changed', (event, lang) => {
     saveTrayLanguage(lang);
     rebuildTrayMenu();
+});
+
+ipcMain.on('open-external', (event, url) => {
+    shell.openExternal(url);
 });
 
 // =============================================================================
@@ -729,18 +729,19 @@ ipcMain.on('close-window', () => {
     if (mainWindow) mainWindow.close();
 });
 
-ipcMain.on('open-external', (event, url) => {
-    const { shell } = require('electron');
-    shell.openExternal(url);
-});
-
-// ===================== IPC HANDLERS FOR NEW FEATURES =====================
+// =============================================================================
+// TAG EDITOR HANDLER
+// =============================================================================
 
 ipcMain.on('open-tag-editor', (event, trackId) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('open-tag-editor', trackId);
     }
 });
+
+// =============================================================================
+// ADVANCED SEARCH HANDLER
+// =============================================================================
 
 ipcMain.handle('advanced-search', async (event, query) => {
     try {
@@ -755,6 +756,10 @@ ipcMain.handle('advanced-search', async (event, query) => {
         return { results: [] };
     }
 });
+
+// =============================================================================
+// PLAYLIST EXPORT/IMPORT HANDLERS
+// =============================================================================
 
 ipcMain.handle('export-playlist', async (event, playlistId, format) => {
     const result = await dialog.showSaveDialog(mainWindow, {
@@ -794,6 +799,10 @@ ipcMain.handle('import-playlist', async (event, filePath, format) => {
     }
 });
 
+// =============================================================================
+// LIBRARY EXPORT HANDLER
+// =============================================================================
+
 ipcMain.handle('export-library', async () => {
     const result = await dialog.showSaveDialog(mainWindow, {
         title: 'Export Library',
@@ -818,6 +827,10 @@ ipcMain.handle('export-library', async () => {
     }
 });
 
+// =============================================================================
+// CUE SHEET HANDLER
+// =============================================================================
+
 ipcMain.handle('parse-cue', async (event, cuePath) => {
     try {
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/cue/parse`, {
@@ -831,6 +844,10 @@ ipcMain.handle('parse-cue', async (event, cuePath) => {
         return null;
     }
 });
+
+// =============================================================================
+// PLAYBACK SETTINGS HANDLERS
+// =============================================================================
 
 ipcMain.handle('get-playback-settings', async () => {
     try {
@@ -861,6 +878,10 @@ ipcMain.on('set-crossfade', (event, duration) => {
     }
 });
 
+// =============================================================================
+// REAL BPM DETECTION HANDLER
+// =============================================================================
+
 ipcMain.handle('detect-real-bpm', async (event, trackId) => {
     try {
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/tracks/${trackId}/detect-bpm`, {
@@ -870,6 +891,17 @@ ipcMain.handle('detect-real-bpm', async (event, trackId) => {
     } catch (err) {
         console.error('BPM detection error:', err);
         return { success: false, bpm: 120 };
+    }
+});
+
+// =============================================================================
+// GLOBAL SHORTCUT HANDLER
+// =============================================================================
+
+ipcMain.on('register-global-shortcut', (event, command) => {
+    // Forward to renderer
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('global-shortcut', command);
     }
 });
 

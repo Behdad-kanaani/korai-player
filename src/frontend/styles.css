@@ -1117,7 +1117,7 @@ body.ltr .search-shortcut {
     bottom: 8px;
     right: 8px;
     opacity: 0;
-    transform: translateY(8px);
+    /* transform: translateY(8px); */
     transition: var(--transition-bounce);
     box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
@@ -1129,7 +1129,7 @@ body.ltr .hover-play-bubble {
 
 .spotify-music-card:hover .hover-play-bubble {
     opacity: 1;
-    transform: translateY(0);
+    /* transform: translateY(0); */
 }
 
 .card-details-info {
@@ -4036,4 +4036,33 @@ body.theme-liquid-glass .library-table-wrapper {
 
 .track-info-cell{
         padding: 23px 20px !important;
+}
+
+body.theme-liquid-glass .card-image-box img,
+body.theme-liquid-glass .song-cover-frame img,
+body.theme-liquid-glass .shortcut-cover img,
+body.theme-liquid-glass .table-song-cover img,
+body.theme-liquid-glass .mini-art-box img,
+body.theme-liquid-glass .immersive-vinyl-disc img {
+    filter: blur(0) !important;
+    -webkit-filter: blur(0) !important;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+}
+
+body.theme-liquid-glass .spotify-music-card:hover .card-image-box img {
+    filter: blur(5px) grayscale(50%) !important;
+    -webkit-filter: blur(5px) grayscale(50%) !important;
+    transition: filter 0.3s ease;
+}
+body.theme-liquid-glass .spotify-music-card:hover .hover-play-bubble {
+    left: auto;
+    right:  calc(50% - 20px);
+    top:    calc(50% - 20px);
+    border-radius: 12px;
+}
+
+body.ltr.theme-liquid-glass .spotify-music-card:hover .hover-play-bubble {
+    right: auto;
+    left: calc(50% - 20px);
 }

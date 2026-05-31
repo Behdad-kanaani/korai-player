@@ -60,7 +60,7 @@ let currentTrayState = {
 let currentLanguage = 'en';
 
 // =============================================================================
-// FILE ASSOCIATION HANDLING
+// FILE ASSOCIATION HANDLING (FIXED)
 // =============================================================================
 
 async function processPendingFiles() {
@@ -68,22 +68,29 @@ async function processPendingFiles() {
         const files = [...pendingFiles];
         pendingFiles = [];
         
+        // Increased delay to ensure app is fully loaded and ready
         setTimeout(async () => {
             try {
                 console.log('📁 Processing pending files:', files);
+                // Send files to renderer - renderer will handle import and auto-play
                 mainWindow.webContents.send('files-opened', files);
             } catch (err) {
                 console.error('Error processing opened files:', err);
             }
-        }, 2000);
+        }, 1000);
     }
 }
 
 function handleFileOpen() {
     const files = process.argv.slice(1).filter(arg => {
+        // Match audio files and exclude electron/exe paths and app executables
         return arg.match(/\.(mp3|wav|ogg|m4a|flac)$/i) && 
                !arg.includes('.exe') && 
-               !arg.includes('electron');
+               !arg.includes('electron') &&
+               !arg.includes('KORAI') &&
+               !arg.includes('korai') &&
+               !arg.includes('Player') &&
+               !arg.includes('player');
     });
     
     if (files.length > 0) {
@@ -112,7 +119,11 @@ app.on('second-instance', (event, commandLine, workingDirectory) => {
         const files = commandLine.slice(1).filter(arg => {
             return arg.match(/\.(mp3|wav|ogg|m4a|flac)$/i) && 
                    !arg.includes('.exe') && 
-                   !arg.includes('electron');
+                   !arg.includes('electron') &&
+                   !arg.includes('KORAI') &&
+                   !arg.includes('korai') &&
+                   !arg.includes('Player') &&
+                   !arg.includes('player');
         });
         
         if (files.length > 0) {
@@ -428,7 +439,7 @@ async function createWindow() {
             height: 850,
             minWidth: 1000,
             minHeight: 700,
-            frame: true,
+            frame: false,
             show: true,
             titleBarStyle: 'default',
             webPreferences: {
@@ -472,7 +483,11 @@ async function createWindow() {
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('server-port', serverPort);
                 setZoom();
-                processPendingFiles();
+                
+                // Process any pending files that arrived before window loaded
+                if (pendingFiles.length > 0) {
+                    setTimeout(() => processPendingFiles(), 500);
+                }
             }
         });
 
@@ -719,7 +734,7 @@ ipcMain.on('open-external', (event, url) => {
     shell.openExternal(url);
 });
 
-// ===================== NEW IPC HANDLERS =====================
+// ===================== IPC HANDLERS FOR NEW FEATURES =====================
 
 ipcMain.on('open-tag-editor', (event, trackId) => {
     if (mainWindow && !mainWindow.isDestroyed()) {

@@ -50,6 +50,11 @@ let vinylRotationInterval = null;
 let shuffleHistory = [];  
 let shuffleSessionActive = false;
 let remainingUnplayedTracks = [];
+let lastPlaySource = {
+    type: 'library', // 'library', 'playlist', 'favorites', 'artists', 'file'
+    sourceId: null,  // playlistId, artistName, etc.
+    sourceTracks: null
+};
 
 // Filtering & Sorting Library states
 let librarySortKey = 'createdAt'; // 'createdAt', 'title', 'artist', 'bpm', 'duration'
@@ -86,6 +91,34 @@ function escapeHtml(str) {
         if (m === '>') return '&gt;';
         return m;
     });
+}
+
+/**
+ * Set the current playing source and build queue accordingly
+ */
+function setPlaySource(sourceType, sourceId = null, sourceTracksArray = null) {
+    lastPlaySource = {
+        type: sourceType,
+        sourceId: sourceId,
+        sourceTracks: sourceTracksArray ? [...sourceTracksArray] : null
+    };
+    
+    // Build queue based on source
+    if (sourceType === 'library') {
+        queue = [...tracks];
+    } else if (sourceType === 'playlist' && sourceTracksArray) {
+        queue = [...sourceTracksArray];
+    } else if (sourceType === 'favorites' && sourceTracksArray) {
+        queue = [...sourceTracksArray];
+    } else if (sourceType === 'artists' && sourceTracksArray) {
+        queue = [...sourceTracksArray];
+    } else if (sourceType === 'file') {
+        queue = [...tracks];
+    } else {
+        queue = [...tracks];
+    }
+    
+    renderQueue();
 }
 
 // Vinyl rotation animation for fullscreen and mini-player
@@ -726,10 +759,22 @@ async function removeTrackFromPlaylist(playlistId, trackId) {
 function playTrackFromPlaylist(playlistId, trackId) {
     const playlist = playlists.find(p => p.id === playlistId);
     if (playlist) {
-        queue = tracks.filter(t => playlist.tracks.includes(t.id));
-        queueIndex = queue.findIndex(t => t.id === trackId);
-        playTrack(trackId);
+        const plTracks = tracks.filter(t => playlist.tracks.includes(t.id));
+        playTrack(trackId, 'playlist', playlistId, plTracks);
     }
+}
+
+function playFromFavorites(trackId) {
+    const favTracks = tracks.filter(t => t.isLiked);
+    playTrack(trackId, 'favorites', null, favTracks);
+}
+
+function playArtist(artistName) {
+    const artistTracks = tracks.filter(track => (track.artist || 'Unknown Artist') === artistName);
+    if (artistTracks.length === 0) return;
+    
+    playTrack(artistTracks[0].id, 'artists', artistName, artistTracks);
+    showNotification(`${t('playingArtist') || 'Playing'} ${artistName} (${artistTracks.length} ${t('tracks') || 'tracks'})`, 'success');
 }
 
 // Show playlist context menu on right-click
@@ -1088,11 +1133,15 @@ function syncWithMediaSessionPosition() {
     }
 }
 
-// Play a track by ID
-async function playTrack(trackId) {
+/**
+ * FIXED: Play track by ID with correct queue behavior
+ */
+async function playTrack(trackId, sourceType = 'library', sourceId = null, sourceTracksArray = null) {
     if (isMiniWindowMode) return;
+    
     try {
-        console.log('🎵 Playing track:', trackId);
+        console.log('🎵 Playing track:', trackId, 'Source:', sourceType);
+        
         currentTrackId = trackId;
         currentTrack = tracks.find(t => t.id === trackId);
         
@@ -1101,9 +1150,41 @@ async function playTrack(trackId) {
             return;
         }
         
-        initAudio();
+        // Set the play source and build queue
+        if (sourceTracksArray) {
+            setPlaySource(sourceType, sourceId, sourceTracksArray);
+        } else {
+            // Auto-detect source if not provided
+            if (sourceType === 'playlist' && sourceId) {
+                const playlist = playlists.find(p => p.id === sourceId);
+                if (playlist) {
+                    const plTracks = tracks.filter(t => playlist.tracks.includes(t.id));
+                    setPlaySource('playlist', sourceId, plTracks);
+                } else {
+                    setPlaySource('library');
+                }
+            } else if (sourceType === 'favorites') {
+                const favTracks = tracks.filter(t => t.isLiked);
+                setPlaySource('favorites', null, favTracks);
+            } else if (sourceType === 'artists' && sourceId) {
+                const artistTracks = tracks.filter(t => (t.artist || 'Unknown Artist') === sourceId);
+                setPlaySource('artists', sourceId, artistTracks);
+            } else {
+                setPlaySource('library');
+            }
+        }
         
+        // Find the index of current track in queue
+        queueIndex = queue.findIndex(t => t.id === trackId);
+        if (queueIndex === -1) {
+            // Fallback: add to front of queue
+            queue.unshift(currentTrack);
+            queueIndex = 0;
+        }
+        
+        initAudio();
         setupAudioNodes();
+        
         if (audioCtx && audioCtx.state === 'suspended') {
             await audioCtx.resume();
         }
@@ -1116,15 +1197,9 @@ async function playTrack(trackId) {
         updatePlayerUI();
         syncWithWindowsMediaSystem();
         
+        // Track play statistics
         fetch(`http://127.0.0.1:${apiPort}/api/tracks/${trackId}/play`, { method: 'POST' }).catch(e => console.error(e));
         
-        const inQueueIndex = queue.findIndex(t => t.id === trackId);
-        if (inQueueIndex !== -1) {
-            queueIndex = inQueueIndex;
-        } else {
-            queue = [currentTrack];
-            queueIndex = 0;
-        }
         renderQueue();
         
     } catch (err) {
@@ -1794,22 +1869,103 @@ function renderFavorites() {
     `;
 }
 
+/**
+ * Get correct welcome message based on actual hour
+ */
+function getWelcomeMessage() {
+    const now = new Date();
+    const hour = now.getHours();
+    
+    if (hour >= 5 && hour < 12) {
+        return t('welcomeMorning');
+    } else if (hour >= 12 && hour < 17) {
+        return t('welcomeAfternoon');
+    } else if (hour >= 17 && hour < 22) {
+        return t('welcomeEvening');
+    } else {
+        return t('welcomeEvening');
+    }
+}
+
+/**
+ * Get top played tracks for shortcuts section
+ */
+function getTopPlayedTracks(limit = 6) {
+    return [...tracks]
+        .sort((a, b) => (b.playCount || 0) - (a.playCount || 0))
+        .slice(0, limit);
+}
+
+/**
+ * Get daily suggestions based on:
+ * - Recently added tracks (last 30 days)
+ * - Mixed with high energy variety
+ * - Tracks that haven't been played much
+ */
+function getDailySuggestions(limit = 8) {
+    if (tracks.length === 0) return [];
+    
+    const oneMonthAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+    
+    // Recently added tracks
+    const recentlyAdded = tracks.filter(t => (t.createdAt || 0) > oneMonthAgo);
+    
+    // Low play count tracks (discovery)
+    const undiscovered = tracks.filter(t => (t.playCount || 0) < 3);
+    
+    // High energy tracks for variety
+    const highEnergy = tracks.filter(t => (t.energy || 0.5) > 0.7);
+    
+    // Combine and deduplicate
+    const combined = [...recentlyAdded, ...undiscovered, ...highEnergy];
+    const unique = [];
+    const seenIds = new Set();
+    
+    for (const track of combined) {
+        if (!seenIds.has(track.id)) {
+            seenIds.add(track.id);
+            unique.push(track);
+        }
+    }
+    
+    // Shuffle slightly for variety
+    for (let i = unique.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [unique[i], unique[j]] = [unique[j], unique[i]];
+    }
+    
+    return unique.slice(0, limit);
+}
+
+
+/**
+ * FIXED: Render home dashboard with proper content
+ */
 function renderHomeDashboard() {
     const mainSection = document.getElementById('dynamicSectionContainer');
     if (!mainSection) return;
     
-    const hour = new Date().getHours();
-    let welcomeText = t('welcomeEvening');
-    if (hour < 12) welcomeText = t('welcomeMorning');
-    else if (hour < 18) welcomeText = t('welcomeAfternoon');
+    const welcomeText = getWelcomeMessage();
+    const topTracks = getTopPlayedTracks(6);
+    const suggestions = getDailySuggestions(8);
     
+    if (tracks.length === 0) {
+        mainSection.innerHTML = `
+            <div class="empty-illustration-state">
+                <i class="fa-solid fa-compact-disc"></i>
+                <h3>${t('emptyLibrary')}</h3>
+                <p>${t('emptyLibraryDesc')}</p>
+            </div>
+        `;
+        return;
+    }
+    
+    // Shortcuts - Top played tracks
     let shortcutsHtml = '';
-    const topTracks = tracks.slice(0, 6);
-    
     topTracks.forEach(track => {
         const coverUrl = track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null;
         shortcutsHtml += `
-            <div class="shortcut-pill-card" onclick="playTrack(${track.id})">
+            <div class="shortcut-pill-card" onclick="playTrack(${track.id}, 'library')">
                 <div class="shortcut-cover">
                     ${coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music"></i>'}
                 </div>
@@ -1822,21 +1978,21 @@ function renderHomeDashboard() {
             </div>
         `;
     });
-
-    let recentGridHtml = '';
-    const recentTracks = tracks.slice(0, 4);
-    recentTracks.forEach(track => {
+    
+    // Daily suggestions
+    let suggestionsHtml = '';
+    suggestions.forEach(track => {
         const coverUrl = track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null;
         const isActive = currentTrackId === track.id;
-        recentGridHtml += `
+        suggestionsHtml += `
             <div class="spotify-music-card ${isActive ? 'active' : ''}" data-track-id="${track.id}">
-                <div class="card-image-box" onclick="playTrack(${track.id})" oncontextmenu="event.preventDefault(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
+                <div class="card-image-box" onclick="playTrack(${track.id}, 'library')" oncontextmenu="event.preventDefault(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
                     ${coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music"></i>'}
                     <div class="hover-play-bubble">
                         <i class="fa-solid ${isActive && isPlaying ? 'fa-pause' : 'fa-play'}"></i>
                     </div>
                 </div>
-                <div class="card-details-info" onclick="playTrack(${track.id})">
+                <div class="card-details-info" onclick="playTrack(${track.id}, 'library')">
                     <h4>${escapeHtml(track.title || 'Untitled')}</h4>
                     <p>${escapeHtml(track.artist || 'Unknown Artist')}</p>
                 </div>
@@ -1847,26 +2003,25 @@ function renderHomeDashboard() {
             </div>
         `;
     });
-
-    const noTracksFound = t('emptyLibraryDesc');
-
+    
     mainSection.innerHTML = `
         <div class="home-welcome-section">
             <h2 class="section-welcome-title">${welcomeText}</h2>
             <div class="top-shortcuts-grid">
-                ${shortcutsHtml || `<p class="no-tracks-info">${noTracksFound}</p>`}
+                ${shortcutsHtml || `<p class="no-tracks-info">${t('emptyLibraryDesc')}</p>`}
             </div>
         </div>
         
         <div class="spotify-row-title">
-            <h3>${t('dailySuggestions')}</h3>
+            <h3><i class="fa-solid fa-calendar-day"></i> ${t('dailySuggestions')}</h3>
             <span class="view-all-link" onclick="switchSection('library')">${currentLanguage === 'fa' ? 'مشاهده همه' : 'View All'}</span>
         </div>
         <div class="cards-responsive-grid">
-            ${recentGridHtml || `<p class="no-tracks-info">${noTracksFound}</p>`}
+            ${suggestionsHtml || `<p class="no-tracks-info">${t('emptyLibraryDesc')}</p>`}
         </div>
     `;
 }
+
 
 async function renderStats() {
     const mainSection = document.getElementById('dynamicSectionContainer');
@@ -2771,13 +2926,20 @@ window.addEventListener('DOMContentLoaded', async () => {
                                 hideImportProgress();
                                 showNotification(`Successfully imported ${result.imported} track(s)`, 'success');
                                 await loadTracks();
+                                await loadPlaylists();
                                 
                                 if (result.imported > 0 && tracks.length > 0) {
-                                    const lastTrack = tracks[tracks.length - 1];
-                                    console.log('🎵 Auto-playing last imported track:', lastTrack.title);
-                                    setTimeout(() => {
-                                        playTrack(lastTrack.id);
-                                    }, 300);
+                                    // Find the newly added track (last one)
+                                    const newTracks = tracks.slice(-result.imported);
+                                    const lastTrack = newTracks[0];
+                                    
+                                    if (lastTrack) {
+                                        console.log('🎵 Auto-playing imported track:', lastTrack.title);
+                                        // Play with 'file' source type
+                                        setTimeout(() => {
+                                            playTrack(lastTrack.id, 'file');
+                                        }, 300);
+                                    }
                                 }
                                 
                                 switchSection(currentActiveSection);
@@ -2796,6 +2958,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                 }
             });
         }
+
 
         setTimeout(async () => {
             if (splash) {

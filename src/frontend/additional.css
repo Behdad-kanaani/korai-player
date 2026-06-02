@@ -1,0 +1,174 @@
+/* ==========================================================================
+   ACOUSTIC AI PANEL - ICON ONLY BUTTONS
+   ========================================================================== */
+
+.ai-recommendation-panel {
+    background-color: var(--spotify-grey);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 12px;
+    margin-top: auto;
+}
+
+.ai-header-small {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+}
+
+.ai-header-small i {
+    font-size: 1.3rem;
+    color: var(--accent-cyan);
+}
+
+.ai-header-small span {
+    display: none; /* Hide text, show only icon */
+}
+
+.ai-desc {
+    display: none; /* Hide description text */
+}
+
+.ai-action-btn {
+    width: 100%;
+    padding: 10px;
+    background-color: var(--spotify-light-grey);
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--spotify-text-active);
+    cursor: pointer;
+    transition: var(--transition-smooth);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* margin-bottom: 8px; */
+    /* position: relative; */
+}
+
+.ai-action-btn:last-child {
+    margin-bottom: 0;
+}
+
+.ai-action-btn i {
+    font-size: 1rem;
+    margin: 0;
+}
+
+.ai-action-btn span {
+    display: none; /* Hide button text, show only icon */
+}
+
+/* Tooltip styles for AI buttons */
+.ai-action-btn::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 1rem;
+    bottom: calc(105% - 0.7rem);
+    /* transform: translateY(-50%); */
+    background: var(--spotify-light-grey);
+    color: var(--spotify-text-active);
+    padding: 6px 12px;
+    border-radius: var(--radius-md);
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    z-index: 1000;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* RTL support for tooltip */
+body.rtl .ai-action-btn::after {
+    left: auto;
+    right: 60px;
+}
+
+/* Show tooltip on hover */
+.ai-action-btn:hover::after {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Hover effect for buttons */
+.ai-action-btn:hover {
+    background-color: var(--accent-cyan);
+    color: #000;
+}
+
+.ai-action-btn:hover i {
+    color: #000;
+}
+
+.ai-recommendation-panel{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    justify-items: center;
+    justify-content: center;
+    align-items: center;
+    align-content: center;
+    grid-gap: 11px;
+    position: relative;
+}
+
+.ai-header-small{
+    grid-column: 2;
+    display: none;
+}
+
+/* Version Status Badge - placed next to GitHub button in title bar */
+.version-status-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 20px;
+    background: rgba(29, 185, 84, 0.15);
+    color: var(--accent-cyan);
+    margin-left: 12px;
+    margin-right: 8px;
+    white-space: nowrap;
+    font-family: monospace;
+    letter-spacing: 0.3px;
+    transition: all 0.2s ease;
+}
+
+body.ltr .version-status-badge {
+    margin-left: 8px;
+    margin-right: 12px;
+}
+
+/* Update available state - red with pulse animation */
+.version-status-badge.update-available {
+    background: rgba(244, 67, 54, 0.2);
+    color: #ff6b6b;
+    cursor: pointer;
+    animation: pulseUpdate 1.5s infinite;
+}
+
+.version-status-badge.update-available:hover {
+    background: rgba(244, 67, 54, 0.35);
+    transform: scale(1.02);
+}
+
+/* Pulse animation for update notification */
+@keyframes pulseUpdate {
+    0% {
+        box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.4);
+    }
+    70% {
+        box-shadow: 0 0 0 6px rgba(244, 67, 54, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(244, 67, 54, 0);
+    }
+}
+
+/* Checking state - subtle opacity */
+.version-status-badge.checking {
+    opacity: 0.6;
+    cursor: default;
+}

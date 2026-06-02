@@ -18,7 +18,7 @@ const findFreePort = require('find-free-port');
 // =============================================================================
 // AUTO-UPDATER
 // =============================================================================
-const { startUpdateChecker } = require('./src/backend/updater');
+const { startUpdateChecker, onUpdateCheck, getCurrentVersion, fetchLatestVersion } = require('./src/backend/updater');
 
 // =============================================================================
 // GLOBAL ERROR HANDLERS
@@ -66,7 +66,7 @@ let currentTrayState = {
 let currentLanguage = 'en';
 
 // =============================================================================
-// FILE ASSOCIATION HANDLING (FIXED)
+// FILE ASSOCIATION HANDLING
 // =============================================================================
 
 async function processPendingFiles() {
@@ -457,6 +457,41 @@ function stopHealthCheck() {
 }
 
 // =============================================================================
+// SEND UPDATE STATUS TO RENDERER
+// =============================================================================
+
+async function sendUpdateStatusToRenderer() {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    
+    const currentVersion = getCurrentVersion();
+    
+    // Send current version first
+    mainWindow.webContents.send('app-version', { 
+        version: currentVersion || 'unknown',
+        hasUpdate: false 
+    });
+    
+    try {
+        const updateInfo = await fetchLatestVersion(true);
+        mainWindow.webContents.send('update-status', {
+            hasUpdate: updateInfo.hasUpdate || false,
+            currentVersion: currentVersion || 'unknown',
+            latestVersion: updateInfo.version || null,
+            url: updateInfo.url || null,
+            error: updateInfo.error || null
+        });
+    } catch (err) {
+        console.error('Failed to fetch update status:', err);
+        mainWindow.webContents.send('update-status', {
+            hasUpdate: false,
+            currentVersion: currentVersion || 'unknown',
+            latestVersion: null,
+            error: err.message
+        });
+    }
+}
+
+// =============================================================================
 // MAIN WINDOW CREATION
 // =============================================================================
 
@@ -529,6 +564,23 @@ async function createWindow() {
                 mainWindow.webContents.send('server-port', serverPort);
                 setZoom();
                 
+                // Send version and update status to renderer
+                sendUpdateStatusToRenderer();
+                
+                // Register for future update notifications
+                onUpdateCheck((updateInfo) => {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        const currentVersion = getCurrentVersion();
+                        mainWindow.webContents.send('update-status', {
+                            hasUpdate: updateInfo.hasUpdate || false,
+                            currentVersion: currentVersion || 'unknown',
+                            latestVersion: updateInfo.version || null,
+                            url: updateInfo.url || null,
+                            error: updateInfo.error || null
+                        });
+                    }
+                });
+                
                 if (pendingFiles.length > 0) {
                     setTimeout(() => processPendingFiles(), 500);
                 }
@@ -577,6 +629,19 @@ ipcMain.on('tray-language-changed', (event, lang) => {
 
 ipcMain.on('open-external', (event, url) => {
     shell.openExternal(url);
+});
+
+// Handler for renderer to check update status on demand
+ipcMain.handle('check-update-status', async () => {
+    const currentVersion = getCurrentVersion();
+    const updateInfo = await fetchLatestVersion(true);
+    return {
+        hasUpdate: updateInfo.hasUpdate || false,
+        currentVersion: currentVersion || 'unknown',
+        latestVersion: updateInfo.version || null,
+        url: updateInfo.url || null,
+        error: updateInfo.error || null
+    };
 });
 
 // =============================================================================

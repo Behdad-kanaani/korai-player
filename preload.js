@@ -4,7 +4,7 @@
  * Exposes secure IPC bridges between renderer and main process.
  * Provides safe APIs for file dialogs, window controls, mini-player,
  * file association handling, tag editing, playlist export/import,
- * advanced search, and CUE sheet support.
+ * advanced search, CUE sheet support, and update management.
  */
 
 const { contextBridge, ipcRenderer } = require('electron');
@@ -29,33 +29,45 @@ const getServerPort = () => {
 
 // Expose safe APIs to renderer
 contextBridge.exposeInMainWorld('electronAPI', {
-    // Server and file operations
+    // =========================================================================
+    // SERVER AND FILE OPERATIONS
+    // =========================================================================
     getServerPort: getServerPort,
     selectAudioFiles: () => ipcRenderer.invoke('select-audio-files'),
     selectAudioFolder: () => ipcRenderer.invoke('select-audio-folder'),
     
-    // File association - receive files opened from system
+    // =========================================================================
+    // FILE ASSOCIATION - receive files opened from system
+    // =========================================================================
     onFilesOpened: (callback) => {
         ipcRenderer.on('files-opened', (event, files) => callback(files));
     },
     
-    // Global shortcut handler
+    // =========================================================================
+    // GLOBAL SHORTCUT HANDLER
+    // =========================================================================
     onGlobalShortcut: (callback) => {
         ipcRenderer.on('global-shortcut', (event, command) => callback(command));
     },
     
-    // Window controls
+    // =========================================================================
+    // WINDOW CONTROLS
+    // =========================================================================
     minimizeWindow: () => ipcRenderer.send('minimize-window'),
     maximizeWindow: () => ipcRenderer.send('maximize-window'),
     closeWindow: () => ipcRenderer.send('close-window'),
     
-    // Mini-player controls
+    // =========================================================================
+    // MINI-PLAYER CONTROLS
+    // =========================================================================
     openMiniPlayer: (track, playing) => ipcRenderer.send('open-mini-player', track, playing),
     closeMiniPlayer: () => ipcRenderer.send('close-mini-player'),
     syncStateToMini: (data) => ipcRenderer.send('sync-state-to-mini', data),
     controlFromMini: (command) => ipcRenderer.send('control-from-mini', command),
     
-    // Tray menu sync
+    // =========================================================================
+    // TRAY MENU SYNC
+    // =========================================================================
     syncTrayState: (data) => ipcRenderer.send('tray-update-state', data),
     onTrayOpenMiniPlayer: (callback) => ipcRenderer.on('tray-open-mini-player', (event, track, playing) => callback(track, playing)),
     onTrayCinematicMode: (callback) => ipcRenderer.on('tray-cinematic-mode', () => callback()),
@@ -65,39 +77,77 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onTrayPreviousTrack: (callback) => ipcRenderer.on('tray-previous-track', () => callback()),
     trayLanguageChanged: (lang) => ipcRenderer.send('tray-language-changed', lang),
     
-    // State synchronization
+    // =========================================================================
+    // STATE SYNCHRONIZATION
+    // =========================================================================
     onStateUpdated: (callback) => ipcRenderer.on('state-updated', (event, data) => callback(data)),
     onExecuteControl: (callback) => ipcRenderer.on('execute-control', (event, command) => callback(command)),
     
-    // External links
+    // =========================================================================
+    // EXTERNAL LINKS
+    // =========================================================================
     openExternalLink: (url) => ipcRenderer.send('open-external', url),
 
-    // ===================== NEW APIs =====================
+    // =========================================================================
+    // VERSION AND UPDATE MANAGEMENT
+    // =========================================================================
+    /**
+     * Listen for initial app version from main process
+     */
+    onAppVersion: (callback) => ipcRenderer.on('app-version', (event, data) => callback(data)),
     
-    // Tag editor
+    /**
+     * Listen for update status changes (update available or not)
+     */
+    onUpdateStatus: (callback) => ipcRenderer.on('update-status', (event, data) => callback(data)),
+    
+    /**
+     * Manually check for update status from renderer
+     * Returns: { hasUpdate: boolean, currentVersion: string, latestVersion: string|null, url: string|null, error: string|null }
+     */
+    checkUpdateStatus: () => ipcRenderer.invoke('check-update-status'),
+
+    // =========================================================================
+    // TAG EDITOR
+    // =========================================================================
     onOpenTagEditor: (callback) => ipcRenderer.on('open-tag-editor', (event, trackId) => callback(trackId)),
     
-    // Advanced search
+    // =========================================================================
+    // ADVANCED SEARCH
+    // =========================================================================
     advancedSearch: (query) => ipcRenderer.invoke('advanced-search', query),
     
-    // Playlist export/import    exportPlaylist: (playlistId, format) => ipcRenderer.invoke('export-playlist', playlistId, format),
+    // =========================================================================
+    // PLAYLIST EXPORT/IMPORT
+    // =========================================================================
+    exportPlaylist: (playlistId, format) => ipcRenderer.invoke('export-playlist', playlistId, format),
     importPlaylist: (filePath, format) => ipcRenderer.invoke('import-playlist', filePath, format),
     
-    // Library export
+    // =========================================================================
+    // LIBRARY EXPORT
+    // =========================================================================
     exportLibrary: () => ipcRenderer.invoke('export-library'),
     
-    // CUE sheet
+    // =========================================================================
+    // CUE SHEET
+    // =========================================================================
     parseCueSheet: (cuePath) => ipcRenderer.invoke('parse-cue', cuePath),
     
-    // Playback settings
+    // =========================================================================
+    // PLAYBACK SETTINGS
+    // =========================================================================
     getPlaybackSettings: () => ipcRenderer.invoke('get-playback-settings'),
     setPlaybackSettings: (settings) => ipcRenderer.invoke('set-playback-settings', settings),
     
-    // Crossfade
+    // =========================================================================
+    // CROSSFADE
+    // =========================================================================
     setCrossfade: (duration) => ipcRenderer.send('set-crossfade', duration),
     onCrossfadeChanged: (callback) => ipcRenderer.on('crossfade-changed', (event, duration) => callback(duration)),
     
-    // Real BPM detection
+    // =========================================================================
+    // REAL BPM DETECTION
+    // =========================================================================
     detectRealBPM: (trackId) => ipcRenderer.invoke('detect-real-bpm', trackId)
 });
 

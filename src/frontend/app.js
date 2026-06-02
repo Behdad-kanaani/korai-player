@@ -57,6 +57,7 @@ let lastPlaySource = {
     sourceTracks: null
 };
 
+
 // Filtering & Sorting Library states
 let librarySortKey = 'createdAt'; // 'createdAt', 'title', 'artist', 'bpm', 'duration'
 let librarySortOrder = 'desc';    // 'asc', 'desc'
@@ -2963,6 +2964,7 @@ function changeClientLanguage(targetLang) {
     translatePage();
     switchSection(currentActiveSection);
     renderQueue();
+    updateAITooltips();
 }
 
 function updateBodyClasses() {
@@ -3441,6 +3443,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         switchSection('home');
         detectPerformanceMode();
 
+        setAIIconOnlyMode();
+        updateAITooltips();
+        initVersionStatus();
 
         // File association handler - opens files from system
         if (window.electronAPI && window.electronAPI.onFilesOpened) {

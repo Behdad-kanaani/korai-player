@@ -90,6 +90,7 @@
         <div class="title-bar-brand">
             <i class="fa-solid fa-compact-disc spin-logo" style="animation-duration: 6s; font-size: 0.95rem;"></i>
             <span>KORAI Music Player</span>
+            <span id="versionStatus" class="version-status-badge">--</span>
             <button class="github-star-btn" id="githubRepoBtn" onclick="window.electronAPI.openExternalLink('https://github.com/Behdad-kanaani/korai-player')">
                 <div class="github-btn-content">
                     <i class="fa-brands fa-github"></i>
@@ -175,20 +176,24 @@
             <div class="ai-recommendation-panel">
                 <div class="ai-header-small">
                     <i class="fa-solid fa-wand-magic-sparkles"></i>
-                    <span id="aiPanelTitle" data-translate="aiPanelTitle">هوش مصنوعی KORAI</span>
+                    <span data-translate="aiPanelTitle">KORAI AI</span>
                 </div>
-                <p class="ai-desc" id="aiPanelDesc" data-translate="aiPanelDesc">یافتن آهنگ‌های مشابه بر اساس ویژگی‌های ریتم و فرکانس موج فعلی.</p>
-                <button id="aiRecommendBtn" class="ai-action-btn">
-                    <span id="aiBtnText" data-translate="aiBtnText">آنالیز الگوی فرکانس</span>
+                <p class="ai-desc" data-translate="aiPanelDesc">Find similar tracks based on rhythm and frequency patterns</p>
+                <button id="aiRecommendBtn" class="ai-action-btn" data-tooltip="Analyze Waveform">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span data-translate="aiBtnText">Analyze Pattern</span>
                 </button>
-                <button id="createSimilarPlaylistBtn" class="ai-action-btn" style="margin-top: 8px; background: linear-gradient(135deg, #fc3c44 0%, #e02020 100%); color: #fff;">
-                    <i class="fa-solid fa-list-music"></i> <span data-translate="similarPlaylist">ساخت پلی‌لیست مشابه</span>
+                <button id="createSimilarPlaylistBtn" class="ai-action-btn" data-tooltip="Create Similar Playlist">
+                    <i class="fa-solid fa-music"></i>
+                    <span data-translate="similarPlaylist">Similar Playlist</span>
                 </button>
-                <button id="exportLibraryBtn" class="ai-action-btn" style="margin-top: 8px; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);">
-                    <i class="fa-solid fa-download"></i> <span data-translate="exportLibrary">خروجی کتابخانه</span>
+                <button id="exportLibraryBtn" class="ai-action-btn" data-tooltip="Export Library">
+                    <i class="fa-solid fa-download"></i>
+                    <span data-translate="exportLibrary">Export Library</span>
                 </button>
-                <button id="importCueBtn" class="ai-action-btn" style="margin-top: 8px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
-                    <i class="fa-solid fa-file-lines"></i> <span data-translate="importCue">CUE Sheet</span>
+                <button id="importCueBtn" class="ai-action-btn" data-tooltip="Import CUE Sheet">
+                    <i class="fa-solid fa-file-lines"></i>
+                    <span data-translate="importCue">CUE Sheet</span>
                 </button>
             </div>
 
@@ -554,6 +559,7 @@
     </svg>
 
     <script src="lang.js"></script>
+    <script src="additonal.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

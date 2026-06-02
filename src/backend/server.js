@@ -1,16 +1,6 @@
 /**
- * server.js - KORAI Music Player Backend API
- * 
- * Express server providing REST API endpoints for:
- * - Track management (CRUD operations)
- * - Playlist management
- * - Audio streaming with range support
- * - File import (local files, downloads)
- * - Recommendations and statistics
- * - Tag editing
- * - Playlist export/import
- * - Advanced search
- * - CUE sheet support
+ * server.js - KORAI Music Player Backend API with AI
+ * Complete Express server with AI recommendation endpoints
  */
 
 const express = require('express');
@@ -22,7 +12,12 @@ const https = require('https');
 const { URL } = require('url');
 const { initDatabase, getDb } = require('./database');
 const { analyzeAudioFile } = require('./analyzer');
-const { getRecommendations, getDiverseRecommendations, getHybridRecommendations, createSimilarPlaylist, detectGenre, calculateSimilarityScore } = require('./recommender');
+const { 
+    getPersonalizedRecommendations, 
+    updateUserHistory, 
+    loadUserHistory, 
+    getDiscoveryRecommendations 
+} = require('./recommender');
 const { detectRealBPM } = require('./bpmDetector');
 const { exportToM3U, exportToPLS, exportLibraryToCSV, exportPlaylistToCSV, importFromM3U, importFromPLS } = require('./playlistExporter');
 const { getTracksFromCue, generateCueSheet } = require('./cueParser');
@@ -30,8 +25,9 @@ const { advancedSearchFilter } = require('../frontend/advancedSearch');
 
 const app = express();
 let serverUserDataPath = null;
+let userHistory = {};  // AI user behavior history
 
-// CORS and middleware setup
+// CORS and middleware
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -40,9 +36,10 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-/**
- * Downloads a file from URL with redirect following support
- */
+// =============================================================================
+// DOWNLOAD HELPER
+// =============================================================================
+
 function downloadFile(fileUrl, destPath, redirectCount = 0) {
     if (redirectCount > 5) {
         return Promise.reject(new Error('Too many redirects'));
@@ -81,9 +78,10 @@ function downloadFile(fileUrl, destPath, redirectCount = 0) {
     });
 }
 
-/**
- * Sets up all API routes
- */
+// =============================================================================
+// ROUTES SETUP
+// =============================================================================
+
 function setupRoutes() {
     // Settings endpoints
     app.get('/api/settings', (req, res) => {
@@ -105,7 +103,6 @@ function setupRoutes() {
         }
     });
 
-    // Export all settings
     app.get('/api/settings/export', (req, res) => {
         try {
             const db = getDb();
@@ -123,22 +120,18 @@ function setupRoutes() {
         }
     });
 
-    // Import settings
     app.post('/api/settings/import', (req, res) => {
         try {
             const { settings, eqPresets, playlists, likedTracks } = req.body;
             const db = getDb();
-            
             if (settings) db.updateSettings(settings);
             if (eqPresets) req.app.locals.eqPresets = eqPresets;
-            
             res.json({ success: true });
         } catch (error) {
             res.status(500).json({ error: error.message });
         }
     });
 
-    // Health check endpoint
     app.get('/api/health', (req, res) => {
         res.json({ status: 'ok', timestamp: Date.now() });
     });
@@ -159,7 +152,6 @@ function setupRoutes() {
         }
     });
 
-    // Cover image endpoint
     app.get('/api/tracks/:id/cover', (req, res) => {
         try {
             const db = getDb();
@@ -173,12 +165,10 @@ function setupRoutes() {
         }
     });
 
-    // Audio streaming with range support (seeking)
     app.get('/api/tracks/:id/stream', (req, res) => {
         try {
             const db = getDb();
             const track = db.getTrackById(parseInt(req.params.id));
-            
             if (!track || !track.filePath || !fs.existsSync(track.filePath)) {
                 return res.status(404).json({ error: 'File not found' });
             }
@@ -233,7 +223,6 @@ function setupRoutes() {
         }
     });
 
-    // Import local audio files
     app.post('/api/tracks/import', async (req, res) => {
         try {
             const { filePaths } = req.body;
@@ -249,10 +238,9 @@ function setupRoutes() {
                     if (!fs.existsSync(filePath)) continue;
                     
                     const analysis = await analyzeAudioFile(filePath);
-                    const ext = path.extname(filePath);
                     
                     db.addTrack({
-                        title: analysis.title || path.basename(filePath, ext),
+                        title: analysis.title || path.basename(filePath, path.extname(filePath)),
                         artist: analysis.artist || '',
                         filePath: filePath,
                         duration: analysis.duration,
@@ -267,9 +255,8 @@ function setupRoutes() {
                         sampleRate: analysis.sampleRate,
                         bitrate: analysis.bitrate,
                         codec: analysis.codec,
-                        composer: analysis.composer,
-                        year: analysis.year,
-                        trackNumber: analysis.trackNumber
+                        featureVector: analysis.featureVector,
+                        rawFeatures: analysis.rawFeatures
                     }, false);
                     imported++;
                 } catch (err) {
@@ -284,14 +271,10 @@ function setupRoutes() {
         }
     });
 
-    // Download track from URL
     app.post('/api/tracks/download', async (req, res) => {
         try {
             const { url } = req.body;
-            if (!url) {
-                return res.status(400).json({ error: 'URL is required' });
-            }
-
+            if (!url) return res.status(400).json({ error: 'URL is required' });
             if (!url.startsWith('http://') && !url.startsWith('https://')) {
                 return res.status(400).json({ error: 'Invalid URL protocol' });
             }
@@ -303,7 +286,6 @@ function setupRoutes() {
             const tempFilePath = path.join(downloadsDir, tempFileName);
             
             await downloadFile(url, tempFilePath);
-            
             const analysis = await analyzeAudioFile(tempFilePath);
             
             const db = getDb();
@@ -316,13 +298,9 @@ function setupRoutes() {
                 energy: analysis.energy,
                 loudness: analysis.loudness,
                 genre: analysis.genre,
-                genreConfidence: analysis.genreConfidence,
                 album: analysis.album,
                 coverImage: analysis.coverImage,
-                lyrics: analysis.lyrics,
-                sampleRate: analysis.sampleRate,
-                bitrate: analysis.bitrate,
-                codec: analysis.codec
+                featureVector: analysis.featureVector
             });
             
             res.json({ success: true, track: newTrack });
@@ -384,7 +362,6 @@ function setupRoutes() {
         }
     });
 
-    // Delete track
     app.delete('/api/tracks/:id', async (req, res) => {
         try {
             const db = getDb();
@@ -395,22 +372,27 @@ function setupRoutes() {
         }
     });
 
-    // Track playback tracking
     app.post('/api/tracks/:id/play', (req, res) => {
         try {
             const db = getDb();
             db.addPlayHistory(parseInt(req.params.id));
+            // Also record for AI
+            if (serverUserDataPath) {
+                updateUserHistory(userHistory, parseInt(req.params.id), 'play', serverUserDataPath);
+            }
             res.json({ success: true });
         } catch (error) {
             res.status(500).json({ error: error.message });
         }
     });
 
-    // Like/Unlike endpoints
     app.post('/api/tracks/:id/like', (req, res) => {
         try {
             const db = getDb();
             const liked = db.likeTrack(parseInt(req.params.id));
+            if (serverUserDataPath && liked) {
+                updateUserHistory(userHistory, parseInt(req.params.id), 'like', serverUserDataPath);
+            }
             res.json({ success: true, isLiked: liked });
         } catch (error) {
             res.status(500).json({ error: error.message });
@@ -421,6 +403,9 @@ function setupRoutes() {
         try {
             const db = getDb();
             const unliked = db.unlikeTrack(parseInt(req.params.id));
+            if (serverUserDataPath && unliked) {
+                updateUserHistory(userHistory, parseInt(req.params.id), 'unlike', serverUserDataPath);
+            }
             res.json({ success: true, isLiked: !unliked });
         } catch (error) {
             res.status(500).json({ error: error.message });
@@ -437,7 +422,86 @@ function setupRoutes() {
         }
     });
 
-    // AI Recommendation endpoints - Enhanced versions
+    // =========================================================================
+    // AI RECOMMENDATION ENDPOINTS
+    // =========================================================================
+
+    app.get('/api/ai/history', (req, res) => {
+        try {
+            res.json(userHistory);
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    app.post('/api/ai/interaction', (req, res) => {
+        try {
+            const { trackId, action } = req.body;
+            const updated = updateUserHistory(userHistory, trackId, action, serverUserDataPath);
+            res.json({ success: true, history: updated });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    app.get('/api/ai/recommend/personal/:trackId', (req, res) => {
+        try {
+            const db = getDb();
+            const track = db.getTrackById(parseInt(req.params.trackId));
+            if (!track) return res.status(404).json({ error: 'Track not found' });
+            
+            const allTracks = db.getAllTracks();
+            const recommendations = getPersonalizedRecommendations(allTracks, track, userHistory, 12);
+            
+            const safeRecs = recommendations.map(r => ({
+                id: r.id,
+                title: r.title,
+                artist: r.artist,
+                duration: r.duration,
+                bpm: r.bpm,
+                energy: r.energy,
+                similarity: r.similarity,
+                reason: r.reason,
+                similarityIcon: r.similarityIcon || '🎵',
+                genre: r.genre,
+                hasCover: r.hasCover,
+                coverUrl: r.hasCover ? `/api/tracks/${r.id}/cover` : null
+            }));
+            
+            res.json({ 
+                recommendations: safeRecs, 
+                sourceTrack: { id: track.id, title: track.title, artist: track.artist } 
+            });
+        } catch (error) {
+            console.error('AI recommendation error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    app.get('/api/ai/discover', (req, res) => {
+        try {
+            const db = getDb();
+            const allTracks = db.getAllTracks();
+            const discoveries = getDiscoveryRecommendations(allTracks, userHistory, 15);
+            
+            const safeDisc = discoveries.map(d => ({
+                id: d.id,
+                title: d.title,
+                artist: d.artist,
+                duration: d.duration,
+                bpm: d.bpm,
+                genre: d.genre,
+                hasCover: d.hasCover,
+                coverUrl: d.hasCover ? `/api/tracks/${d.id}/cover` : null
+            }));
+            
+            res.json({ recommendations: safeDisc });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Legacy recommendation endpoint (for compatibility)
     app.get('/api/recommend/:trackId', (req, res) => {
         try {
             const db = getDb();
@@ -445,7 +509,7 @@ function setupRoutes() {
             if (!track) return res.status(404).json({ error: 'Track not found' });
             
             const allTracks = db.getAllTracks();
-            const recommendations = getRecommendations(allTracks, track, 10);
+            const recommendations = getPersonalizedRecommendations(allTracks, track, userHistory, 10);
             
             const safeRecs = recommendations.map(r => ({
                 id: r.id,
@@ -456,180 +520,17 @@ function setupRoutes() {
                 energy: r.energy,
                 similarity: r.similarity,
                 reason: r.reason,
-                similarityIcon: r.similarityIcon,
-                detectedGenre: r.detectedGenre,
-                genreIcon: r.genreIcon,
-                genreColor: r.genreColor,
                 hasCover: r.hasCover,
                 coverUrl: r.hasCover ? `/api/tracks/${r.id}/cover` : null
             }));
             
             res.json({ recommendations: safeRecs });
         } catch (error) {
-            console.error('Recommendation error:', error);
             res.status(500).json({ error: error.message });
         }
     });
 
-    // Detailed recommendations with source analysis
-    app.get('/api/recommend/:trackId/detailed', (req, res) => {
-        try {
-            const db = getDb();
-            const track = db.getTrackById(parseInt(req.params.trackId));
-            if (!track) return res.status(404).json({ error: 'Track not found' });
-            
-            const allTracks = db.getAllTracks();
-            const recommendations = getRecommendations(allTracks, track, 12);
-            
-            const safeRecs = recommendations.map(r => ({
-                id: r.id,
-                title: r.title,
-                artist: r.artist,
-                duration: r.duration,
-                bpm: r.bpm,
-                energy: r.energy,
-                similarity: r.similarity,
-                reason: r.reason,
-                similarityIcon: r.similarityIcon,
-                detectedGenre: r.detectedGenre,
-                genreIcon: r.genreIcon,
-                genreColor: r.genreColor,
-                hasCover: r.hasCover,
-                coverUrl: r.hasCover ? `/api/tracks/${r.id}/cover` : null,
-                similarityBreakdown: r.similarityBreakdown
-            }));
-            
-            const sourceGenre = detectGenre(track);
-            
-            res.json({
-                sourceTrack: {
-                    id: track.id,
-                    title: track.title,
-                    artist: track.artist,
-                    genre: sourceGenre.name,
-                    genreIcon: sourceGenre.icon,
-                    bpm: track.bpm,
-                    energy: track.energy
-                },
-                recommendations: safeRecs,
-                recommendationCount: safeRecs.length
-            });
-        } catch (error) {
-            console.error('Recommendation error:', error);
-            res.status(500).json({ error: error.message });
-        }
-    });
-
-    // Diverse recommendations endpoint
-    app.get('/api/recommend/:trackId/diverse', (req, res) => {
-        try {
-            const db = getDb();
-            const track = db.getTrackById(parseInt(req.params.trackId));
-            if (!track) return res.status(404).json({ error: 'Track not found' });
-            
-            const allTracks = db.getAllTracks();
-            const recommendations = getDiverseRecommendations(allTracks, track, 15);
-            
-            const safeRecs = recommendations.map(r => ({
-                id: r.id,
-                title: r.title,
-                artist: r.artist,
-                duration: r.duration,
-                bpm: r.bpm,
-                energy: r.energy,
-                similarity: r.similarity,
-                reason: r.reason,
-                similarityIcon: r.similarityIcon,
-                detectedGenre: r.detectedGenre,
-                genreIcon: r.genreIcon,
-                genreColor: r.genreColor,
-                hasCover: r.hasCover,
-                coverUrl: r.hasCover ? `/api/tracks/${r.id}/cover` : null
-            }));
-            
-            res.json({ recommendations: safeRecs });
-        } catch (error) {
-            console.error('Diverse recommendation error:', error);
-            res.status(500).json({ error: error.message });
-        }
-    });
-
-    // Create similar playlist from track
-    app.post('/api/playlists/similar', async (req, res) => {
-        try {
-            const db = getDb();
-            const { trackId, customName } = req.body;
-            
-            if (!trackId) {
-                return res.status(400).json({ error: 'Track ID required' });
-            }
-            
-            const track = db.getTrackById(parseInt(trackId));
-            if (!track) {
-                return res.status(404).json({ error: 'Track not found' });
-            }
-            
-            const allTracks = db.getAllTracks();
-            const playlistData = createSimilarPlaylist(allTracks, track, customName);
-            
-            if (!playlistData || playlistData.tracks.length === 0) {
-                return res.status(404).json({ error: 'No similar tracks found' });
-            }
-            
-            const newPlaylist = db.createPlaylist(playlistData.name);
-            
-            for (const tid of playlistData.tracks) {
-                db.addTrackToPlaylist(newPlaylist.id, tid);
-            }
-            
-            res.json({
-                success: true,
-                playlist: newPlaylist,
-                trackCount: playlistData.tracks.length,
-                basedOnGenre: playlistData.genre,
-                avgSimilarity: playlistData.avgSimilarity
-            });
-            
-        } catch (error) {
-            console.error('Create playlist error:', error);
-            res.status(500).json({ error: error.message });
-        }
-    });
-
-    // Calculate similarity between two tracks
-    app.get('/api/similarity/:trackId1/:trackId2', (req, res) => {
-        try {
-            const db = getDb();
-            const track1 = db.getTrackById(parseInt(req.params.trackId1));
-            const track2 = db.getTrackById(parseInt(req.params.trackId2));
-            
-            if (!track1 || !track2) {
-                return res.status(404).json({ error: 'One or both tracks not found' });
-            }
-            
-            const similarity = calculateSimilarityScore(track1, track2);
-            const genre1 = detectGenre(track1);
-            const genre2 = detectGenre(track2);
-            
-            res.json({
-                track1: { id: track1.id, title: track1.title, artist: track1.artist, genre: genre1.name },
-                track2: { id: track2.id, title: track2.title, artist: track2.artist, genre: genre2.name },
-                similarityScore: similarity.score,
-                breakdown: {
-                    bpm: similarity.bpmScore,
-                    energy: similarity.energyScore,
-                    genre: similarity.genreScore,
-                    popularity: similarity.popularityBonus
-                },
-                reason: similarity.reason
-            });
-        } catch (error) {
-            console.error('Similarity calculation error:', error);
-            res.status(500).json({ error: error.message });
-        }
-    });
-
-    // Statistics endpoint
+    // Stats endpoint
     app.get('/api/stats', (req, res) => {
         try {
             const db = getDb();
@@ -639,17 +540,12 @@ function setupRoutes() {
         }
     });
 
-    // ===================== NEW ENDPOINTS =====================
-
-    // Edit track tags (metadata) - FIXED for all formats
+    // Tag editor endpoint
     app.put('/api/tracks/:id/tags', async (req, res) => {
         try {
             const db = getDb();
             const track = db.getTrackById(parseInt(req.params.id));
-            
-            if (!track) {
-                return res.status(404).json({ error: 'Track not found' });
-            }
+            if (!track) return res.status(404).json({ error: 'Track not found' });
             
             const { title, artist, album, genre, year, trackNumber, composer, lyrics } = req.body;
             
@@ -662,46 +558,8 @@ function setupRoutes() {
             if (composer !== undefined) track.composer = composer;
             if (lyrics !== undefined) track.lyrics = lyrics;
             
-            // Update physical file tags
-            if (track.filePath && fs.existsSync(track.filePath)) {
-                try {
-                    const mm = require('music-metadata');
-                    const ext = path.extname(track.filePath).toLowerCase();
-                    
-                    // For MP3 files, use node-id3
-                    if (ext === '.mp3') {
-                        try {
-                            const NodeID3 = require('node-id3');
-                            const tags = {};
-                            if (title !== undefined) tags.title = title;
-                            if (artist !== undefined) tags.artist = artist;
-                            if (album !== undefined) tags.album = album;
-                            if (genre !== undefined) tags.genre = genre;
-                            if (year !== undefined) tags.year = year;
-                            if (trackNumber !== undefined) tags.trackNumber = trackNumber;
-                            if (composer !== undefined) tags.composer = composer;
-                            if (lyrics !== undefined) tags.unsynchronisedLyrics = lyrics;
-                            
-                            if (Object.keys(tags).length > 0) {
-                                NodeID3.update(tags, track.filePath);
-                            }
-                        } catch (mp3Err) {
-                            console.log('MP3 tag write error:', mp3Err.message);
-                        }
-                    }
-                    
-                    // For FLAC, OGG, M4A files - log that we updated database
-                    // Full music-metadata writing requires additional setup
-                    console.log(`Updated metadata in database for: ${path.basename(track.filePath)}`);
-                    
-                } catch (tagErr) {
-                    console.log('Could not update physical file tags:', tagErr.message);
-                }
-            }
-            
             db.save();
             res.json({ success: true, track });
-            
         } catch (error) {
             console.error('Tag update error:', error);
             res.status(500).json({ error: error.message });
@@ -713,10 +571,7 @@ function setupRoutes() {
         try {
             const db = getDb();
             const playlist = db.getPlaylists().find(p => p.id === parseInt(req.params.id));
-            
-            if (!playlist) {
-                return res.status(404).json({ error: 'Playlist not found' });
-            }
+            if (!playlist) return res.status(404).json({ error: 'Playlist not found' });
             
             const { format, outputPath } = req.body;
             const allTracks = db.getAllTracks();
@@ -740,7 +595,6 @@ function setupRoutes() {
             }
             
             res.json({ success: true, path: resultPath });
-            
         } catch (error) {
             console.error('Export error:', error);
             res.status(500).json({ error: error.message });
@@ -752,10 +606,7 @@ function setupRoutes() {
         try {
             const db = getDb();
             const { filePath, format } = req.body;
-            
-            if (!fs.existsSync(filePath)) {
-                return res.status(404).json({ error: 'File not found' });
-            }
+            if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
             
             let importedTracks;
             if (format === 'm3u' || format === 'm3u8') {
@@ -772,11 +623,8 @@ function setupRoutes() {
             let importedCount = 0;
             for (const imported of importedTracks) {
                 let existing = db.getAllTracks().find(t => t.filePath === imported.filePath);
-                
                 if (!existing) {
-                    const { analyzeAudioFile } = require('./analyzer');
                     const analysis = await analyzeAudioFile(imported.filePath);
-                    
                     existing = db.addTrack({
                         title: imported.title || analysis.title,
                         artist: analysis.artist,
@@ -786,10 +634,10 @@ function setupRoutes() {
                         energy: analysis.energy,
                         genre: analysis.genre,
                         album: analysis.album,
-                        coverImage: analysis.coverImage
+                        coverImage: analysis.coverImage,
+                        featureVector: analysis.featureVector
                     }, false);
                 }
-                
                 if (existing) {
                     db.addTrackToPlaylist(newPlaylist.id, existing.id);
                     importedCount++;
@@ -798,23 +646,20 @@ function setupRoutes() {
             
             db.save();
             res.json({ success: true, playlist: newPlaylist, importedCount });
-            
         } catch (error) {
             console.error('Import error:', error);
             res.status(500).json({ error: error.message });
         }
     });
 
-    // Export library to CSV
+    // Library export to CSV
     app.post('/api/library/export', async (req, res) => {
         try {
             const db = getDb();
             const tracks = db.getAllTracks();
             const outputPath = req.body.outputPath || `korai_library_${Date.now()}.csv`;
-            
             const resultPath = exportLibraryToCSV(tracks, outputPath);
             res.json({ success: true, path: resultPath });
-            
         } catch (error) {
             console.error('Library export error:', error);
             res.status(500).json({ error: error.message });
@@ -826,7 +671,6 @@ function setupRoutes() {
         try {
             const db = getDb();
             const { query } = req.body;
-            
             const tracks = db.getAllTracks();
             const results = advancedSearchFilter(tracks, query);
             
@@ -848,7 +692,6 @@ function setupRoutes() {
                     coverUrl: t.hasCover ? `/api/tracks/${t.id}/cover` : null
                 }))
             });
-            
         } catch (error) {
             console.error('Search error:', error);
             res.status(500).json({ error: error.message });
@@ -859,14 +702,10 @@ function setupRoutes() {
     app.post('/api/cue/parse', async (req, res) => {
         try {
             const { cuePath, audioBaseDir } = req.body;
-            
-            if (!fs.existsSync(cuePath)) {
-                return res.status(404).json({ error: 'CUE file not found' });
-            }
+            if (!fs.existsSync(cuePath)) return res.status(404).json({ error: 'CUE file not found' });
             
             const tracks = getTracksFromCue(cuePath, audioBaseDir);
             res.json({ success: true, tracks });
-            
         } catch (error) {
             console.error('CUE parse error:', error);
             res.status(500).json({ error: error.message });
@@ -879,22 +718,18 @@ function setupRoutes() {
             const db = getDb();
             const { playlistId, outputPath } = req.body;
             const playlist = db.getPlaylists().find(p => p.id === playlistId);
-            
-            if (!playlist) {
-                return res.status(404).json({ error: 'Playlist not found' });
-            }
+            if (!playlist) return res.status(404).json({ error: 'Playlist not found' });
             
             const tracks = db.getAllTracks();
             const resultPath = generateCueSheet(playlist, tracks, outputPath || `${playlist.name}.cue`);
             res.json({ success: true, path: resultPath });
-            
         } catch (error) {
             console.error('CUE generate error:', error);
             res.status(500).json({ error: error.message });
         }
     });
 
-    // Gapless playback settings
+    // Playback settings
     let gaplessEnabled = true;
     let crossfadeDuration = 0;
 
@@ -914,19 +749,12 @@ function setupRoutes() {
         try {
             const db = getDb();
             const track = db.getTrackById(parseInt(req.params.id));
-            
-            if (!track || !track.filePath) {
-                return res.status(404).json({ error: 'Track not found' });
-            }
+            if (!track || !track.filePath) return res.status(404).json({ error: 'Track not found' });
             
             const realBpm = await detectRealBPM(track.filePath);
-            
-            // Update track with real BPM
             track.bpm = realBpm;
             db.save();
-            
             res.json({ success: true, bpm: realBpm });
-            
         } catch (error) {
             console.error('BPM detection error:', error);
             res.status(500).json({ error: error.message });
@@ -934,16 +762,24 @@ function setupRoutes() {
     });
 }
 
-/**
- * Starts the HTTP server on specified port
- */
+// =============================================================================
+// START SERVER
+// =============================================================================
+
 async function startServer(port, userDataPath) {
     serverUserDataPath = userDataPath;
     initDatabase(userDataPath);
+    
+    // Load AI user history
+    userHistory = loadUserHistory(userDataPath);
+    console.log(`🧠 AI user history loaded: ${Object.keys(userHistory).length} tracks with interactions`);
+    
     setupRoutes();
+    
     return new Promise((resolve) => {
         const server = app.listen(port, '127.0.0.1', () => {
             console.log(`🚀 Server on port http://127.0.0.1:${port}`);
+            console.log(`🤖 AI recommendation engine active`);
             resolve(server);
         });
     });

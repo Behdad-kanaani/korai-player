@@ -2575,125 +2575,174 @@ async function renderStats() {
 // Enhanced AI recommendation handler with detailed analysis
 async function handleAiRecommendationsEnhanced() {
     if (!currentTrackId) {
-        showNotification('Play a track first to get recommendations', 'warning');
+        showNotification('Play a track first', 'warning');
         return;
     }
     
-    showNotification('Analyzing acoustic fingerprints...', 'info');
+    showNotification('AI analyzing your taste...', 'info');
     
     try {
-        const res = await fetch(`http://127.0.0.1:${apiPort}/api/recommend/${currentTrackId}/detailed`);
+        // Record this play for learning
+        if (window.electronAPI) {
+            fetch(`http://127.0.0.1:${apiPort}/api/ai/interaction`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ trackId: currentTrackId, action: 'play' })
+            }).catch(e => console.log);
+        }
+        
+        // Get personalized recommendations
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/ai/recommend/personal/${currentTrackId}`);
         if (!res.ok) throw new Error();
+        
         const data = await res.json();
         
         if (!data.recommendations || data.recommendations.length === 0) {
-            showNotification('No similar tracks found in your library', 'info');
+            showNotification('No AI recommendations yet. Listen to more music!', 'info');
+            return;
+        }
+        
+        renderRecommendationsUI(data);
+        
+    } catch (err) {
+        console.error('AI error:', err);
+        showNotification('AI recommendation failed', 'error');
+    }
+}
+
+function renderRecommendationsUI(data) {
+    const mainSection = document.getElementById('dynamicSectionContainer');
+    if (!mainSection) return;
+    
+    let recsHtml = '';
+    for (const track of data.recommendations) {
+        const coverUrl = track.coverUrl ? `http://127.0.0.1:${apiPort}${track.coverUrl}` : null;
+        
+        recsHtml += `
+            <div class="spotify-music-card" data-track-id="${track.id}" onclick="playTrack(${track.id})" oncontextmenu="event.preventDefault(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
+                <div class="card-image-box">
+                    ${coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music"></i>'}
+                    <div class="hover-play-bubble">
+                        <i class="fa-solid fa-play"></i>
+                    </div>
+                </div>
+                <div class="card-details-info">
+                    <h4>${escapeHtml(track.title || 'Untitled')}</h4>
+                    <p>${escapeHtml(track.artist || 'Unknown')}</p>
+                </div>
+                <div class="card-additional-meta">
+                    <span class="bpm-indicator"><i class="fa-solid fa-heartbeat"></i> ${track.bpm || '120'}</span>
+                    <span class="similarity-badge" style="color: var(--accent-cyan);">${track.similarity || '?'}% match</span>
+                </div>
+                <div class="recommend-reason">
+                    <small><i class="fa-solid ${track.similarityIcon || 'fa-brain'}"></i> ${track.reason || 'AI recommended'}</small>
+                </div>
+            </div>
+        `;
+    }
+    
+    mainSection.innerHTML = `
+        <div class="spotify-row-title">
+            <h3><i class="fa-solid fa-brain" style="color: var(--accent-cyan);"></i> AI Recommendations · Based on your taste</h3>
+            <button class="discover-btn" onclick="getDiscoveryRecommendations()" style="background: transparent; border: 1px solid var(--accent-cyan); border-radius: 20px; padding: 6px 16px; color: var(--accent-cyan); cursor: pointer;">
+                <i class="fa-solid fa-compass"></i> Discover New
+            </button>
+        </div>
+        <div class="cards-responsive-grid" id="recommendationsGrid">
+            ${recsHtml}
+        </div>
+    `;
+}
+
+async function getDiscoveryRecommendations() {
+    showNotification('Finding new music for you...', 'info');
+    
+    try {
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/ai/discover`);
+        if (!res.ok) throw new Error();
+        
+        const data = await res.json();
+        
+        if (!data.recommendations || data.recommendations.length === 0) {
+            showNotification('No new discoveries found', 'info');
             return;
         }
         
         const mainSection = document.getElementById('dynamicSectionContainer');
         if (!mainSection) return;
         
-        const sourceGenreName = getGenreTranslation(data.sourceTrack.genre);
-        
-        const sourceInfoHtml = `
-            <div class="recommendation-source-card">
-                <div class="source-track-badge">
-                    <i class="fa-solid ${data.sourceTrack.genreIcon || 'fa-music'}"></i>
-                    <span>Based on:</span>
-                </div>
-                <div class="source-track-details">
-                    <h3>${escapeHtml(data.sourceTrack.title || 'Untitled')}</h3>
-                    <p>${escapeHtml(data.sourceTrack.artist || 'Unknown Artist')}</p>
-                    <div class="source-metrics">
-                        <span class="metric-badge"><i class="fa-solid fa-heartbeat"></i> ${data.sourceTrack.bpm || '120'} BPM</span>
-                        <span class="metric-badge"><i class="fa-solid fa-bolt"></i> ${Math.round((data.sourceTrack.energy || 0.5) * 100)}% Energy</span>
-                        <span class="metric-badge genre"><i class="fa-solid ${data.sourceTrack.genreIcon || 'fa-tag'}"></i> ${sourceGenreName || data.sourceTrack.genre}</span>
-                    </div>
-                </div>
-                <div class="recommendation-stats">
-                    <span><i class="fa-solid fa-list"></i> ${data.recommendations.length} tracks found</span>
-                </div>
-            </div>
-        `;
-        
-        let recommendationsHtml = '';
+        let discHtml = '';
         for (const track of data.recommendations) {
             const coverUrl = track.coverUrl ? `http://127.0.0.1:${apiPort}${track.coverUrl}` : null;
-            const isActive = currentTrackId === track.id;
             
-            let translatedReason = track.reason;
-            if (currentLanguage === 'fa') {
-                if (track.reason && track.reason.includes('BPM')) translatedReason = 'BPM بسیار نزدیک';
-                else if (track.reason && track.reason.includes('energy')) translatedReason = 'انرژی صوتی هم‌سو';
-                else if (track.reason && track.reason.includes('سبک')) translatedReason = track.reason;
-                else translatedReason = track.reason || 'توصیه هوشمند KORAI';
-            }
-            
-            const similarityPercent = track.similarity || 0;
-            const similarityBarWidth = similarityPercent;
-            
-            recommendationsHtml += `
-                <div class="spotify-music-card recommendation-card ${isActive ? 'active' : ''}" data-track-id="${track.id}" style="border-left: 3px solid ${track.genreColor || '#1db954'}">
-                    <div class="card-image-box" onclick="playTrack(${track.id})" oncontextmenu="event.preventDefault(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
+            discHtml += `
+                <div class="spotify-music-card" data-track-id="${track.id}" onclick="playTrack(${track.id})">
+                    <div class="card-image-box">
                         ${coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music"></i>'}
                         <div class="hover-play-bubble">
-                            <i class="fa-solid ${isActive && isPlaying ? 'fa-pause' : 'fa-play'}"></i>
+                            <i class="fa-solid fa-play"></i>
                         </div>
                     </div>
-                    <div class="card-details-info" onclick="playTrack(${track.id})">
+                    <div class="card-details-info">
                         <h4>${escapeHtml(track.title || 'Untitled')}</h4>
-                        <p>${escapeHtml(track.artist || 'Unknown Artist')}</p>
-                    </div>
-                    <div class="similarity-indicator">
-                        <div class="similarity-bar-bg">
-                            <div class="similarity-bar-fill" style="width: ${similarityBarWidth}%; background: ${track.genreColor || '#1db954'}"></div>
-                        </div>
-                        <span class="similarity-percent">${similarityPercent}% Match</span>
+                        <p>${escapeHtml(track.artist || 'Unknown')}</p>
                     </div>
                     <div class="card-additional-meta">
-                        <span class="bpm-indicator"><i class="fa-solid fa-heartbeat"></i> ${track.bpm || '120'} BPM</span>
-                        <span class="genre-tag" style="background: ${track.genreColor || '#1db954'}20; color: ${track.genreColor || '#1db954'}">
-                            <i class="fa-solid ${track.genreIcon || 'fa-tag'}"></i> ${getGenreTranslation(track.detectedGenre) || track.detectedGenre}
-                        </span>
+                        <span class="bpm-indicator"><i class="fa-solid fa-heartbeat"></i> ${track.bpm || '120'}</span>
+                        <span class="genre-badge" style="color: var(--spotify-text-muted);">${track.genre || 'Various'}</span>
                     </div>
                     <div class="recommend-reason">
-                        <small><i class="fa-solid ${track.similarityIcon || 'fa-chart-line'}"></i> ${translatedReason}</small>
+                        <small><i class="fa-solid fa-sparkles"></i> New discovery for you</small>
                     </div>
                 </div>
             `;
         }
         
         mainSection.innerHTML = `
-            <div class="recommendations-header">
-                <div class="spotify-row-title">
-                    <h3><i class="fa-solid fa-brain" style="color: var(--accent-cyan);"></i> AI-Powered Recommendations</h3>
-                    <div class="header-actions">
-                        <button class="create-similar-playlist-btn" onclick="createSimilarPlaylistFromCurrent()">
-                            <i class="fa-solid fa-list-music"></i> Create Similar Playlist
-                        </button>
-                        <button class="refresh-recommendations-btn" onclick="handleAiRecommendationsEnhanced()">
-                            <i class="fa-solid fa-rotate-right"></i>
-                        </button>
-                        <span class="view-all-link" onclick="switchSection('home')">Back to Home</span>
-                    </div>
-                </div>
-                ${sourceInfoHtml}
+            <div class="spotify-row-title">
+                <h3><i class="fa-solid fa-compass"></i> Discover New Music</h3>
+                <span class="view-all-link" onclick="handleAiRecommendationsEnhanced()">← Back to AI Recs</span>
             </div>
-            <div class="recommendations-grid">
-                <div class="cards-responsive-grid">
-                    ${recommendationsHtml}
-                </div>
-            </div>
+            <div class="cards-responsive-grid">${discHtml}</div>
         `;
         
-        showNotification(`Found ${data.recommendations.length} similar tracks`, 'success');
-        
     } catch (err) {
-        console.error('Recommendation error:', err);
-        showNotification('Error generating recommendations', 'error');
+        showNotification('Discovery failed', 'error');
     }
 }
+// Record when user likes a track for AI learning
+async function toggleLikeWithAI() {
+    if (!currentTrackId) return;
+    const isCurrentlyLiked = currentTrack.isLiked;
+    const method = isCurrentlyLiked ? 'DELETE' : 'POST';
+    
+    try {
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/${currentTrackId}/like`, { method });
+        if (!res.ok) throw new Error();
+        
+        // Record interaction for AI
+        const action = isCurrentlyLiked ? 'unlike' : 'like';
+        fetch(`http://127.0.0.1:${apiPort}/api/ai/interaction`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ trackId: currentTrackId, action })
+        }).catch(e => console.log);
+        
+        const track = tracks.find(t => t.id === currentTrackId);
+        if (track) track.isLiked = !isCurrentlyLiked;
+        if (currentTrack) currentTrack.isLiked = !isCurrentlyLiked;
+        
+        updatePlayerUI();
+        showNotification(isCurrentlyLiked ? 'Removed from favorites' : 'Added to favorites', 'success');
+        
+    } catch {
+        showNotification('Connection failed', 'error');
+    }
+}
+
+// Override the like button
+window.toggleLike = toggleLikeWithAI;
+
 
 // Override the recommendation handler
 window.handleAiRecommendations = handleAiRecommendationsEnhanced;

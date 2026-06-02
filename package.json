@@ -1,7 +1,7 @@
 {
   "name": "korai-player",
-  "version": "1.2.0",
-  "description": "KORAI Advanced Music Player",
+  "version": "1.3.0",
+  "description": "KORAI Advanced Music Player - Professional Audio Experience",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -9,7 +9,8 @@
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
     "dist:linux": "electron-builder --linux",
-    "dist:all": "electron-builder --win --mac --linux"
+    "dist:all": "electron-builder --win --mac --linux",
+    "postinstall": "electron-builder install-app-deps"
   },
   "author": "Behdad Kanaani",
   "license": "Apache-2.0 WITH Commons-Clause",
@@ -19,7 +20,9 @@
     "find-free-port": "^2.0.0",
     "multer": "^1.4.5-lts.1",
     "music-metadata": "^7.14.0",
+    "node-fetch": "^2.7.0",
     "node-id3": "^0.2.9",
+    "semver": "^7.8.1",
     "sharp": "^0.33.5"
   },
   "devDependencies": {
@@ -36,6 +39,8 @@
     "files": [
       "main.js",
       "preload.js",
+      "korai.png",
+      "icon.png",
       "src/**/*",
       "!**/*.map",
       "!**/.vscode/**",
@@ -52,7 +57,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "korai.png",
@@ -91,6 +98,34 @@
           "description": "KORAI Music Player - M4A",
           "icon": "korai.png",
           "role": "Player"
+        },
+        {
+          "ext": "cue",
+          "name": "CUE Sheet File",
+          "description": "KORAI Music Player - CUE Sheet",
+          "icon": "korai.png",
+          "role": "Player"
+        },
+        {
+          "ext": "m3u",
+          "name": "M3U Playlist",
+          "description": "KORAI Music Player - M3U Playlist",
+          "icon": "korai.png",
+          "role": "Player"
+        },
+        {
+          "ext": "m3u8",
+          "name": "M3U8 Playlist",
+          "description": "KORAI Music Player - M3U8 Playlist",
+          "icon": "korai.png",
+          "role": "Player"
+        },
+        {
+          "ext": "pls",
+          "name": "PLS Playlist",
+          "description": "KORAI Music Player - PLS Playlist",
+          "icon": "korai.png",
+          "role": "Player"
         }
       ]
     },
@@ -101,14 +136,17 @@
       "createStartMenuShortcut": true,
       "perMachine": true,
       "runAfterFinish": true,
-      "artifactName": "KORAI-Player-Setup.exe",
+      "artifactName": "KORAI-Player-Setup-${version}.exe",
       "license": "build/license.txt"
     },
     "mac": {
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "icon": "korai.png",
@@ -133,6 +171,22 @@
         {
           "ext": "m4a",
           "role": "Editor"
+        },
+        {
+          "ext": "cue",
+          "role": "Editor"
+        },
+        {
+          "ext": "m3u",
+          "role": "Editor"
+        },
+        {
+          "ext": "m3u8",
+          "role": "Editor"
+        },
+        {
+          "ext": "pls",
+          "role": "Editor"
         }
       ]
     },
@@ -140,7 +194,15 @@
       "target": [
         {
           "target": "AppImage",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "korai.png",
@@ -165,6 +227,22 @@
         {
           "ext": "m4a",
           "mimeType": "audio/mp4"
+        },
+        {
+          "ext": "cue",
+          "mimeType": "text/plain"
+        },
+        {
+          "ext": "m3u",
+          "mimeType": "audio/x-mpegurl"
+        },
+        {
+          "ext": "m3u8",
+          "mimeType": "audio/x-mpegurl"
+        },
+        {
+          "ext": "pls",
+          "mimeType": "audio/x-scpls"
         }
       ]
     }

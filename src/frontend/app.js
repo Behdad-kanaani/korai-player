@@ -42,6 +42,7 @@ if (currentSkin !== 'default' && currentSkin !== 'liquid-glass') {
     currentSkin = 'default';
 }
 let currentVinylRotation = 0;
+let repeatOneMode = false;
 let lastVinylUpdateTime = 0;
 let importProgressElement = null;
 let importProgressInterval = null;
@@ -95,6 +96,69 @@ function escapeHtml(str) {
         if (m === '>') return '&gt;';
         return m;
     });
+}
+
+// Performance mode detection
+function detectPerformanceMode() {
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const isLowMemory = navigator.deviceMemory && navigator.deviceMemory < 4;
+    const isSlowCPU = navigator.hardwareConcurrency && navigator.hardwareConcurrency < 4;
+    
+    if (isMobile || isLowMemory || isSlowCPU) {
+        document.body.classList.add('performance-mode');
+        console.log('⚡ Performance mode enabled for this device');
+        return true;
+    }
+    return false;
+}
+
+function toggleRepeat() {
+    if (repeatOneMode) {
+        repeatOneMode = false;
+        repeatMode = false;
+        showNotification('Repeat disabled', 'info');
+    } else if (repeatMode) {
+        repeatOneMode = true;
+        repeatMode = true;
+        showNotification('Repeat One (single track)', 'info');
+    } else {
+        repeatMode = true;
+        repeatOneMode = false;
+        showNotification('Repeat All (playlist)', 'info');
+    }
+    
+    updateRepeatUI();
+}
+
+function updateRepeatUI() {
+    const repeatBtn = document.getElementById('repeatBtnK');
+    const fsRepeatBtn = document.getElementById('fsRepeatBtn');
+    
+    if (repeatBtn) {
+        if (repeatOneMode) {
+            repeatBtn.innerHTML = '<i class="fa-solid fa-repeat-1"></i>';
+            repeatBtn.classList.add('active');
+        } else if (repeatMode) {
+            repeatBtn.innerHTML = '<i class="fa-solid fa-repeat"></i>';
+            repeatBtn.classList.add('active');
+        } else {
+            repeatBtn.innerHTML = '<i class="fa-solid fa-repeat"></i>';
+            repeatBtn.classList.remove('active');
+        }
+    }
+    
+    if (fsRepeatBtn) {
+        if (repeatOneMode) {
+            fsRepeatBtn.innerHTML = '<i class="fa-solid fa-repeat-1"></i>';
+            fsRepeatBtn.classList.add('active');
+        } else if (repeatMode) {
+            fsRepeatBtn.innerHTML = '<i class="fa-solid fa-repeat"></i>';
+            fsRepeatBtn.classList.add('active');
+        } else {
+            fsRepeatBtn.innerHTML = '<i class="fa-solid fa-repeat"></i>';
+            fsRepeatBtn.classList.remove('active');
+        }
+    }
 }
 
 /**
@@ -1296,9 +1360,11 @@ function initAudio() {
     });
     
     audioElement.addEventListener('ended', () => {
-        if (repeatMode) {
+        if (repeatOneMode && currentTrackId) {
             audioElement.currentTime = 0;
             audioElement.play().catch(e => console.error(e));
+        } else if (repeatMode) {
+            nextTrack();
         } else {
             nextTrack();
         }
@@ -1562,6 +1628,11 @@ function syncWithMediaSessionPosition() {
  * FIXED: Play track by ID with correct queue behavior
  */
 async function playTrack(trackId, sourceType = 'library', sourceId = null, sourceTracksArray = null) {
+        if (!tracks || tracks.length === 0) {
+            showNotification(t('emptyLibrary'), 'warning');
+            console.warn('Cannot play - library is empty');
+            return;
+        }
     if (isMiniWindowMode) return;
     
     try {
@@ -1972,6 +2043,7 @@ function setSleepTimer(minutes) {
 
         if (sleepTimeRemaining <= 0) {
             clearInterval(sleepIntervalId);
+            sleepIntervalId = null;
             if (audioElement) {
                 audioElement.pause();
                 setPlayState(false);
@@ -1993,7 +2065,6 @@ function cancelSleepTimer() {
     if (display) display.innerText = t('sleepOff');
     const cancelBtn = document.getElementById('cancelSleepBtn');
     if (cancelBtn) cancelBtn.style.display = 'none';
-    if (audioElement) audioElement.volume = volume;
 }
 
 function setupDragAndDrop() {
@@ -3368,6 +3439,8 @@ window.addEventListener('DOMContentLoaded', async () => {
         updateBodyClasses();
         
         switchSection('home');
+        detectPerformanceMode();
+
 
         // File association handler - opens files from system
         if (window.electronAPI && window.electronAPI.onFilesOpened) {

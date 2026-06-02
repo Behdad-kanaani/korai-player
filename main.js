@@ -16,6 +16,11 @@ const fs = require('fs');
 const findFreePort = require('find-free-port');
 
 // =============================================================================
+// AUTO-UPDATER
+// =============================================================================
+const { startUpdateChecker } = require('./src/backend/updater');
+
+// =============================================================================
 // GLOBAL ERROR HANDLERS
 // =============================================================================
 
@@ -49,6 +54,7 @@ let tray = null;
 let isQuitting = false;
 let pendingFiles = [];
 let lastTrackState = null;
+let healthCheckInterval = null;
 
 const { startServer } = require('./src/backend/server');
 
@@ -130,6 +136,33 @@ app.on('second-instance', (event, commandLine, workingDirectory) => {
         }
     }
 });
+
+// =============================================================================
+// TRAY ICON PATH HELPER
+// =============================================================================
+
+function getTrayIconPath() {
+    const possiblePaths = [
+        path.join(__dirname, 'korai.png'),
+        path.join(__dirname, 'icon.png'),
+        path.join(process.resourcesPath, 'korai.png'),
+        path.join(process.resourcesPath, 'icon.png'),
+        path.join(app.getAppPath(), 'korai.png'),
+        path.join(app.getAppPath(), 'icon.png'),
+        path.join(__dirname, 'src/frontend/assets/icons/icon.png'),
+        path.join(app.getAppPath(), 'src/frontend/assets/icons/icon.png')
+    ];
+    
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+            console.log('✅ Tray icon found at:', p);
+            return p;
+        }
+    }
+    
+    console.log('⚠️ No tray icon found');
+    return null;
+}
 
 // =============================================================================
 // TRAY MENU FUNCTIONS
@@ -346,21 +379,7 @@ function updateTrayPlaybackState(isPlaying, track) {
 async function createSystemTray() {
     await loadTrayLanguage();
     
-    const possiblePaths = [
-        path.join(__dirname, 'korai.png'),
-        path.join(__dirname, 'icon.png'),
-        path.join(__dirname, 'src/frontend/assets/icons/icon.png'),
-        path.join(__dirname, 'assets/icon.png')
-    ];
-    
-    let iconPath = null;
-    for (const p of possiblePaths) {
-        if (fs.existsSync(p)) {
-            iconPath = p;
-            console.log('✅ Tray icon found at:', p);
-            break;
-        }
-    }
+    const iconPath = getTrayIconPath();
     
     let trayIcon = null;
     if (iconPath && fs.existsSync(iconPath)) {
@@ -412,6 +431,32 @@ async function createSystemTray() {
 }
 
 // =============================================================================
+// SERVER HEALTH CHECK
+// =============================================================================
+
+function startHealthCheck() {
+    healthCheckInterval = setInterval(async () => {
+        try {
+            const fetchModule = await import('node-fetch');
+            const fetch = fetchModule.default;
+            const response = await fetch(`http://127.0.0.1:${serverPort}/api/health`);
+            if (!response.ok) {
+                console.warn('⚠️ Server health check failed');
+            }
+        } catch (err) {
+            console.error('❌ Server appears to be down!');
+        }
+    }, 30000);
+}
+
+function stopHealthCheck() {
+    if (healthCheckInterval) {
+        clearInterval(healthCheckInterval);
+        healthCheckInterval = null;
+    }
+}
+
+// =============================================================================
 // MAIN WINDOW CREATION
 // =============================================================================
 
@@ -426,6 +471,9 @@ async function createWindow() {
         const userDataPath = app.getPath('userData');
         httpServer = await startServer(serverPort, userDataPath);
         console.log('✅ HTTP Server started');
+        
+        // Start health check after server is running
+        startHealthCheck();
 
         ipcMain.handle('get-server-port', () => {
             return serverPort;
@@ -499,6 +547,13 @@ async function createWindow() {
         });
 
         createSystemTray();
+        
+        // Start auto-updater (silent, non-blocking)
+        try {
+            startUpdateChecker(24);
+        } catch (err) {
+            console.log('Updater not available:', err.message);
+        }
 
     } catch (err) {
         console.error('❌ Fatal error in createWindow:', err);
@@ -745,6 +800,8 @@ ipcMain.on('open-tag-editor', (event, trackId) => {
 
 ipcMain.handle('advanced-search', async (event, query) => {
     try {
+        const fetchModule = await import('node-fetch');
+        const fetch = fetchModule.default;
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/search/advanced`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -773,6 +830,8 @@ ipcMain.handle('export-playlist', async (event, playlistId, format) => {
     if (result.canceled || !result.filePath) return null;
     
     try {
+        const fetchModule = await import('node-fetch');
+        const fetch = fetchModule.default;
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/playlists/${playlistId}/export`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -787,6 +846,8 @@ ipcMain.handle('export-playlist', async (event, playlistId, format) => {
 
 ipcMain.handle('import-playlist', async (event, filePath, format) => {
     try {
+        const fetchModule = await import('node-fetch');
+        const fetch = fetchModule.default;
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/playlists/import`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -815,6 +876,8 @@ ipcMain.handle('export-library', async () => {
     if (result.canceled || !result.filePath) return null;
     
     try {
+        const fetchModule = await import('node-fetch');
+        const fetch = fetchModule.default;
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/library/export`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -833,6 +896,8 @@ ipcMain.handle('export-library', async () => {
 
 ipcMain.handle('parse-cue', async (event, cuePath) => {
     try {
+        const fetchModule = await import('node-fetch');
+        const fetch = fetchModule.default;
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/cue/parse`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -851,6 +916,8 @@ ipcMain.handle('parse-cue', async (event, cuePath) => {
 
 ipcMain.handle('get-playback-settings', async () => {
     try {
+        const fetchModule = await import('node-fetch');
+        const fetch = fetchModule.default;
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/playback/settings`);
         return await response.json();
     } catch (err) {
@@ -860,6 +927,8 @@ ipcMain.handle('get-playback-settings', async () => {
 
 ipcMain.handle('set-playback-settings', async (event, settings) => {
     try {
+        const fetchModule = await import('node-fetch');
+        const fetch = fetchModule.default;
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/playback/settings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -884,6 +953,8 @@ ipcMain.on('set-crossfade', (event, duration) => {
 
 ipcMain.handle('detect-real-bpm', async (event, trackId) => {
     try {
+        const fetchModule = await import('node-fetch');
+        const fetch = fetchModule.default;
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/tracks/${trackId}/detect-bpm`, {
             method: 'POST'
         });
@@ -899,7 +970,6 @@ ipcMain.handle('detect-real-bpm', async (event, trackId) => {
 // =============================================================================
 
 ipcMain.on('register-global-shortcut', (event, command) => {
-    // Forward to renderer
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('global-shortcut', command);
     }
@@ -921,8 +991,13 @@ app.on('activate', () => {
     }
 });
 
+app.on('will-quit', () => {
+    stopHealthCheck();
+});
+
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
+        stopHealthCheck();
         if (httpServer) {
             httpServer.close(() => {
                 console.log('🛑 Server closed');

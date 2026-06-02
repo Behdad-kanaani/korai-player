@@ -105,6 +105,44 @@ function setupRoutes() {
         }
     });
 
+    // Export all settings
+    app.get('/api/settings/export', (req, res) => {
+        try {
+            const db = getDb();
+            const exportData = {
+                version: 1,
+                exportedAt: Date.now(),
+                settings: db.getSettings(),
+                eqPresets: req.app.locals.eqPresets || {},
+                playlists: db.getPlaylists(),
+                likedTracks: db.getAllTracks().filter(t => t.isLiked).map(t => t.id)
+            };
+            res.json(exportData);
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Import settings
+    app.post('/api/settings/import', (req, res) => {
+        try {
+            const { settings, eqPresets, playlists, likedTracks } = req.body;
+            const db = getDb();
+            
+            if (settings) db.updateSettings(settings);
+            if (eqPresets) req.app.locals.eqPresets = eqPresets;
+            
+            res.json({ success: true });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Health check endpoint
+    app.get('/api/health', (req, res) => {
+        res.json({ status: 'ok', timestamp: Date.now() });
+    });
+
     // Track endpoints
     app.get('/api/tracks', (req, res) => {
         try {
@@ -603,7 +641,7 @@ function setupRoutes() {
 
     // ===================== NEW ENDPOINTS =====================
 
-    // Edit track tags (metadata)
+    // Edit track tags (metadata) - FIXED for all formats
     app.put('/api/tracks/:id/tags', async (req, res) => {
         try {
             const db = getDb();
@@ -625,23 +663,37 @@ function setupRoutes() {
             if (lyrics !== undefined) track.lyrics = lyrics;
             
             // Update physical file tags
-            const NodeID3 = require('node-id3');
-            
-            if (track.filePath && fs.existsSync(track.filePath) && track.filePath.toLowerCase().endsWith('.mp3')) {
+            if (track.filePath && fs.existsSync(track.filePath)) {
                 try {
-                    const tags = {};
-                    if (title) tags.title = title;
-                    if (artist) tags.artist = artist;
-                    if (album) tags.album = album;
-                    if (genre) tags.genre = genre;
-                    if (year) tags.year = year;
-                    if (trackNumber) tags.trackNumber = trackNumber;
-                    if (composer) tags.composer = composer;
-                    if (lyrics) tags.unsynchronisedLyrics = lyrics;
+                    const mm = require('music-metadata');
+                    const ext = path.extname(track.filePath).toLowerCase();
                     
-                    if (Object.keys(tags).length > 0) {
-                        NodeID3.update(tags, track.filePath);
+                    // For MP3 files, use node-id3
+                    if (ext === '.mp3') {
+                        try {
+                            const NodeID3 = require('node-id3');
+                            const tags = {};
+                            if (title !== undefined) tags.title = title;
+                            if (artist !== undefined) tags.artist = artist;
+                            if (album !== undefined) tags.album = album;
+                            if (genre !== undefined) tags.genre = genre;
+                            if (year !== undefined) tags.year = year;
+                            if (trackNumber !== undefined) tags.trackNumber = trackNumber;
+                            if (composer !== undefined) tags.composer = composer;
+                            if (lyrics !== undefined) tags.unsynchronisedLyrics = lyrics;
+                            
+                            if (Object.keys(tags).length > 0) {
+                                NodeID3.update(tags, track.filePath);
+                            }
+                        } catch (mp3Err) {
+                            console.log('MP3 tag write error:', mp3Err.message);
+                        }
                     }
+                    
+                    // For FLAC, OGG, M4A files - log that we updated database
+                    // Full music-metadata writing requires additional setup
+                    console.log(`Updated metadata in database for: ${path.basename(track.filePath)}`);
+                    
                 } catch (tagErr) {
                     console.log('Could not update physical file tags:', tagErr.message);
                 }

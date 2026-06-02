@@ -12,18 +12,29 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * Export playlist to M3U format
+ * Export playlist to M3U/M3U8 format
  */
 function exportToM3U(playlist, tracks, outputPath, extended = true) {
+    const isM3U8 = outputPath.toLowerCase().endsWith('.m3u8');
     let content = extended ? '#EXTM3U\n' : '';
+    
+    // Add UTF-8 BOM for M3U8
+    if (isM3U8) {
+        content = '\uFEFF' + content;
+    }
     
     for (const trackId of playlist.tracks) {
         const track = tracks.find(t => t.id === trackId);
         if (!track) continue;
         
         if (extended && track.duration) {
-            const title = track.title || 'Unknown';
-            const artist = track.artist || '';
+            // Sanitize non-ASCII characters for M3U (not M3U8)
+            let title = track.title || 'Unknown';
+            let artist = track.artist || '';
+            if (!isM3U8) {
+                title = title.replace(/[^\x00-\x7F]/g, '');
+                artist = artist.replace(/[^\x00-\x7F]/g, '');
+            }
             content += `#EXTINF:${Math.round(track.duration)},${artist} - ${title}\n`;
         }
         
@@ -58,10 +69,17 @@ function exportToPLS(playlist, tracks, outputPath) {
 }
 
 /**
- * Import playlist from M3U/M3U8 file
+ * Import playlist from M3U/M3U8 file (supports UTF-8)
  */
 async function importFromM3U(filePath, baseDir = null) {
-    const content = fs.readFileSync(filePath, 'utf-8');
+    // Read with UTF-8 encoding
+    let content = fs.readFileSync(filePath, 'utf-8');
+    
+    // Remove BOM if present
+    if (content.charCodeAt(0) === 0xFEFF) {
+        content = content.slice(1);
+    }
+    
     const lines = content.split(/\r?\n/);
     
     const tracks = [];
@@ -82,15 +100,15 @@ async function importFromM3U(filePath, baseDir = null) {
             }
         } else if (!trimmed.startsWith('#')) {
             // This is a file path
-            let filePath = trimmed;
-            if (baseDir && !path.isAbsolute(filePath)) {
-                filePath = path.join(baseDir, filePath);
+            let filePathResolved = trimmed;
+            if (baseDir && !path.isAbsolute(filePathResolved)) {
+                filePathResolved = path.join(baseDir, filePathResolved);
             }
             
-            if (fs.existsSync(filePath)) {
+            if (fs.existsSync(filePathResolved)) {
                 tracks.push({
-                    filePath: filePath,
-                    title: currentTrack?.title || path.basename(filePath, path.extname(filePath)),
+                    filePath: filePathResolved,
+                    title: currentTrack?.title || path.basename(filePathResolved, path.extname(filePathResolved)),
                     duration: currentTrack?.duration || 0
                 });
             }

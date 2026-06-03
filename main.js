@@ -519,7 +519,7 @@ async function createWindow() {
             height: 850,
             minWidth: 1000,
             minHeight: 700,
-            frame: false,
+            frame: true,
             show: true,
             titleBarStyle: 'default',
             webPreferences: {

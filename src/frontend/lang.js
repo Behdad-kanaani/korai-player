@@ -1,13 +1,5 @@
-/**
- * lang.js - KORAI Music Player Internationalization
- * 
- * Multi-language support for English and Persian (Farsi)
- * Contains all UI text strings for complete localization
- */
-
 const translations = {
     en: {
-        // Navigation & UI
         navArtistsText: "Artists",
         githubBtnText: "Star on GitHub",
         profileName: "KORAI Personal Space",
@@ -18,13 +10,15 @@ const translations = {
         navLibText: "My Library",
         navFavText: "Favorites",
         navStatsText: "Live Telemetry",
+        navAdvSearch: "Advanced Search",
         
-        // AI Panel
         aiPanelTitle: "Acoustic AI",
         aiPanelDesc: "Analyzes dynamic frequency footprints, tempo, and harmonic energy to discover matching vibes.",
         aiBtnText: "Analyze Waveform",
+        similarPlaylist: "Generate Smart Playlist",
+        exportLibrary: "Export Library",
+        importCue: "Import CUE Sheet",
         
-        // Import options
         upTextTitle: "Import Audio File",
         upTextSub: "Add single local track",
         upFolderTitle: "Scan Audio Folder",
@@ -32,30 +26,34 @@ const translations = {
         upUrlTitle: "Stream from Link",
         upUrlSub: "Direct URL capture",
         
-        // Loading and welcome
         loadingText: "Configuring KORAI Audio Core...",
         welcomeMorning: "Good Morning",
         welcomeAfternoon: "Good Afternoon",
         welcomeEvening: "Good Evening",
         
-        // Empty states
         emptyLibrary: "Your Library is Empty",
         emptyLibraryDesc: "Use the import options on the sidebar to add your local audio tracks.",
         emptyFavs: "No Favorites Yet",
         emptyFavsDesc: "Like your favorite songs to see them grouped here.",
+        emptyArtistsState: "No Artists Found",
+        emptyArtistsDesc: "Add some music tracks to see your artists.",
         
-        // Statistics
         statsTitle: "Playback Analytics & Stats",
         statsTotal: "Total Tracks",
         statsPlays: "Total Playbacks",
         statsLikes: "Liked Tracks",
         statsHero: "Most Played Masterpiece",
+        totalTracksLabel: "Total Loaded Tracks",
+        totalPlaysLabel: "Cumulative Playbacks",
+        popularLabel: "Loved Tracks",
+        topTrackLabel: "Your top music based on execution telemetry",
+        liveSpectrumLabel: "Live Spectrum Telemetry Analyzer",
+        statsError: "Failed to retrieve analytics data from server",
+        playedTimes: "plays",
         
-        // Queue and fullscreen
         queuePanelTitle: "Active Play Queue",
         fsExitText: "Exit Immersive Stage",
         
-        // Modals
         playlistModalTitle: "Create New Playlist",
         playlistPlaceholder: "Enter playlist name...",
         dialogConfirm: "Confirm",
@@ -65,13 +63,11 @@ const translations = {
         downloadPlaceholder: "Paste direct audio stream URL here...",
         downloadBtn: "Download & Import",
         
-        // Library
         searchPlaceholder: "Search songs, artists, albums...",
         rightClickTip: "Right-click on tracks to manage playlists",
         libraryArchive: "Music Library Archive",
         dailySuggestions: "Curated Daily Discoveries",
         
-        // OOBE Welcome Screen
         welcomeOobeTitle: "Welcome to KORAI Stage",
         welcomeOobeSub: "Immersive local audio system designed for audiophiles",
         welcomeOobeGoalTitle: "Project Core",
@@ -80,29 +76,32 @@ const translations = {
         welcomeOobeCreatorDesc: "I am Behdad Kanaani, a teenage programmer and lover of music, AI, computer vision, and everything related to programming and computers. I have many projects; visit my GitHub to see them.",
         welcomeOobeBtn: "Initialize Studio Core",
         
-        // DSP Controls
         dspPreservePitch: "Preserve Pitch:",
         dspTitle: "Graphic Studio Equalizer",
+        tempo: "Playback Tempo",
         
-        // Stats labels
-        totalTracksLabel: "Total Loaded Tracks",
-        totalPlaysLabel: "Cumulative Playbacks",
-        popularLabel: "Loved Tracks",
-        topTrackLabel: "Your top music based on execution telemetry",
-        liveSpectrumLabel: "Live Spectrum Telemetry Analyzer",
-        statsError: "Failed to retrieve analytics data from server",
-        playedTimes: "plays",
+        vocalSeparatorMode: "Vocal Separator (Real-time Vocal Removal):",
+        vocalSeparatorIntensity: "Vocal Removal Intensity",
+        vocalSeparatorSensitivity: "Detection Sensitivity",
+        vocalSeparatorSensitivityDesc: "Lower = more aggressive removal, Higher = preserves more instruments",
+        vocalSeparatorActive: "🎤 Vocal Separator: AI Vocal Removal Active",
+        vocalSeparatorDisabled: "Vocal Separator Disabled",
+        vocalSeparatorError: "Vocal separator failed to initialize",
+        vocalSeparatorFirstPlay: "Play a track first to enable Vocal Separator",
         
-        // Playlist
+        eq60Hz: "Bass (60Hz)",
+        eq230Hz: "Low Mid (230Hz)",
+        eq910Hz: "Mid (910Hz)",
+        eq4kHz: "High Mid (4kHz)",
+        eq14kHz: "Treble (14kHz)",
+        
         emptyPlaylistState: "This playlist is empty",
         emptyPlaylistTip: "Right-click on tracks in My Library to append them here.",
         
-        // Badges
         bpmBadge: "BPM",
         energyBadge: "Energy Profile",
         noLyrics: "Lyrics not found in metadata container.",
 
-        // Playback controls
         playPause: "Play/Pause",
         previousTrack: "Previous",
         nextTrack: "Next",
@@ -110,30 +109,15 @@ const translations = {
         repeat: "Repeat Mode",
         volume: "Master Volume",
         
-        // Sleep timer
         sleepTimer: "Sleep Timer:",
         sleepOff: "Disabled",
         sleepMinutes: "Min",
         cancel: "Cancel Timer",
         
-        // Karaoke
-        karaokeMode: "Karaoke Mode (Real-time Vocal Cancellation):",
-        
-        // Drag and drop
         dragNotify: "Analyzing dropped files...",
         dragSuccess: "tracks successfully imported!",
         dragError: "Failed to import dropped files.",
         
-        // Equalizer labels
-        eq60Hz: "Bass (60Hz)",
-        eq230Hz: "Low Mid (230Hz)",
-        eq910Hz: "Mid (910Hz)",
-        eq4kHz: "High Mid (4kHz)",
-        eq14kHz: "Treble (14kHz)",
-        tempo: "Playback Tempo",
-        
-        // Recommendations
-        similarPlaylist: "Generate Smart Playlist",
         genreDetected: "Identified Genre",
         smartRecommendations: "KORAI Dynamic Feed",
         backToHome: "Back to Dashboard",
@@ -141,7 +125,6 @@ const translations = {
         noSimilarTracks: "No matching acoustic profiles found",
         analyzingAudio: "Decrypting audio patterns...",
         
-        // Genre translations
         genreBlues: "Blues / Jazz Acoustic",
         genreClassical: "Classical / Orchestral",
         genrePop: "Vocal Pop / Indie",
@@ -155,7 +138,6 @@ const translations = {
         similarity: "Similarity",
         recommended: "Recommended",
 
-        // New Sorting & Filtering Translations
         sortByLabel: "Sort By:",
         sortDateAdded: "Date Added",
         sortTitle: "Title",
@@ -163,12 +145,31 @@ const translations = {
         sortBpm: "BPM",
         sortDuration: "Duration",
         allGenres: "All Genres",
-        navAdvSearch: "Advanced Search",
-        exportLibrary: "Export Library",
-        importCue: "Import CUE Sheet",
+        
+        artistsTitle: "Artists",
+        tracksCount: "tracks",
+        playingArtist: "Playing",
+        backToArtists: "Back to Artists",
+        playArtist: "Play All",
+        trackTitle: "Title",
+        albumTitle: "Album",
+        actions: "Actions",
+        
+        statsHero: "Most Played Track",
+        
+        loadingMusicLibrary: "Loading music library...",
+        noResultsFound: "No results found",
+        searchResults: "Search Results",
+        
+        updateAvailable: "Update Available!",
+        updateLater: "Remind Later",
+        downloadNow: "Download Now",
+        newVersionAvailable: "A new version of KORAI Player is available!",
+        currentVersionLabel: "Current version",
+        newVersionLabel: "New version"
     },
     fa: {
-        // Navigation & UI
+        navArtistsText: "آرتیست‌ها",
         githubBtnText: "ستاره در گیت‌هاب",
         profileName: "کتابخانه شخصی KORAI",
         profileBio: "سیستم مدیریت و پخش هوشمند موسیقی محلی.",
@@ -178,14 +179,15 @@ const translations = {
         navLibText: "کتابخانه من",
         navFavText: "مورد علاقه‌ها",
         navStatsText: "تله‌متری زنده",
-        navArtistsText: "آرتیست‌ها",
+        navAdvSearch: "جستجوی پیشرفته",
         
-        // AI Panel
         aiPanelTitle: "هوش مصنوعی صوتی",
         aiPanelDesc: "تحلیل الگوهای فرکانسی، سرعت ضربان (BPM) و انرژی موج جاری برای کشف نواهای هم‌سو.",
         aiBtnText: "تحلیل سیگنال صوتی",
+        similarPlaylist: "ساخت پلی‌لیست هم‌سبک",
+        exportLibrary: "خروجی کتابخانه",
+        importCue: "وارد کردن CUE Sheet",
         
-        // Import options
         upTextTitle: "افزودن قطعه صوتی",
         upTextSub: "وارد کردن فایل تکی",
         upFolderTitle: "اسکن کامل پوشه",
@@ -193,30 +195,34 @@ const translations = {
         upUrlTitle: "استریم مستقیم از وب",
         upUrlSub: "دریافت آنلاین پیوند MP3",
         
-        // Loading and welcome
         loadingText: "در حال پیکربندی موتور صوتی KORAI...",
         welcomeMorning: "صبح بخیر",
         welcomeAfternoon: "ظهر بخیر",
         welcomeEvening: "عصر بخیر",
         
-        // Empty states
         emptyLibrary: "کتابخانه موسیقی شما خالی است",
         emptyLibraryDesc: "جهت افزودن آهنگ، از گزینه‌های پنل مدیریت سایدبار استفاده نمایید.",
         emptyFavs: "لیست علاقه‌مندی‌ها خالی است",
         emptyFavsDesc: "آهنگ‌های محبوب خود را لایک کنید تا در این بخش طبقه‌بندی شوند.",
+        emptyArtistsState: "هیچ آرتیستی یافت نشد",
+        emptyArtistsDesc: "برای مشاهده آرتیست‌ها، آهنگ‌های موسیقی اضافه کنید.",
         
-        // Statistics
         statsTitle: "آمار و تله‌متری پخش",
         statsTotal: "کل آهنگ‌ها",
         statsPlays: "دفعات پخش",
         statsLikes: "محبوب‌ترین‌ها",
         statsHero: "شاهکار صدر جدول پخش شما",
+        totalTracksLabel: "کل قطعات بارگذاری شده",
+        totalPlaysLabel: "کل دفعات پخش ثبت شده",
+        popularLabel: "آثار مورد علاقه",
+        topTrackLabel: "این اثر بر اساس تله‌متری سیستم پخش شما در صدر قرار دارد",
+        liveSpectrumLabel: "تحلیلگر زنده طیف فرکانسی",
+        statsError: "خطا در دریافت اطلاعات آمار از سرور اصلی",
+        playedTimes: "بار پخش",
         
-        // Queue and fullscreen
         queuePanelTitle: "صف پخش جاری فعال",
         fsExitText: "خروج از استیج سینمایی",
         
-        // Modals
         playlistModalTitle: "ایجاد لیست پخش جدید",
         playlistPlaceholder: "نام پلی‌لیست را وارد کنید...",
         dialogConfirm: "تایید",
@@ -226,13 +232,11 @@ const translations = {
         downloadPlaceholder: "آدرس لینک مستقیم استریم MP3 را وارد کنید...",
         downloadBtn: "دانلود و بارگذاری",
         
-        // Library
         searchPlaceholder: "جستجوی آهنگ، خواننده، آلبوم...",
         rightClickTip: "برای مدیریت و افزودن آهنگ‌ها به پلی‌لیست راست‌کلیک کنید",
         libraryArchive: "آرشیو جامع کتابخانه موسیقی",
         dailySuggestions: "پیشنهادهای هوشمند روزانه",
         
-        // OOBE Welcome Screen
         welcomeOobeTitle: "به استیج KORAI خوش آمدید",
         welcomeOobeSub: "سیستم صوتی بومی و سینمایی طراحی شده برای علاقه‌مندان به موسیقی تراز اول",
         welcomeOobeGoalTitle: "هسته پروژه",
@@ -241,60 +245,48 @@ const translations = {
         welcomeOobeCreatorDesc: "من بهداد کنعانی هستم، یک نوجوان برنامه‌نویس و عاشق موسیقی، هوش مصنوعی، بینایی کامپیوتر و هر چیزی که به برنامه‌نویسی و کامپیوتر ربط داشته باشد. پروژه‌های زیادی دارم؛ برای دیدن آن‌ها به گیت‌هاب من سر بزنید.",
         welcomeOobeBtn: "راه‌اندازی هسته صوتی کلاینت",
         
-        // DSP Controls
         dspPreservePitch: "حفظ گام صدا (Preserve Pitch):",
         dspTitle: "اکولایزر گرافیکی استودیویی",
+        tempo: "سرعت پخش (تمپو)",
         
-        // Stats labels
-        totalTracksLabel: "کل قطعات بارگذاری شده",
-        totalPlaysLabel: "کل دفعات پخش ثبت شده",
-        popularLabel: "آثار مورد علاقه",
-        topTrackLabel: "این اثر بر اساس تله‌متری سیستم پخش شما در صدر قرار دارد",
-        liveSpectrumLabel: "Live Spectrum Telemetry Analyzer",
-        statsError: "خطا در دریافت اطلاعات آمار از سرور اصلی",
-        playedTimes: "بار پخش",
+        vocalSeparatorMode: "جدا ساز صدای خواننده (حذف بلادرنگ صدای خواننده):",
+        vocalSeparatorIntensity: "شدت حذف صدای خواننده",
+        vocalSeparatorSensitivity: "حساسیت تشخیص",
+        vocalSeparatorSensitivityDesc: "مقدار کمتر = حذف تهاجمی‌تر، مقدار بیشتر = حفظ بیشتر سازها",
+        vocalSeparatorActive: "🎤 جدا ساز صدای خواننده: حذف هوشمند صدای خواننده فعال شد",
+        vocalSeparatorDisabled: "جدا ساز صدای خواننده غیرفعال شد",
+        vocalSeparatorError: "خطا در راه‌اندازی جدا ساز صدای خواننده",
+        vocalSeparatorFirstPlay: "برای فعال‌سازی جدا ساز صدای خواننده ابتدا یک آهنگ پخش کنید",
         
-        // Playlist
-        emptyPlaylistState: "این لیست پخش خالی است",
-        emptyPlaylistTip: "در بخش «کتابخانه من» با راست‌کلیک روی آهنگ‌ها، آن‌ها را به این لیست اضافه کنید.",
-        
-        // Badges
-        bpmBadge: "BPM",
-        energyBadge: "نمایه انرژی",
-        noLyrics: "متن شعر در کانتینر متادیتای صوتی یافت نشد.",
-
-        // Playback controls
-        playPause: "پخش/توقف",
-        previousTrack: "پخش قبلی",
-        nextTrack: "پخش بعدی",
-        shuffle: "پخش تصادفی",
-        repeat: "تکرار مجدد",
-        volume: "بلندی صدای کل",
-        
-        // Sleep timer
-        sleepTimer: "تایمر خواب:",
-        sleepOff: "غیرفعال",
-        sleepMinutes: "دقیقه",
-        cancel: "لغو تایمر",
-        
-        // Karaoke
-        karaokeMode: "حالت کارائوکه (حذف بلادرنگ صدای خواننده):",
-        
-        // Drag and drop
-        dragNotify: "در حال بررسی و تحلیل فایل‌های صوتی رها شده...",
-        dragSuccess: "قطعه جدید با موفقیت به آرشیو افزوده شد!",
-        dragError: "خطا در پردازش فایل‌های صوتی رها شده.",
-        
-        // Equalizer labels
         eq60Hz: "بیس (60Hz)",
         eq230Hz: "میانی پایین (230Hz)",
         eq910Hz: "میانی (910Hz)",
         eq4kHz: "میانی بالا (4kHz)",
         eq14kHz: "زیر (14kHz)",
-        tempo: "سرعت پخش (تمپو)",
         
-        // Recommendations
-        similarPlaylist: "ساخت پلی‌لیست هم‌سبک",
+        emptyPlaylistState: "این لیست پخش خالی است",
+        emptyPlaylistTip: "در بخش «کتابخانه من» با راست‌کلیک روی آهنگ‌ها، آن‌ها را به این لیست اضافه کنید.",
+        
+        bpmBadge: "ضربان در دقیقه",
+        energyBadge: "نمایه انرژی",
+        noLyrics: "متن شعر در کانتینر متادیتای صوتی یافت نشد.",
+
+        playPause: "پخش/توقف",
+        previousTrack: "قبلی",
+        nextTrack: "بعدی",
+        shuffle: "پخش تصادفی",
+        repeat: "تکرار",
+        volume: "بلندی صدا",
+        
+        sleepTimer: "تایمر خواب:",
+        sleepOff: "غیرفعال",
+        sleepMinutes: "دقیقه",
+        cancel: "لغو تایمر",
+        
+        dragNotify: "در حال بررسی و تحلیل فایل‌های صوتی رها شده...",
+        dragSuccess: "قطعه جدید با موفقیت به آرشیو افزوده شد!",
+        dragError: "خطا در پردازش فایل‌های صوتی رها شده.",
+        
         genreDetected: "سبک شناسایی شده",
         smartRecommendations: "پیشنهادهای داینامیک KORAI",
         backToHome: "بازگشت به پیشخوان",
@@ -302,10 +294,9 @@ const translations = {
         noSimilarTracks: "هیچ نمایه فرکانسی مشابهی در کتابخانه یافت نشد",
         analyzingAudio: "رمزگشایی از الگوهای صوتی...",
         
-        // Genre translations
         genreBlues: "بلوز / جاز آکوستیک",
         genreClassical: "کلاسیک / ارکسترال",
-        genrePop: "پاپ باکال / ایندی",
+        genrePop: "پاپ / ایندی",
         genreDance: "الکترونیک دنس / هاوس",
         genreEDM: "کلاب EDM / ترنس",
         genreDnB: "درام اند بیس / پرانرژی",
@@ -316,7 +307,6 @@ const translations = {
         similarity: "شباهت",
         recommended: "توصیه شده",
 
-        // New Sorting & Filtering Translations
         sortByLabel: "مرتب‌سازی بر اساس:",
         sortDateAdded: "تاریخ اضافه شدن",
         sortTitle: "عنوان آهنگ",
@@ -324,8 +314,27 @@ const translations = {
         sortBpm: "ضربان (BPM)",
         sortDuration: "مدت زمان",
         allGenres: "همه سبک‌ها",
-        navAdvSearch: "جستجوی پیشرفته",
-        exportLibrary: "خروجی کتابخانه",
-        importCue: "وارد کردن CUE Sheet",
+        
+        artistsTitle: "آرتیست‌ها",
+        tracksCount: "آهنگ",
+        playingArtist: "در حال پخش",
+        backToArtists: "بازگشت به آرتیست‌ها",
+        playArtist: "پخش همه",
+        trackTitle: "عنوان",
+        albumTitle: "آلبوم",
+        actions: "عملیات",
+        
+        statsHero: "پربازدیدترین آهنگ",
+        
+        loadingMusicLibrary: "در حال بارگذاری کتابخانه موسیقی...",
+        noResultsFound: "نتیجه‌ای یافت نشد",
+        searchResults: "نتایج جستجو",
+        
+        updateAvailable: "نسخه جدید موجود است!",
+        updateLater: "یادآوری بعداً",
+        downloadNow: "دانلود الآن",
+        newVersionAvailable: "نسخه جدید KORAI Player منتشر شده است!",
+        currentVersionLabel: "نسخه فعلی",
+        newVersionLabel: "نسخه جدید"
     }
 };

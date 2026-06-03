@@ -10,7 +10,6 @@
 </head>
 <body class="theme-default rtl">
 
-    <!-- Ambient Moving Liquid Glass Blobs (Active only in Liquid Glass Theme) -->
     <div class="glass-bg-blobs-container">
         <div class="glass-blob glass-blob-1"></div>
         <div class="glass-blob glass-blob-2"></div>
@@ -18,7 +17,6 @@
         <div class="glass-blob glass-blob-4"></div>
     </div>
 
-    <!-- Splash Screen -->
     <div class="splash-screen-overlay" id="koraiSplashScreen">
         <div class="splash-loader-box">
             <div class="splash-glow-accent"></div>
@@ -32,7 +30,7 @@
                         <i class="fa-solid fa-arrow-up-right-from-musical-note"></i>
                     </a>
                 </div>
-                <p class="splash-status" data-translate="loadingText">در حال بارگذاری سیستم صوتی KORAI...</p>
+                <p class="splash-status" data-translate="loadingText">Loading KORAI Audio Core...</p>
                 <div class="splash-progress-track">
                     <div class="splash-progress-fill" id="splashProgressFill" style="width: 0%;"></div>
                 </div>
@@ -40,44 +38,41 @@
         </div>
     </div>
 
-    <!-- Welcome OOBE Screen (First Launch) -->
     <div class="welcome-screen-overlay" id="welcomeScreen" style="display: none;">
         <div class="welcome-oobe-container">
             <div class="oobe-glow-accent"></div>
             <div class="welcome-oobe-card">
                 <div class="oobe-header">
                     <i class="fa-solid fa-compact-disc spin-logo oobe-spinning-icon"></i>
-                    <h1 data-translate="welcomeOobeTitle">به KORAI Player خوش آمدید</h1>
-                    <p class="oobe-sub" data-translate="welcomeOobeSub">سیستم صوتی بومی و سینمایی طراحی شده برای علاقه‌مندان به موسیقی</p>
+                    <h1 data-translate="welcomeOobeTitle">Welcome to KORAI Stage</h1>
+                    <p class="oobe-sub" data-translate="welcomeOobeSub">Immersive local audio system designed for audiophiles</p>
                 </div>
                 
                 <div class="oobe-content-grid">
                     <div class="oobe-info-block">
                         <div class="oobe-block-title">
                             <i class="fa-solid fa-bullseye"></i>
-                            <span data-translate="welcomeOobeGoalTitle">اهداف پروژه</span>
+                            <span data-translate="welcomeOobeGoalTitle">Project Core</span>
                         </div>
                         <p data-translate="welcomeOobeGoalDesc">
-                            پلیر موسیقی زیبا، مدرن و کاملاً رایگان. ساخته شده برای ارائه امکانات بی‌پایان و خفن، 
-                            قابل استفاده روی تمام کامپیوترها بدون هیچ محدودیتی. این پروژه آماده توسعه و دستیابی به اهداف بزرگ‌تر است.
+                            A beautiful, modern, and completely free music player. Built to provide endless and powerful features, usable on all computers without any limitations. This project is ready for development and achieving greater goals.
                         </p>
                     </div>
 
                     <div class="oobe-info-block creator">
                         <div class="oobe-block-title">
                             <i class="fa-solid fa-code"></i>
-                            <span data-translate="welcomeOobeCreatorTitle">درباره سازنده</span>
+                            <span data-translate="welcomeOobeCreatorTitle">The Craft</span>
                         </div>
                         <p data-translate="welcomeOobeCreatorDesc">
-                            من بهداد کنعانی هستم، یک نوجوان برنامه‌نویس و عاشق موسیقی، هوش مصنوعی، بینایی کامپیوتر و هر چیزی که به برنامه‌نویسی و کامپیوتر ربط داشته باشد. 
-                            پروژه‌های زیادی دارم؛ برای دیدن آن‌ها به گیت‌هاب من سر بزنید.
+                            I am Behdad Kanaani, a teenage programmer and lover of music, AI, computer vision, and everything related to programming and computers. I have many projects; visit my GitHub to see them.
                         </p>
                     </div>
                 </div>
 
                 <div class="oobe-footer">
                     <button class="oobe-start-btn" id="closeOobeBtn">
-                        <span data-translate="welcomeOobeBtn">شروع ماجراجویی صوتی</span>
+                        <span data-translate="welcomeOobeBtn">Initialize Studio Core</span>
                         <i class="fa-solid fa-arrow-right"></i>
                     </button>
                 </div>
@@ -85,7 +80,6 @@
         </div>
     </div>
 
-    <!-- Custom Title Bar -->
     <div class="custom-title-bar" id="appTitleBar">
         <div class="title-bar-brand">
             <i class="fa-solid fa-compact-disc spin-logo" style="animation-duration: 6s; font-size: 0.95rem;"></i>
@@ -100,13 +94,12 @@
             </button>
         </div>
         <div class="title-bar-controls">
-            <button class="win-btn" id="winMinimizeBtn" title="Minimize"><i class="fa-solid fa-minus"></i></button>
-            <button class="win-btn" id="winMaximizeBtn" title="Maximize"><i class="fa-regular fa-square"></i></button>
-            <button class="win-btn close" id="winCloseBtn" title="Close"><i class="fa-solid fa-xmark"></i></button>
+            <button class="win-btn" id="winMinimizeBtn"><i class="fa-solid fa-minus"></i></button>
+            <button class="win-btn" id="winMaximizeBtn"><i class="fa-regular fa-square"></i></button>
+            <button class="win-btn close" id="winCloseBtn"><i class="fa-solid fa-xmark"></i></button>
         </div>
     </div>
 
-    <!-- Mini-player Floating Card -->
     <div class="miniplayer-floating-card" id="miniplayerCard" style="display: none;">
         <div class="miniplayer-glass-content">
             <div class="mini-art-box" id="miniArt">
@@ -130,49 +123,45 @@
         </div>
     </div>
 
-    <!-- Main App Container -->
     <div class="korai-app-container" id="appContainer" style="opacity: 0; transition: opacity 0.8s ease;">
         
-        <!-- Sidebar -->
         <aside class="spotify-sidebar">
             <div class="app-logo">
                 <i class="fa-solid fa-compact-disc spin-logo" style="animation-duration: 6s;"></i>
                 <span>KORAI</span>
                 <div class="skin-selector-pill" id="skinSelector">
-                    <button class="skin-btn active" data-skin="default" title="Spotify Dark"><i class="fa-solid fa-circle"></i></button>
-                    <button class="skin-btn" data-skin="liquid-glass" title="Liquid Glass"><i class="fa-solid fa-snowflake"></i></button>
+                    <button class="skin-btn active" data-skin="default"><i class="fa-solid fa-circle"></i></button>
+                    <button class="skin-btn" data-skin="liquid-glass"><i class="fa-solid fa-snowflake"></i></button>
                 </div>
             </div>
 
-            <!-- Main Navigation -->
             <nav class="sidebar-nav">
                 <div class="nav-item" id="navHome" onclick="switchSection('home')">
                     <i class="fa-solid fa-house"></i>
-                    <span id="navHomeText" data-translate="navHomeText">صفحه اصلی</span>
+                    <span id="navHomeText" data-translate="navHomeText">Home</span>
                 </div>
                 <div class="nav-item" id="navLibrary" onclick="switchSection('library')">
                     <i class="fa-solid fa-music"></i>
-                    <span id="navLibText" data-translate="navLibText">کتابخانه من</span>
+                    <span id="navLibText" data-translate="navLibText">My Library</span>
                 </div>
                 <div class="nav-item" id="navArtists" onclick="switchSection('artists')">
                     <i class="fa-solid fa-microphone"></i>
-                    <span id="navArtistsText" data-translate="navArtistsText">آرتیست‌ها</span>
+                    <span id="navArtistsText" data-translate="navArtistsText">Artists</span>
                 </div>
                 <div class="nav-item" id="navFavorites" onclick="switchSection('favorites')">
                     <i class="fa-solid fa-heart"></i>
-                    <span id="navFavText" data-translate="navFavText">مورد علاقه‌ها</span>
+                    <span id="navFavText" data-translate="navFavText">Favorites</span>
                 </div>
                 <div class="nav-item" id="navStats" onclick="switchSection('stats')">
                     <i class="fa-solid fa-chart-simple"></i>
-                    <span id="navStatsText" data-translate="navStatsText">تله‌متری زنده</span>
+                    <span id="navStatsText" data-translate="navStatsText">Live Telemetry</span>
                 </div>
                 <div class="nav-item" id="navAdvancedSearch" onclick="openAdvancedSearch()">
                     <i class="fa-solid fa-magnifying-glass-plus"></i>
-                    <span data-translate="navAdvSearch">جستجوی پیشرفته</span>
+                    <span data-translate="navAdvSearch">Advanced Search</span>
                 </div>
             </nav>
 
-            <!-- AI Recommendation Panel -->
             <div class="ai-recommendation-panel">
                 <div class="ai-header-small">
                     <i class="fa-solid fa-wand-magic-sparkles"></i>
@@ -197,73 +186,56 @@
                 </button>
             </div>
 
-            <!-- Playlists Section -->
             <div class="playlists-sidebar-section">
                 <div class="playlists-header">
-                    <span data-translate="menuTitle">لیست‌های پخش</span>
-                    <button class="create-playlist-btn" onclick="promptCreatePlaylist()" title="Create Playlist">
-                        <i class="fa-solid fa-plus"></i>
-                    </button>
+                    <span data-translate="menuTitle">Playlists Library</span>
+                    <button class="create-playlist-btn" onclick="promptCreatePlaylist()"><i class="fa-solid fa-plus"></i></button>
                 </div>
                 <div class="playlists-scroll-list" id="sidebarPlaylists"></div>
             </div>
 
-            <!-- Import Options -->
             <div class="sidebar-footer-controls">
                 <div class="upload-music-trigger" id="uploadArea">
-                    <div class="upload-icon-box">
-                        <i class="fa-solid fa-plus"></i>
-                    </div>
+                    <div class="upload-icon-box"><i class="fa-solid fa-plus"></i></div>
                     <div class="upload-text-box">
-                        <span id="upTextTitle" data-translate="upTextTitle">افزودن موسیقی جدید</span>
-                        <small id="upTextSub" data-translate="upTextSub">فایل صوتی تکی</small>
+                        <span id="upTextTitle" data-translate="upTextTitle">Import Audio File</span>
+                        <small id="upTextSub" data-translate="upTextSub">Add single local track</small>
                     </div>
                 </div>
                 <div class="upload-music-trigger" id="uploadFolderArea" style="margin-top: 8px;">
-                    <div class="upload-icon-box">
-                        <i class="fa-solid fa-folder-open"></i>
-                    </div>
+                    <div class="upload-icon-box"><i class="fa-solid fa-folder-open"></i></div>
                     <div class="upload-text-box">
-                        <span id="upFolderTitle" data-translate="upFolderTitle">اسکن کامل پوشه</span>
-                        <small id="upFolderSub" data-translate="upFolderSub">بارگذاری خودکار گروهی</small>
+                        <span id="upFolderTitle" data-translate="upFolderTitle">Scan Audio Folder</span>
+                        <small id="upFolderSub" data-translate="upFolderSub">Bulk import entire directory</small>
                     </div>
                 </div>
                 <div class="upload-music-trigger online-download" onclick="promptDownloadFromUrl()" style="margin-top: 8px;">
-                    <div class="upload-icon-box">
-                        <i class="fa-solid fa-cloud-arrow-down"></i>
-                    </div>
+                    <div class="upload-icon-box"><i class="fa-solid fa-cloud-arrow-down"></i></div>
                     <div class="upload-text-box">
-                        <span id="upUrlTitle" data-translate="upUrlTitle">دانلود مستقیم از لینک</span>
-                        <small id="upUrlSub" data-translate="upUrlSub">لینک مستقیم MP3</small>
+                        <span id="upUrlTitle" data-translate="upUrlTitle">Stream from Link</span>
+                        <small id="upUrlSub" data-translate="upUrlSub">Direct URL capture</small>
                     </div>
                 </div>
             </div>
         </aside>
 
-        <!-- Main Content Panel -->
         <main class="spotify-main-panel">
             <header class="main-header-bar">
                 <div class="search-wrapper">
                     <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                    <input type="text" id="searchInput" data-translate-placeholder="searchPlaceholder" placeholder="جستجوی آهنگ...">
+                    <input type="text" id="searchInput" data-translate-placeholder="searchPlaceholder" placeholder="Search songs, artists, albums...">
                     <span class="search-shortcut">Ctrl + K</span>
                 </div>
                 
                 <div class="profile-header-widget">
-                    <button class="utility-trigger-btn" id="queueBtn" title="Play Queue">
-                        <i class="fa-solid fa-list-ol"></i>
-                    </button>
-                    <button class="utility-trigger-btn" id="miniplayerToggleBtn" title="Mini-player Mode">
-                        <i class="fa-solid fa-compress"></i>
-                    </button>
-                    <button class="utility-trigger-btn" id="dspToggleBtn" title="DSP Studio (EQ & Speed)">
-                        <i class="fa-solid fa-sliders"></i>
-                    </button>
-                    <div class="quick-counter" title="Total Tracks">
+                    <button class="utility-trigger-btn" id="queueBtn"><i class="fa-solid fa-list-ol"></i></button>
+                    <button class="utility-trigger-btn" id="miniplayerToggleBtn"><i class="fa-solid fa-compress"></i></button>
+                    <button class="utility-trigger-btn" id="dspToggleBtn"><i class="fa-solid fa-sliders"></i></button>
+                    <div class="quick-counter">
                         <i class="fa-solid fa-music"></i>
                         <span id="quickTotalTracks">0</span>
                     </div>
-                    <div class="quick-counter liked" title="Liked Tracks">
+                    <div class="quick-counter liked">
                         <i class="fa-solid fa-heart"></i>
                         <span id="quickTotalLikes">0</span>
                     </div>
@@ -278,14 +250,13 @@
                 <div id="dynamicSectionContainer">
                     <div class="loading-state-placeholder">
                         <i class="fa-solid fa-circle-notch fa-spin"></i>
-                        <p id="loadingText" data-translate="loadingText">در حال بارگذاری کتابخانه صوتی KORAI...</p>
+                        <p id="loadingText" data-translate="loadingText">Loading KORAI audio library...</p>
                     </div>
                 </div>
             </div>
         </main>
     </div>
 
-    <!-- Premium Playback Bar -->
     <footer class="premium-playback-bar" id="playbackBar" style="opacity: 0; transition: opacity 0.8s ease;">
         <div class="player-left-song-info">
             <div class="song-cover-frame" id="playerAlbumArt">
@@ -302,21 +273,11 @@
 
         <div class="player-center-controls">
             <div class="playback-buttons-row">
-                <button class="playback-utility-btn" id="shuffleBtnK" title="Shuffle">
-                    <i class="fa-solid fa-shuffle"></i>
-                </button>
-                <button class="playback-step-btn" id="prevBtnK">
-                    <i class="fa-solid fa-backward-step"></i>
-                </button>
-                <button class="playback-play-main" id="mainPlayBtn">
-                    <i class="fa-solid fa-play" id="mainPlayIcon"></i>
-                </button>
-                <button class="playback-step-btn" id="nextBtnK">
-                    <i class="fa-solid fa-forward-step"></i>
-                </button>
-                <button class="playback-utility-btn" id="repeatBtnK" title="Repeat">
-                    <i class="fa-solid fa-repeat"></i>
-                </button>
+                <button class="playback-utility-btn" id="shuffleBtnK"><i class="fa-solid fa-shuffle"></i></button>
+                <button class="playback-step-btn" id="prevBtnK"><i class="fa-solid fa-backward-step"></i></button>
+                <button class="playback-play-main" id="mainPlayBtn"><i class="fa-solid fa-play" id="mainPlayIcon"></i></button>
+                <button class="playback-step-btn" id="nextBtnK"><i class="fa-solid fa-forward-step"></i></button>
+                <button class="playback-utility-btn" id="repeatBtnK"><i class="fa-solid fa-repeat"></i></button>
             </div>
 
             <div class="playback-timeline-wrapper">
@@ -330,63 +291,44 @@
 
         <div class="player-right-utilities">
             <div class="volume-widget">
-                <button class="volume-mute-toggle" id="volumeIcon">
-                    <i class="fa-solid fa-volume-high"></i>
-                </button>
+                <button class="volume-mute-toggle" id="volumeIcon"><i class="fa-solid fa-volume-high"></i></button>
                 <div class="volume-slider-bg">
                     <input type="range" class="volume-input-range" id="volumeSlider" min="0" max="1" step="0.01" value="0.7">
                 </div>
             </div>
-            <button class="utility-trigger-btn expand" id="fullscreenBtn" title="Fullscreen">
-                <i class="fa-solid fa-maximize"></i>
-            </button>
+            <button class="utility-trigger-btn expand" id="fullscreenBtn"><i class="fa-solid fa-maximize"></i></button>
         </div>
     </footer>
 
-    <!-- Context Menu -->
     <div class="context-menu" id="playlistContextMenu" style="display: none;">
-        <div class="context-header" data-translate="playlistModalTitle">افزودن به لیست پخش</div>
+        <div class="context-header" data-translate="playlistModalTitle">Add to Playlist</div>
         <div class="context-items-list" id="contextPlaylistItems"></div>
     </div>
 
-    <!-- Queue Drawer -->
     <div class="queue-drawer-panel" id="queuePanel">
         <div class="queue-drawer-header">
-            <h3><i class="fa-solid fa-list-ul"></i> <span id="queuePanelTitle" data-translate="queuePanelTitle">صف پخش فعلی</span></h3>
-            <button class="close-drawer-btn" id="closeQueueBtn">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
+            <h3><i class="fa-solid fa-list-ul"></i> <span id="queuePanelTitle" data-translate="queuePanelTitle">Active Play Queue</span></h3>
+            <button class="close-drawer-btn" id="closeQueueBtn"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div class="queue-drawer-list" id="queueList"></div>
     </div>
 
-    <!-- Fullscreen Immersive Player -->
     <div class="fullscreen-immersive-player" id="fullscreenPlayer">
         <div class="immersive-ambient-blur-bg" id="fsBgBlur"></div>
         <header class="immersive-header">
-            <div class="brand-badge-fs">
-                <span>KORAI CINEMATIC STAGE</span>
-            </div>
-            <button class="exit-immersive-btn" id="fsCloseBtn">
-                <i class="fa-solid fa-compress"></i> <span id="fsExitText" data-translate="fsExitText">خروج از تمام‌صفحه</span>
-            </button>
+            <div class="brand-badge-fs"><span>KORAI CINEMATIC STAGE</span></div>
+            <button class="exit-immersive-btn" id="fsCloseBtn"><i class="fa-solid fa-compress"></i> <span id="fsExitText" data-translate="fsExitText">Exit Immersive Stage</span></button>
         </header>
 
         <div class="immersive-layout-grid">
             <div class="immersive-art-column">
                 <div class="immersive-vinyl-case">
                     <div class="vinyl-light-reflection"></div>
-                    <div class="immersive-vinyl-disc" id="fsAlbumArt">
-                        <i class="fa-solid fa-music"></i>
-                    </div>
+                    <div class="immersive-vinyl-disc" id="fsAlbumArt"><i class="fa-solid fa-music"></i></div>
                 </div>
                 <div class="immersive-track-badges">
-                    <span class="track-badge-pill" id="fsBpmBadge">
-                        <i class="fa-solid fa-heartbeat"></i> -- BPM
-                    </span>
-                    <span class="track-badge-pill energy" id="fsEnergyBadge">
-                        <i class="fa-solid fa-bolt"></i> -- Energy
-                    </span>
+                    <span class="track-badge-pill" id="fsBpmBadge"><i class="fa-solid fa-heartbeat"></i> -- BPM</span>
+                    <span class="track-badge-pill energy" id="fsEnergyBadge"><i class="fa-solid fa-bolt"></i> -- Energy</span>
                 </div>
             </div>
 
@@ -415,41 +357,38 @@
         </div>
     </div>
 
-    <!-- Create Playlist Modal -->
     <div class="custom-modal-overlay" id="createPlaylistModal" style="display: none;">
         <div class="custom-modal-card">
             <div class="modal-indicator-header">
                 <i class="fa-solid fa-folder-plus" style="color: var(--accent-cyan);"></i>
-                <h4 id="playlistModalTitle" data-translate="playlistModalTitle">ایجاد لیست پخش جدید</h4>
+                <h4 id="playlistModalTitle" data-translate="playlistModalTitle">Create New Playlist</h4>
             </div>
             <div class="modal-body-content" style="margin: 20px 0;">
-                <input type="text" id="newPlaylistInputName" data-translate-placeholder="playlistPlaceholder" placeholder="نام پلی‌لیست را وارد کنید...">
+                <input type="text" id="newPlaylistInputName" data-translate-placeholder="playlistPlaceholder" placeholder="Enter playlist name...">
             </div>
             <div class="modal-buttons-footer">
-                <button class="modal-btn cancel" onclick="closeCreatePlaylistModal()" data-translate="dialogCancel">انصراف</button>
-                <button class="modal-btn confirm" id="confirmPlaylistCreateBtn" data-translate="createPlaylist">ایجاد پلی‌لیست</button>
+                <button class="modal-btn cancel" onclick="closeCreatePlaylistModal()" data-translate="dialogCancel">Cancel</button>
+                <button class="modal-btn confirm" id="confirmPlaylistCreateBtn" data-translate="createPlaylist">Create Playlist</button>
             </div>
         </div>
     </div>
 
-    <!-- Download URL Modal -->
     <div class="custom-modal-overlay" id="downloadUrlModal" style="display: none;">
         <div class="custom-modal-card">
             <div class="modal-indicator-header">
                 <i class="fa-solid fa-cloud-arrow-down" style="color: var(--accent-cyan);"></i>
-                <h4 id="downloadModalTitle" data-translate="downloadModalTitle">بارگیری مستقیم از لینک</h4>
+                <h4 id="downloadModalTitle" data-translate="downloadModalTitle">Download MP3 from Link</h4>
             </div>
             <div class="modal-body-content" style="margin: 20px 0;">
-                <input type="url" id="downloadUrlInput" data-translate-placeholder="downloadPlaceholder" placeholder="آدرس مستقیم فایل MP3 را اینجا وارد کنید...">
+                <input type="url" id="downloadUrlInput" data-translate-placeholder="downloadPlaceholder" placeholder="Paste direct audio stream URL here...">
             </div>
             <div class="modal-buttons-footer">
-                <button class="modal-btn cancel" onclick="closeDownloadUrlModal()" data-translate="dialogCancel">انصراف</button>
-                <button class="modal-btn confirm" id="confirmDownloadBtn" style="background: var(--accent-cyan); color: #000;" data-translate="downloadBtn">دانلود و افزودن</button>
+                <button class="modal-btn cancel" onclick="closeDownloadUrlModal()" data-translate="dialogCancel">Cancel</button>
+                <button class="modal-btn confirm" id="confirmDownloadBtn" style="background: var(--accent-cyan); color: #000;" data-translate="downloadBtn">Download & Import</button>
             </div>
         </div>
     </div>
 
-    <!-- General Dialog Modal -->
     <div class="custom-modal-overlay" id="dialogOverlay" style="display: none;">
         <div class="custom-modal-card">
             <div class="modal-indicator-header">
@@ -458,19 +397,16 @@
             </div>
             <p class="modal-body-text" id="dialogMessage">Are you sure you want to proceed?</p>
             <div class="modal-buttons-footer">
-                <button class="modal-btn cancel" id="dialogCancelBtn" data-translate="dialogCancel">انصراف</button>
-                <button class="modal-btn confirm" id="dialogConfirmBtn" data-translate="dialogConfirm">تایید</button>
+                <button class="modal-btn cancel" id="dialogCancelBtn" data-translate="dialogCancel">Cancel</button>
+                <button class="modal-btn confirm" id="dialogConfirmBtn" data-translate="dialogConfirm">Confirm</button>
             </div>
         </div>
     </div>
 
-    <!-- DSP Studio Drawer -->
     <div class="dsp-drawer-panel" id="dspPanel">
         <div class="dsp-drawer-header">
             <h3><i class="fa-solid fa-sliders"></i> <span>DSP Studio</span></h3>
-            <button class="close-drawer-btn" id="closeDspBtn">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
+            <button class="close-drawer-btn" id="closeDspBtn"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div class="dsp-drawer-content">
             <div class="dsp-control-group">
@@ -482,40 +418,61 @@
             </div>
             
             <div class="dsp-control-group flex-row-align">
-                <span style="font-size:0.75rem; color:var(--spotify-text-muted);" data-translate="dspPreservePitch">حفظ گام صدا (Preserve Pitch):</span>
+                <span style="font-size:0.75rem; color:var(--spotify-text-muted);" data-translate="dspPreservePitch">Preserve Pitch:</span>
                 <label class="switch">
                     <input type="checkbox" id="pitchToggle" checked>
                     <span class="switch-slider"></span>
                 </label>
             </div>
 
-            <div class="dsp-control-group flex-row-align divider-bottom">
-                <span style="font-size:0.75rem; color:var(--spotify-text-muted);" data-translate="karaokeMode">حالت کارائوکه (حذف صدای خواننده):</span>
+            <div class="dsp-control-group divider-bottom">
+                <span style="font-size:0.75rem; color:var(--spotify-text-muted);" data-translate="vocalSeparatorMode">Vocal Separator (Remove Vocals):</span>
                 <label class="switch">
-                    <input type="checkbox" id="karaokeToggle">
+                    <input type="checkbox" id="vocalSeparatorToggle">
                     <span class="switch-slider"></span>
                 </label>
             </div>
 
+            <div id="vocalSeparatorAdvancedControls" style="display: none; margin-top: 12px;">
+                <div class="dsp-control-group">
+                    <label class="dsp-label-display">
+                        <span><i class="fa-solid fa-microphone-slash"></i> Vocal Removal Intensity:</span>
+                        <strong id="vocalRemovalIntensityVal" style="color: var(--accent-cyan);">85%</strong>
+                    </label>
+                    <input type="range" id="vocalRemovalIntensitySlider" min="0" max="1" step="0.01" value="0.85" class="dsp-slider-track">
+                </div>
+                
+                <div class="dsp-control-group">
+                    <label class="dsp-label-display">
+                        <span><i class="fa-solid fa-waveform"></i> Detection Sensitivity:</span>
+                        <strong id="vocalDetectionSensitivityVal" style="color: var(--accent-cyan);">0.12</strong>
+                    </label>
+                    <input type="range" id="vocalDetectionSensitivitySlider" min="0.03" max="0.3" step="0.005" value="0.12" class="dsp-slider-track">
+                    <p style="font-size: 0.6rem; color: var(--spotify-text-muted); margin-top: 6px;">
+                        Lower = more aggressive vocal removal, Higher = preserves more instruments
+                    </p>
+                </div>
+            </div>
+
             <div class="dsp-control-group divider-bottom">
-    <label class="dsp-label-display">
-        <span>Gapless Playback:</span>
-        <label class="switch">
-            <input type="checkbox" id="gaplessToggle" ${gaplessEnabled ? 'checked' : ''}>
-            <span class="switch-slider"></span>
-        </label>
-    </label>
-</div>
+                <label class="dsp-label-display">
+                    <span>Gapless Playback:</span>
+                    <label class="switch">
+                        <input type="checkbox" id="gaplessToggle" checked>
+                        <span class="switch-slider"></span>
+                    </label>
+                </label>
+            </div>
 
-<div class="dsp-control-group">
-    <label class="dsp-label-display">
-        <span>Crossfade Duration:</span>
-        <strong id="crossfadeVal" style="color: var(--accent-cyan);">${crossfadeDuration}s</strong>
-    </label>
-    <input type="range" id="crossfadeSlider" min="0" max="12" step="0.5" value="${crossfadeDuration}" class="dsp-slider-track">
-</div>
+            <div class="dsp-control-group">
+                <label class="dsp-label-display">
+                    <span>Crossfade Duration:</span>
+                    <strong id="crossfadeVal" style="color: var(--accent-cyan);">0s</strong>
+                </label>
+                <input type="range" id="crossfadeSlider" min="0" max="12" step="0.5" value="0" class="dsp-slider-track">
+            </div>
 
-            <div class="eq-title" data-translate="dspTitle">اکولایزر گرافیکی استودیویی</div>
+            <div class="eq-title" data-translate="dspTitle">Graphic Studio Equalizer</div>
             <div class="eq-grid">
                 <div class="eq-slider-col">
                     <span class="eq-val" id="eqVal0">0dB</span>
@@ -545,9 +502,7 @@
             </div>
         </div>
     </div>
-    
 
-    <!-- SVG Filter for Liquid Glass effect -->
     <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute; overflow:hidden; visibility: hidden;">
         <defs>
             <filter id="glass-distortion" x="-20%" y="-20%" width="140%" height="140%">

@@ -11,7 +11,7 @@ const http = require('http');
 const https = require('https');
 const { URL } = require('url');
 const { initDatabase, getDb } = require('./database');
-const { analyzeAudioFile } = require('./analyzer');
+const { analyzeAudioFile, cosineSimilarity } = require('./analyzer');
 const { 
     getPersonalizedRecommendations, 
     updateUserHistory, 
@@ -526,6 +526,82 @@ function setupRoutes() {
             
             res.json({ recommendations: safeRecs });
         } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // =========================================================================
+    // CREATE SIMILAR PLAYLIST FROM TRACK (AI)
+    // =========================================================================
+
+    app.post('/api/playlists/similar', (req, res) => {
+        try {
+            const db = getDb();
+            const { trackId } = req.body;
+            
+            const sourceTrack = db.getTrackById(parseInt(trackId));
+            if (!sourceTrack) {
+                return res.status(404).json({ error: 'Track not found' });
+            }
+            
+            const allTracks = db.getAllTracks();
+            const otherTracks = allTracks.filter(t => t.id !== sourceTrack.id);
+            
+            if (otherTracks.length === 0) {
+                return res.json({ success: false, message: 'No other tracks in library' });
+            }
+            
+            // Calculate similarity scores
+            const scored = otherTracks.map(track => {
+                let similarity = 0;
+                
+                // Feature-based similarity if available
+                if (sourceTrack.featureVector && track.featureVector) {
+                    similarity = cosineSimilarity(sourceTrack.featureVector, track.featureVector);
+                } else {
+                    // Fallback to BPM + energy
+                    const bpmSim = 1 - Math.abs((sourceTrack.bpm - track.bpm) / 160);
+                    const energySim = 1 - Math.abs((sourceTrack.energy - track.energy));
+                    similarity = (bpmSim * 0.6) + (energySim * 0.4);
+                }
+                
+                // Genre boost
+                if (sourceTrack.genre && track.genre && sourceTrack.genre === track.genre && similarity > 0) {
+                    similarity = Math.min(0.95, similarity + 0.12);
+                }
+                
+                return { track, similarity };
+            });
+            
+            // Filter and sort
+            const similarTracks = scored
+                .filter(item => item.similarity > 0.2)
+                .sort((a, b) => b.similarity - a.similarity)
+                .slice(0, 30)
+                .map(item => item.track);
+            
+            if (similarTracks.length === 0) {
+                return res.json({ success: false, message: 'No similar tracks found' });
+            }
+            
+            // Create playlist
+            const shortTitle = sourceTrack.title ? sourceTrack.title.substring(0, 30) : 'Track';
+            const playlistName = `Similar to ${shortTitle}`;
+            const newPlaylist = db.createPlaylist(playlistName);
+            
+            // Add tracks to playlist
+            for (const track of similarTracks) {
+                db.addTrackToPlaylist(newPlaylist.id, track.id);
+            }
+            
+            res.json({
+                success: true,
+                playlist: newPlaylist,
+                trackCount: similarTracks.length
+            });
+            
+        } catch (error) {
+            console.error('Create similar playlist error:', error);
             res.status(500).json({ error: error.message });
         }
     });

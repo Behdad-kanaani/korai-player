@@ -1,5 +1,16 @@
 const translations = {
     en: {
+        welcomeEarlyMorning: "☀️ Rise & shine! Ready for some fresh beats?",
+        welcomeMorningPeak: "🌅 Good morning! Your morning energy is peaking",
+        welcomeLateMorning: "🎵 Morning vibes! Time for your daily soundtrack",
+        welcomeNoon: "🌤️ Good noon! Lunch break melodies?",
+        welcomeAfternoon: "☕ Good afternoon! Keep the rhythm flowing",
+        welcomeEarlyEvening: "🌆 Good evening! Wind down with some tunes",
+        welcomeEvening: "✨ Good evening! Your musical journey continues",
+        welcomeLateNight: "🌙 Late night session? Let the music speak",
+        welcomeMidnight: "🕛 Midnight melodies... find your peace",
+        welcomeDeepNight: "⭐ Deep night vibes... just you and the music",
+
         navArtistsText: "Artists",
         githubBtnText: "Star on GitHub",
         profileName: "KORAI Personal Space",
@@ -45,6 +56,15 @@ const translations = {
         statsHero: "Most Played Masterpiece",
         totalTracksLabel: "Total Loaded Tracks",
         totalPlaysLabel: "Cumulative Playbacks",
+        noTrackPlaying: "No track playing",
+        extractionInProgress: "Extraction already in progress",
+        preparingExtraction: "Preparing vocal extraction...",
+        extractingVocal: "Separating vocals...",
+        addingToLibrary: "Adding to library...",
+        extractionComplete: "Extraction complete!",
+        vocalTrackAdded: "Vocal track added",
+        extractionNoTrack: "Track added but could not play automatically",
+        extractionFailed: "Extraction failed",
         popularLabel: "Loved Tracks",
         topTrackLabel: "Your top music based on execution telemetry",
         liveSpectrumLabel: "Live Spectrum Telemetry Analyzer",
@@ -169,6 +189,17 @@ const translations = {
         newVersionLabel: "New version"
     },
     fa: {
+        welcomeEarlyMorning: "☀️ طلوع کردی؟ وقت آهنگ‌های پرانرژیه!",
+        welcomeMorningPeak: "🌅 صبح بخیر! انرژی صبحت توی اوجشه",
+        welcomeLateMorning: "🎵 حوالی ظهر! وقت یه آهنگ خوبه",
+        welcomeNoon: "🌤️ ظهر بخیر! با موسیقی ناهار رو مزه‌دار کن",
+        welcomeAfternoon: "☕ عصر بخیر! ریتم رو حفظ کن",
+        welcomeEarlyEarlyEvening: "🌆 عصر بهاره! با موسیقی آروم بگیر",
+        welcomeEvening: "✨ شب بخیر! سفر موسیقیت ادامه داره",
+        welcomeLateNight: "🌙 پاسی از شب... بذار موسیقی حرف بزنه",
+        welcomeMidnight: "🕛 نیمه‌شب‌ها... آرامش رو با نت‌ها پیدا کن",
+        welcomeDeepNight: "⭐ سحرگاهه... فقط تو و موسیقی",
+        
         navArtistsText: "آرتیست‌ها",
         githubBtnText: "ستاره در گیت‌هاب",
         profileName: "کتابخانه شخصی KORAI",
@@ -335,6 +366,15 @@ const translations = {
         downloadNow: "دانلود الآن",
         newVersionAvailable: "نسخه جدید KORAI Player منتشر شده است!",
         currentVersionLabel: "نسخه فعلی",
-        newVersionLabel: "نسخه جدید"
+        newVersionLabel: "نسخه جدید",
+        noTrackPlaying: "هیچ آهنگی در حال پخش نیست",
+        extractionInProgress: "استخراج در حال انجام است",
+        preparingExtraction: "آماده‌سازی برای استخراج...",
+        extractingVocal: "در حال جدا سازی صدای خواننده...",
+        addingToLibrary: "افزودن به کتابخانه...",
+        extractionComplete: "استخراج کامل شد!",
+        vocalTrackAdded: "آهنگ صدا اضافه شد",
+        extractionNoTrack: "آهنگ اضافه شد اما پخش خودکار انجام نشد",
+        extractionFailed: "خطا در استخراج"
     }
 };

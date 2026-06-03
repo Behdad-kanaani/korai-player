@@ -46,6 +46,8 @@ let lastPlaySource = {
     sourceId: null,
     sourceTracks: null
 };
+let wasVocalSeparatorActive = false;
+let reconnectAudioGraph = null; 
 
 // Filtering & Sorting Library states
 let librarySortKey = 'createdAt';
@@ -442,8 +444,10 @@ function togglePlay() {
     
     if (isPlaying) {
         audioElement.pause();
+        document.body.classList.add('playing');
         setPlayState(false);
     } else {
+        document.body.classList.remove('playing');
         if (typeof setupAudioNodes === 'function') setupAudioNodes();
         if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
         audioElement.play()
@@ -1895,9 +1899,7 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
         initAudio();
         setupAudioNodes();
         
-        // If karaoke mode was active, we need to reconnect the graph after source creation
-        const wasVocalSeparatorActive = vocalSeparatorMode;
-        
+        // If karaoke mode was active, we need to reconnect the graph after source creation        
         if (audioCtx && audioCtx.state === 'suspended') await audioCtx.resume();
         
         const streamUrl = `http://127.0.0.1:${apiPort}/api/tracks/${trackId}/stream`;
@@ -2162,10 +2164,37 @@ function renderFavorites() {
 function getWelcomeMessage() {
     const now = new Date();
     const hour = now.getHours();
-    if (hour >= 5 && hour < 12) return t('welcomeMorning');
-    else if (hour >= 12 && hour < 17) return t('welcomeAfternoon');
-    else if (hour >= 17 && hour < 22) return t('welcomeEvening');
-    else return t('welcomeEvening');
+    
+    // Get user's name from system or use default
+    let userName = '';
+    if (window.electronAPI && typeof window.electronAPI.getSystemUser === 'function') {
+        userName = window.electronAPI.getSystemUser() || '';
+    }
+    
+    const greeting = userName ? `${userName}, ` : '';
+    
+    // Morning 5:00 - 11:59
+    if (hour >= 5 && hour < 12) {
+        if (hour < 8) return t('welcomeEarlyMorning');
+        if (hour < 10) return t('welcomeMorningPeak');
+        return t('welcomeLateMorning');
+    }
+    // Afternoon 12:00 - 16:59
+    else if (hour >= 12 && hour < 17) {
+        if (hour < 14) return t('welcomeNoon');
+        return t('welcomeAfternoon');
+    }
+    // Evening 17:00 - 20:59
+    else if (hour >= 17 && hour < 21) {
+        if (hour < 19) return t('welcomeEarlyEvening');
+        return t('welcomeEvening');
+    }
+    // Night 21:00 - 4:59
+    else {
+        if (hour < 23) return t('welcomeLateNight');
+        if (hour < 2) return t('welcomeMidnight');
+        return t('welcomeDeepNight');
+    }
 }
 
 function getTopPlayedTracks(limit = 6) {
@@ -2600,30 +2629,16 @@ function setupEventListeners() {
     const pitchToggle = document.getElementById('pitchToggle');
     if (pitchToggle) pitchToggle.addEventListener('change', (e) => { togglePitchPreservation(e.target.checked); });
 
-    // Karaoke toggle - functions from additional.js
-    const vocalSeparatorToggle = document.getElementById('vocalSeparatorToggle');
-    const vocalSeparatorAdvancedControls = document.getElementById('vocalSeparatorAdvancedControls');
-    if (vocalSeparatorToggle) {
-        vocalSeparatorToggle.addEventListener('change', async (e) => {
-            if (typeof toggleVocalSeparator === 'function') {
-                await toggleVocalSeparator();
-            }
-            if (vocalSeparatorAdvancedControls) vocalSeparatorAdvancedControls.style.display = e.target.checked ? 'block' : 'none';
-        });
+    // NEW: Song Info button
+    const songInfoBtn = document.getElementById('songInfoBtn');
+    if (songInfoBtn) {
+        songInfoBtn.addEventListener('click', showSongInfo);
     }
 
-    const vocalRemovalIntensitySlider = document.getElementById('vocalRemovalIntensitySlider');
-    if (vocalRemovalIntensitySlider) {
-        vocalRemovalIntensitySlider.addEventListener('input', (e) => {
-            if (typeof setVocalRemovalIntensity === 'function') setVocalRemovalIntensity(e.target.value);
-        });
-    }
-
-    const vocalDetectionSensitivitySlider = document.getElementById('vocalDetectionSensitivitySlider');
-    if (vocalDetectionSensitivitySlider) {
-        vocalDetectionSensitivitySlider.addEventListener('input', (e) => {
-            if (typeof setVocalDetectionSensitivity === 'function') setVocalDetectionSensitivity(e.target.value);
-        });
+    // NEW: Extract vocal button inside modal
+    const extractVocalBtn = document.getElementById('extractVocalBtn');
+    if (extractVocalBtn) {
+        extractVocalBtn.addEventListener('click', extractVocalFromCurrentTrack);
     }
 
     setupDragAndDrop();

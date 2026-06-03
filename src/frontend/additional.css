@@ -172,3 +172,368 @@ body.ltr .version-status-badge {
     opacity: 0.6;
     cursor: default;
 }
+
+/* ==========================================================================
+   MODERN SONG INFO - PREMIUM REDESIGN
+   ========================================================================== */
+
+.player-left-song-info {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    width: 28%;
+    min-width: 260px;
+    position: relative;
+    transition: all 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+}
+
+/* ========== COVER FRAME (3D + GLOW) ========== */
+.song-cover-frame {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, var(--spotify-grey) 0%, var(--bg-black) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+    transition: all 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.2);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    cursor: pointer;
+}
+
+.song-cover-frame::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, transparent 0%, rgba(255, 255, 255, 0.08) 50%, transparent 100%);
+    pointer-events: none;
+}
+
+.song-cover-frame:hover {
+    transform: scale(1.05) translateY(-2px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4), 0 0 0 2px var(--accent-cyan);
+    border-radius: 20px;
+}
+
+.cover-glow-effect {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 30% 20%, var(--accent-cyan) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+.song-cover-frame:hover .cover-glow-effect {
+    opacity: 0.25;
+}
+
+.song-cover-frame img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.5s ease;
+}
+
+.song-cover-frame:hover img {
+    transform: scale(1.08);
+}
+
+.song-cover-frame .fallback-icon {
+    font-size: 1.8rem;
+    color: var(--accent-cyan);
+    text-shadow: 0 0 10px var(--accent-glow);
+}
+
+/* ========== MODERN METADATA SECTION ========== */
+.song-metadata-modern {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    position: relative;
+}
+
+/* Header with live indicator and bitrate */
+.metadata-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 2px;
+}
+
+.live-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: linear-gradient(135deg, #ff3366 0%, #ff6b3d 100%);
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    color: #fff;
+    text-transform: uppercase;
+    box-shadow: 0 2px 8px rgba(255, 51, 102, 0.3);
+    animation: pulseLive 1.5s ease-in-out infinite;
+}
+
+@keyframes pulseLive {
+    0%, 100% { opacity: 0.9; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.02); text-shadow: 0 0 4px rgba(255,255,255,0.5); }
+}
+
+.live-indicator i {
+    font-size: 0.5rem;
+}
+
+.bitrate-badge {
+    font-size: 0.55rem;
+    font-weight: 700;
+    color: var(--spotify-text-muted);
+    background: rgba(255, 255, 255, 0.06);
+    padding: 2px 10px;
+    border-radius: 20px;
+    letter-spacing: 0.3px;
+    font-family: monospace;
+    border: 1px solid var(--border-color);
+}
+
+/* Song title with marquee animation */
+.song-title-wrapper {
+    width: 100%;
+    overflow: hidden;
+}
+
+.song-title-marquee {
+    font-size: 0.9rem;
+    font-weight: 800;
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    position: relative;
+}
+
+.song-title-marquee .marquee-content {
+    display: inline-block;
+    animation: marqueeText 12s linear infinite;
+    padding-left: 100%;
+}
+
+.song-title-marquee:hover .marquee-content {
+    animation-play-state: paused;
+}
+
+@keyframes marqueeText {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-100%); }
+}
+
+/* Artist with marquee (slower, different direction feel) */
+.song-artist-wrapper {
+    width: 100%;
+    overflow: hidden;
+    margin-top: -2px;
+}
+
+.song-artist-marquee {
+    font-size: 0.7rem;
+    color: var(--spotify-text-muted);
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    position: relative;
+}
+
+.song-artist-marquee .marquee-content {
+    display: inline-block;
+    animation: marqueeArtist 15s linear infinite;
+    padding-left: 100%;
+}
+
+.song-artist-marquee:hover .marquee-content {
+    animation-play-state: paused;
+}
+
+@keyframes marqueeArtist {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-100%); }
+}
+
+/* Footer with waveform and like button */
+.metadata-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 4px;
+}
+
+/* Mini waveform bars (animated when playing) */
+.waveform-bars {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 20px;
+}
+
+.waveform-bars span {
+    width: 3px;
+    background: linear-gradient(180deg, var(--accent-cyan) 0%, #00e5ff 100%);
+    border-radius: 2px;
+    transition: height 0.08s ease;
+}
+
+.waveform-bars span:nth-child(1) { height: 8px; }
+.waveform-bars span:nth-child(2) { height: 12px; }
+.waveform-bars span:nth-child(3) { height: 6px; }
+.waveform-bars span:nth-child(4) { height: 15px; }
+.waveform-bars span:nth-child(5) { height: 10px; }
+.waveform-bars span:nth-child(6) { height: 14px; }
+.waveform-bars span:nth-child(7) { height: 7px; }
+.waveform-bars span:nth-child(8) { height: 11px; }
+
+/* Animated waveform when playing */
+body.playing .waveform-bars span {
+    animation: waveBounce 0.6s ease-in-out infinite alternate;
+}
+
+.waveform-bars span:nth-child(1) { animation-delay: 0s; }
+.waveform-bars span:nth-child(2) { animation-delay: 0.1s; }
+.waveform-bars span:nth-child(3) { animation-delay: 0.2s; }
+.waveform-bars span:nth-child(4) { animation-delay: 0.3s; }
+.waveform-bars span:nth-child(5) { animation-delay: 0.4s; }
+.waveform-bars span:nth-child(6) { animation-delay: 0.5s; }
+.waveform-bars span:nth-child(7) { animation-delay: 0.6s; }
+.waveform-bars span:nth-child(8) { animation-delay: 0.7s; }
+
+@keyframes waveBounce {
+    0% { height: 4px; opacity: 0.4; }
+    100% { height: 18px; opacity: 1; }
+}
+
+/* Modern Like Button */
+.small-like-btn {
+    position: relative;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    color: var(--spotify-text-muted);
+    backdrop-filter: blur(4px);
+}
+
+.small-like-btn:hover {
+    transform: scale(1.12);
+    background: rgba(244, 63, 94, 0.15);
+    border-color: var(--accent-pink);
+    color: var(--accent-pink);
+}
+
+.small-like-btn i {
+    font-size: 0.9rem;
+    transition: transform 0.2s ease;
+}
+
+.small-like-btn:active i {
+    transform: scale(0.9);
+}
+
+.like-tooltip {
+    position: absolute;
+    bottom: 130%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--spotify-light-grey);
+    color: var(--spotify-text-active);
+    font-size: 0.6rem;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 8px;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+    pointer-events: none;
+    border: 1px solid var(--border-color);
+    z-index: 10;
+}
+
+.small-like-btn:hover .like-tooltip {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(-4px);
+}
+
+/* Active liked state */
+.small-like-btn.liked {
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.2), rgba(244, 63, 94, 0.05));
+    border-color: var(--accent-pink);
+    color: var(--accent-pink);
+    box-shadow: 0 0 12px rgba(244, 63, 94, 0.3);
+}
+
+/* ========== PLAYING STATE ANIMATION FOR SONG INFO ========== */
+@keyframes subtlePulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.95; }
+    100% { opacity: 1; }
+}
+
+body.playing .song-metadata-modern {
+    animation: subtlePulse 2s ease-in-out infinite;
+}
+
+#songInfoModal .modal-buttons-footer{
+    margin-top: 20px;
+}
+
+/* Smooth hover transitions for all interactive elements */
+.nav-item, .spotify-music-card, .track-row, .sidebar-playlist-item,
+.ai-action-btn, .upload-music-trigger, .filter-chip {
+    transition: all 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+}
+
+/* Add subtle scale on click */
+.nav-item:active, .spotify-music-card:active, .track-row:active {
+    transform: scale(0.98);
+}
+
+/* Skeleton loading for images */
+.card-image-box.loading {
+    background: linear-gradient(90deg, var(--spotify-grey) 25%, var(--spotify-light-grey) 50%, var(--spotify-grey) 75%);
+    background-size: 200% 100%;
+    animation: skeletonWave 1.5s infinite;
+}
+
+@keyframes skeletonWave {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Visual feedback when dragging files over window */
+body.drag-over::after {
+    content: "📁 Drop your audio files here";
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(20px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    z-index: 99999;
+    pointer-events: none;
+    border: 3px dashed var(--accent-cyan);
+}

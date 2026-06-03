@@ -1,380 +1,108 @@
-/**
- * additional.js - KORAI Player Extended Functions
- * Vocal Separation using Mid-Side processing (FIXED)
- */
+// additional.js - KORAI Player Extended Functions
+// Song Info modal and vocal extraction (backend)
 
-let isVocalSeparatorToggling = false;
-let vocalSeparatorMode = false;
-let vocalRemovalIntensity = 0.9;
-let vocalSeparatorProcessor = null;
+let isExtracting = false;
 
-class VocalSeparatorProcessor {
-    constructor(ctx) {
-        this.ctx = ctx;
-        this.splitter = null;
-        this.merger = null;
-        this.midGain = null;
-        this.sideGain = null;
-        this.inputGain = null;
-        this.outputGain = null;
-        this.bypassGain = null;
-        this.isActive = false;
-        this.isConnected = false;
-        this.outputNode = null;
-        this.highpassFilter = null;
+// Display track metadata and vocal extraction button
+function showSongInfo() {
+    if (!currentTrack) {
+        showNotification(t('noTrackPlaying'), 'warning');
+        return;
     }
+    const modal = document.getElementById('songInfoModal');
+    if (!modal) return;
 
-    initialize() {
-        if (this.isConnected) return this.outputNode;
+    const contentDiv = document.getElementById('songInfoContent');
+    const coverUrl = currentTrack.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${currentTrack.id}/cover` : null;
+    const lang = currentLanguage;
 
-        try {
-            this.splitter = this.ctx.createChannelSplitter(2);
-            this.merger = this.ctx.createChannelMerger(2);
+    contentDiv.innerHTML = `
+        <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+            <div style="width: 80px; height: 80px; border-radius: var(--radius-md); overflow: hidden; background: var(--spotify-grey); display: flex; align-items: center; justify-content: center;">
+                ${coverUrl ? `<img src="${coverUrl}" style="width:100%;height:100%;object-fit:cover;">` : '<i class="fa-solid fa-music" style="font-size:2rem;"></i>'}
+            </div>
+            <div style="flex:1;">
+                <h3 style="font-size:1.1rem;">${escapeHtml(currentTrack.title || 'Untitled')}</h3>
+                <p style="color:var(--spotify-text-muted);">${escapeHtml(currentTrack.artist || 'Unknown Artist')}</p>
+                <p style="font-size:0.7rem;"><i class="fa-regular fa-clock"></i> ${formatTime(currentTrack.duration)}</p>
+            </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+            <div><span style="color:var(--accent-cyan);">BPM:</span> ${currentTrack.bpm || '—'}</div>
+            <div><span style="color:var(--accent-cyan);">Energy:</span> ${currentTrack.energy ? Math.round(currentTrack.energy*100)+'%' : '—'}</div>
+            <div><span style="color:var(--accent-cyan);">Genre:</span> ${escapeHtml(currentTrack.genre || '—')}</div>
+            <div><span style="color:var(--accent-cyan);">Album:</span> ${escapeHtml(currentTrack.album || '—')}</div>
+            <div><span style="color:var(--accent-cyan);">Bitrate:</span> ${currentTrack.bitrate ? (currentTrack.bitrate/1000).toFixed(0)+' kbps' : '—'}</div>
+            <div><span style="color:var(--accent-cyan);">Sample Rate:</span> ${currentTrack.sampleRate ? (currentTrack.sampleRate/1000).toFixed(1)+' kHz' : '—'}</div>
+        </div>
+        <hr style="border-color:var(--border-color); margin: 10px 0;">
+        <p style="font-size:0.75rem; color:var(--spotify-text-muted);"><i class="fa-solid fa-info-circle"></i> ${lang === 'fa' ? 'استخراج صدای خواننده به صورت یک آهنگ جدید (پردازش Mid-Side)' : 'Extract vocal as a new track (AI-based mid-side processing)'}</p>
+    `;
 
-            this.midGain = this.ctx.createGain();
-            this.sideGain = this.ctx.createGain();
-
-            this.highpassFilter = this.ctx.createBiquadFilter();
-            this.highpassFilter.type = 'highpass';
-            this.highpassFilter.frequency.value = 100;
-            this.highpassFilter.Q.value = 0.7;
-
-            this.inputGain = this.ctx.createGain();
-            this.outputGain = this.ctx.createGain();
-            this.bypassGain = this.ctx.createGain();
-
-            const midSumL = this.ctx.createGain();
-            const midSumR = this.ctx.createGain();
-            midSumL.gain.value = 0.5;
-            midSumR.gain.value = 0.5;
-            this.splitter.connect(midSumL, 0);
-            this.splitter.connect(midSumR, 1);
-            const midAdder = this.ctx.createGain();
-            midSumL.connect(midAdder);
-            midSumR.connect(midAdder);
-            midAdder.gain.value = 1;
-            midAdder.connect(this.midGain);
-
-            const sidePos = this.ctx.createGain();
-            const sideNeg = this.ctx.createGain();
-            sidePos.gain.value = 0.5;
-            sideNeg.gain.value = -0.5;
-            this.splitter.connect(sidePos, 0);
-            this.splitter.connect(sideNeg, 1);
-            const sideAdder = this.ctx.createGain();
-            sidePos.connect(sideAdder);
-            sideNeg.connect(sideAdder);
-            sideAdder.gain.value = 1;
-            sideAdder.connect(this.sideGain);
-
-            this.inputGain.connect(this.bypassGain);
-
-            const leftSum = this.ctx.createGain();
-            const rightSum = this.ctx.createGain();
-            const invSide = this.ctx.createGain();
-            invSide.gain.value = -1;
-
-            this.midGain.connect(leftSum);
-            this.sideGain.connect(leftSum);
-
-            this.midGain.connect(rightSum);
-            this.sideGain.connect(invSide);
-            invSide.connect(rightSum);
-
-            leftSum.connect(this.merger, 0, 0);
-            rightSum.connect(this.merger, 0, 1);
-
-            this.merger.connect(this.outputGain);
-            this.highpassFilter.connect(this.outputGain);
-            this.merger.connect(this.highpassFilter);
-
-            this.isConnected = true;
-            this.outputNode = this.outputGain;
-            console.log('Vocal Separator Processor initialized (Mid-Side)');
-            return this.outputNode;
-        } catch (err) {
-            console.error('Failed to initialize vocal separator processor:', err);
-            return null;
-        }
-    }
-
-    setIntensity(intensity) {
-        const val = Math.min(1.0, Math.max(0.3, intensity));
-        const midReduction = Math.max(0, 1.0 - val);
-        if (this.midGain) {
-            this.midGain.gain.value = midReduction;
-        }
-        if (this.sideGain) {
-            this.sideGain.gain.value = 1 + (val * 0.3);
-        }
-        console.log(`Vocal removal intensity set to ${Math.round(val*100)}% (mid gain = ${midReduction})`);
-    }
-
-    // FIX: auto-initialize before returning output node
-    getOutputNode() {
-        if (!this.isConnected) {
-            this.initialize();
-        }
-        return this.outputGain;
-    }
-
-    getBypassNode() { return this.bypassGain; }
-
-    enable() {
-        if (!this.isConnected) this.initialize();
-        this.isActive = true;
-        this.inputGain.gain.value = 1;
-        this.outputGain.gain.value = 1;
-        this.bypassGain.gain.value = 0;
-        this.setIntensity(vocalRemovalIntensity);
-        console.log('Vocal Separator Mode ENABLED (Mid-Side processing)');
-    }
-
-    disable() {
-        this.isActive = false;
-        this.inputGain.gain.value = 0;
-        this.outputGain.gain.value = 0;
-        this.bypassGain.gain.value = 1;
-        console.log('Vocal Separator Mode DISABLED');
-    }
-
-    destroy() {
-        try {
-            this.inputGain?.disconnect();
-            this.outputGain?.disconnect();
-            this.bypassGain?.disconnect();
-            this.splitter?.disconnect();
-            this.merger?.disconnect();
-            this.midGain?.disconnect();
-            this.sideGain?.disconnect();
-            this.highpassFilter?.disconnect();
-        } catch(e) {}
-        this.isConnected = false;
-        this.isActive = false;
-    }
+    modal.style.display = 'flex';
 }
 
-/**
- * Ensures the MediaElementSourceNode exists (created once).
- */
-function ensureAudioSource() {
-    if (!window.audioElement) return false;
-    if (!window.audioCtx) {
-        window.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    if (!window.audioSource) {
-        try {
-            window.audioSource = window.audioCtx.createMediaElementSource(window.audioElement);
-            console.log('✅ MediaElementSourceNode created (once)');
-        } catch (err) {
-            console.error('Failed to create MediaElementSourceNode:', err);
-            return false;
-        }
-    }
-    return true;
+function closeSongInfoModal() {
+    const modal = document.getElementById('songInfoModal');
+    if (modal) modal.style.display = 'none';
 }
 
-/**
- * Rebuild the audio graph without recreating the source node.
- */
-async function reconnectAudioGraph(enableVocalSeparator) {
-    if (!window.audioElement || !window.audioCtx) {
-        console.error('Cannot reconnect: missing audio element or context');
-        return false;
+async function extractVocalFromCurrentTrack() {
+    if (!currentTrack) {
+        showNotification(t('noTrackPlaying'), 'warning');
+        return;
     }
-
-    if (!ensureAudioSource()) {
-        console.error('Could not create or reuse audio source');
-        return false;
-    }
-
-    try {
-        const wasPlaying = !window.audioElement.paused;
-        const currentTime = window.audioElement.currentTime;
-        const currentVolume = window.audioElement.volume;
-        const currentRate = window.audioElement.playbackRate;
-
-        if (wasPlaying) {
-            window.audioElement.pause();
-        }
-
-        // Disconnect everything from the source (but keep the source itself)
-        try { window.audioSource.disconnect(); } catch(e) {}
-
-        if (window.vocalSeparatorProcessor && window.vocalSeparatorProcessor.outputNode) {
-            try { window.vocalSeparatorProcessor.outputNode.disconnect(); } catch(e) {}
-        }
-        if (window.eqFilters && window.eqFilters.length) {
-            try { window.eqFilters[0].disconnect(); } catch(e) {}
-        }
-        if (window.analyser) {
-            try { window.analyser.disconnect(); } catch(e) {}
-        }
-        if (window.gainNode) {
-            try { window.gainNode.disconnect(); } catch(e) {}
-        }
-
-        let currentNode = window.audioSource;
-
-        if (enableVocalSeparator && window.vocalSeparatorProcessor) {
-            const processorOutput = window.vocalSeparatorProcessor.getOutputNode(); // auto-initializes
-            if (processorOutput) {
-                currentNode.connect(processorOutput);
-                currentNode = processorOutput;
-                window.vocalSeparatorProcessor.enable();
-            } else {
-                console.warn('Vocal separator processor not ready');
-            }
-        } else if (window.vocalSeparatorProcessor) {
-            window.vocalSeparatorProcessor.disable();
-        }
-
-        if (window.eqFilters && window.eqFilters.length > 0) {
-            currentNode.connect(window.eqFilters[0]);
-            currentNode = window.eqFilters[window.eqFilters.length - 1];
-        }
-
-        if (window.analyser) {
-            currentNode.connect(window.analyser);
-            if (window.gainNode) {
-                window.analyser.connect(window.gainNode);
-                window.gainNode.connect(window.audioCtx.destination);
-            } else {
-                window.analyser.connect(window.audioCtx.destination);
-            }
-        } else if (window.gainNode) {
-            currentNode.connect(window.gainNode);
-            window.gainNode.connect(window.audioCtx.destination);
-        } else {
-            currentNode.connect(window.audioCtx.destination);
-        }
-
-        window.audioElement.volume = currentVolume;
-        window.audioElement.playbackRate = currentRate;
-        window.audioElement.currentTime = currentTime;
-
-        if (wasPlaying) {
-            if (window.audioCtx.state === 'suspended') await window.audioCtx.resume();
-            await window.audioElement.play();
-            if (window.setPlayState) window.setPlayState(true);
-        }
-
-        console.log(`Audio graph rebuilt (vocal separator: ${enableVocalSeparator})`);
-        return true;
-    } catch (err) {
-        console.error('Failed to rebuild audio graph:', err);
-        return false;
-    }
-}
-
-async function toggleVocalSeparator() {
-    if (isVocalSeparatorToggling) {
-        console.log('Vocal separator toggle already in progress');
+    if (isExtracting) {
+        showNotification(t('extractionInProgress'), 'info');
         return;
     }
 
-    if (!window.currentTrackId || !window.audioElement) {
-        if (window.showNotification) {
-            window.showNotification('Please play a track first to enable vocal separator', 'warning');
-        }
-        const vocalSeparatorToggle = document.getElementById('vocalSeparatorToggle');
-        if (vocalSeparatorToggle) vocalSeparatorToggle.checked = false;
-        return;
-    }
-
-    isVocalSeparatorToggling = true;
+    isExtracting = true;
+    showImportProgress(1);
+    updateImportProgress(10, t('preparingExtraction'));
 
     try {
-        if (!window.audioCtx || window.audioCtx.state === 'closed') {
-            window.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        updateImportProgress(30, t('extractingVocal'));
+        const response = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/${currentTrack.id}/extract-vocal`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'vocal' })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Extraction failed');
         }
 
-        if (!ensureAudioSource()) {
-            throw new Error('Could not create audio source');
-        }
+        const data = await response.json();
+        updateImportProgress(90, t('addingToLibrary'));
 
-        if (!vocalSeparatorProcessor) {
-            vocalSeparatorProcessor = new VocalSeparatorProcessor(window.audioCtx);
-            vocalSeparatorProcessor.setIntensity(vocalRemovalIntensity);
-            window.vocalSeparatorProcessor = vocalSeparatorProcessor;
-        }
+        await loadTracks();
+        await loadPlaylists();
 
-        const newState = !vocalSeparatorMode;
-        const success = await reconnectAudioGraph(newState);
-
-        if (success) {
-            vocalSeparatorMode = newState;
-            if (window.showNotification) {
-                if (vocalSeparatorMode) {
-                    window.showNotification('Vocal Separator activated (intelligent vocal removal)', 'success');
-                } else {
-                    window.showNotification('Vocal Separator deactivated', 'info');
-                }
-            }
+        const newTrack = data.track;
+        if (newTrack) {
+            updateImportProgress(100, t('extractionComplete'));
+            setTimeout(async () => {
+                hideImportProgress();
+                closeSongInfoModal();
+                await playTrack(newTrack.id);
+                showNotification(`${t('vocalTrackAdded')}: ${newTrack.title}`, 'success');
+            }, 500);
         } else {
-            throw new Error('Failed to switch vocal separator mode');
+            hideImportProgress();
+            showNotification(t('extractionNoTrack'), 'warning');
         }
-
-        updateVocalSeparatorUI();
     } catch (err) {
-        console.error('Vocal separator toggle error:', err);
-        if (window.showNotification) {
-            window.showNotification('Error activating vocal separator: ' + err.message, 'error');
-        }
-        if (vocalSeparatorMode) {
-            await reconnectAudioGraph(false);
-            vocalSeparatorMode = false;
-        }
-        const vocalSeparatorToggle = document.getElementById('vocalSeparatorToggle');
-        if (vocalSeparatorToggle) vocalSeparatorToggle.checked = false;
+        console.error('Extraction error:', err);
+        hideImportProgress();
+        showNotification(`${t('extractionFailed')}: ${err.message}`, 'error');
     } finally {
-        isVocalSeparatorToggling = false;
+        isExtracting = false;
     }
 }
 
-function updateVocalSeparatorUI() {
-    const toggle = document.getElementById('vocalSeparatorToggle');
-    if (toggle) toggle.checked = vocalSeparatorMode || false;
-
-    const intensitySlider = document.getElementById('vocalRemovalIntensitySlider');
-    if (intensitySlider) {
-        intensitySlider.value = vocalRemovalIntensity || 0.9;
-        const intensityVal = document.getElementById('vocalRemovalIntensityVal');
-        if (intensityVal) intensityVal.innerText = `${Math.round((vocalRemovalIntensity || 0.9) * 100)}%`;
-    }
-
-    const advancedControls = document.getElementById('vocalSeparatorAdvancedControls');
-    if (advancedControls) {
-        advancedControls.style.display = vocalSeparatorMode ? 'block' : 'none';
-    }
-}
-
-function setVocalRemovalIntensity(value) {
-    vocalRemovalIntensity = parseFloat(value);
-    if (vocalSeparatorProcessor) {
-        vocalSeparatorProcessor.setIntensity(vocalRemovalIntensity);
-    }
-    const intensityVal = document.getElementById('vocalRemovalIntensityVal');
-    if (intensityVal) intensityVal.innerText = `${Math.round(vocalRemovalIntensity * 100)}%`;
-}
-
-function setVocalDetectionSensitivity(value) {
-    const sensitivityVal = document.getElementById('vocalDetectionSensitivityVal');
-    if (sensitivityVal) sensitivityVal.innerText = parseFloat(value).toFixed(2);
-}
-
-function cleanupVocalSeparator() {
-    if (vocalSeparatorProcessor) {
-        try { vocalSeparatorProcessor.destroy(); } catch(e) {}
-        vocalSeparatorProcessor = null;
-    }
-    vocalSeparatorMode = false;
-    isVocalSeparatorToggling = false;
-}
-
-window.vocalSeparatorMode = vocalSeparatorMode;
-window.vocalRemovalIntensity = vocalRemovalIntensity;
-window.toggleVocalSeparator = toggleVocalSeparator;
-window.setVocalRemovalIntensity = setVocalRemovalIntensity;
-window.setVocalDetectionSensitivity = setVocalDetectionSensitivity;
-window.cleanupVocalSeparator = cleanupVocalSeparator;
+// Make functions globally available
+window.showSongInfo = showSongInfo;
+window.closeSongInfoModal = closeSongInfoModal;
+window.extractVocalFromCurrentTrack = extractVocalFromCurrentTrack;

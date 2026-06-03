@@ -22,12 +22,13 @@ const { detectRealBPM } = require('./bpmDetector');
 const { exportToM3U, exportToPLS, exportLibraryToCSV, exportPlaylistToCSV, importFromM3U, importFromPLS } = require('./playlistExporter');
 const { getTracksFromCue, generateCueSheet } = require('./cueParser');
 const { advancedSearchFilter } = require('../frontend/advancedSearch');
+const AudioSeparator = require('./audioSeparator');
+const os = require('os');
 
 const app = express();
 let serverUserDataPath = null;
-let userHistory = {};  // AI user behavior history
+let userHistory = {};
 
-// CORS and middleware
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -35,10 +36,6 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// =============================================================================
-// DOWNLOAD HELPER
-// =============================================================================
 
 function downloadFile(fileUrl, destPath, redirectCount = 0) {
     if (redirectCount > 5) {
@@ -78,12 +75,7 @@ function downloadFile(fileUrl, destPath, redirectCount = 0) {
     });
 }
 
-// =============================================================================
-// ROUTES SETUP
-// =============================================================================
-
 function setupRoutes() {
-    // Settings endpoints
     app.get('/api/settings', (req, res) => {
         try {
             const db = getDb();
@@ -136,7 +128,6 @@ function setupRoutes() {
         res.json({ status: 'ok', timestamp: Date.now() });
     });
 
-    // Track endpoints
     app.get('/api/tracks', (req, res) => {
         try {
             const db = getDb();
@@ -310,7 +301,6 @@ function setupRoutes() {
         }
     });
 
-    // Playlist endpoints
     app.get('/api/playlists', (req, res) => {
         try {
             const db = getDb();
@@ -376,7 +366,6 @@ function setupRoutes() {
         try {
             const db = getDb();
             db.addPlayHistory(parseInt(req.params.id));
-            // Also record for AI
             if (serverUserDataPath) {
                 updateUserHistory(userHistory, parseInt(req.params.id), 'play', serverUserDataPath);
             }
@@ -422,9 +411,95 @@ function setupRoutes() {
         }
     });
 
-    // =========================================================================
-    // AI RECOMMENDATION ENDPOINTS
-    // =========================================================================
+// Vocal extraction endpoint (با هندلینگ خطای تحلیل فایل)
+app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
+    try {
+        const db = getDb();
+        const track = db.getTrackById(parseInt(req.params.id));
+        if (!track || !track.filePath) {
+            return res.status(404).json({ error: 'Track not found or file missing' });
+        }
+
+        if (!fs.existsSync(track.filePath)) {
+            return res.status(404).json({ error: 'Audio file does not exist on disk' });
+        }
+
+        const { mode = 'vocal' } = req.body;
+        if (mode !== 'vocal') {
+            return res.status(400).json({ error: 'Only "vocal" mode is supported' });
+        }
+
+        const extractedDir = path.join(serverUserDataPath, 'extracted_vocals');
+        if (!fs.existsSync(extractedDir)) fs.mkdirSync(extractedDir, { recursive: true });
+
+        const ext = path.extname(track.filePath);
+        const baseName = path.basename(track.filePath, ext);
+        const outputFileName = `${baseName}_vocals_${Date.now()}.wav`;
+        const outputFilePath = path.join(extractedDir, outputFileName);
+
+        console.log(`🎤 Extracting vocals from: ${track.filePath}`);
+        await AudioSeparator.extractVocal(track.filePath, outputFilePath);
+
+        // تحلیل فایل خروجی با fallback در صورت خطا
+        let analysis;
+        try {
+            analysis = await analyzeAudioFile(outputFilePath);
+        } catch (analysisErr) {
+            console.warn('⚠️ Audio analysis failed for extracted file, using fallback metadata:', analysisErr.message);
+            // متادیتای پیش‌فرض برای فایل استخراج شده
+            analysis = {
+                duration: 0,
+                bpm: 120,
+                energy: 0.5,
+                loudness: -12,
+                sampleRate: 22050,
+                bitrate: 0,
+                codec: 'wav',
+                genre: track.genre || 'Extracted Vocal',
+                title: `${track.title} (Vocals)`,
+                artist: track.artist,
+                album: track.album,
+                featureVector: null,
+                rawFeatures: null,
+                coverImage: null
+            };
+        }
+
+        let coverImage = null;
+        if (track.coverPath && fs.existsSync(track.coverPath)) {
+            try {
+                coverImage = fs.readFileSync(track.coverPath);
+            } catch (err) {
+                console.warn('Could not read cover image:', err.message);
+            }
+        }
+
+        const newTrack = db.addTrack({
+            title: `${track.title} (Vocals)`,
+            artist: track.artist,
+            filePath: outputFilePath,
+            duration: analysis.duration,
+            bpm: analysis.bpm,
+            energy: analysis.energy,
+            loudness: analysis.loudness,
+            genre: analysis.genre,
+            album: track.album,
+            coverImage: coverImage,
+            lyrics: track.lyrics,
+            sampleRate: analysis.sampleRate,
+            bitrate: analysis.bitrate,
+            codec: analysis.codec,
+            featureVector: analysis.featureVector,
+            rawFeatures: analysis.rawFeatures
+        });
+
+        console.log(`✅ Extracted vocal track added: ${newTrack.title} (ID: ${newTrack.id})`);
+        res.json({ success: true, track: newTrack });
+    } catch (error) {
+        console.error('Vocal extraction error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
     app.get('/api/ai/history', (req, res) => {
         try {
@@ -501,7 +576,6 @@ function setupRoutes() {
         }
     });
 
-    // Legacy recommendation endpoint (for compatibility)
     app.get('/api/recommend/:trackId', (req, res) => {
         try {
             const db = getDb();
@@ -530,10 +604,6 @@ function setupRoutes() {
         }
     });
 
-    // =========================================================================
-    // CREATE SIMILAR PLAYLIST FROM TRACK (AI)
-    // =========================================================================
-
     app.post('/api/playlists/similar', (req, res) => {
         try {
             const db = getDb();
@@ -551,29 +621,21 @@ function setupRoutes() {
                 return res.json({ success: false, message: 'No other tracks in library' });
             }
             
-            // Calculate similarity scores
             const scored = otherTracks.map(track => {
                 let similarity = 0;
-                
-                // Feature-based similarity if available
                 if (sourceTrack.featureVector && track.featureVector) {
                     similarity = cosineSimilarity(sourceTrack.featureVector, track.featureVector);
                 } else {
-                    // Fallback to BPM + energy
                     const bpmSim = 1 - Math.abs((sourceTrack.bpm - track.bpm) / 160);
                     const energySim = 1 - Math.abs((sourceTrack.energy - track.energy));
                     similarity = (bpmSim * 0.6) + (energySim * 0.4);
                 }
-                
-                // Genre boost
                 if (sourceTrack.genre && track.genre && sourceTrack.genre === track.genre && similarity > 0) {
                     similarity = Math.min(0.95, similarity + 0.12);
                 }
-                
                 return { track, similarity };
             });
             
-            // Filter and sort
             const similarTracks = scored
                 .filter(item => item.similarity > 0.2)
                 .sort((a, b) => b.similarity - a.similarity)
@@ -584,12 +646,10 @@ function setupRoutes() {
                 return res.json({ success: false, message: 'No similar tracks found' });
             }
             
-            // Create playlist
             const shortTitle = sourceTrack.title ? sourceTrack.title.substring(0, 30) : 'Track';
             const playlistName = `Similar to ${shortTitle}`;
             const newPlaylist = db.createPlaylist(playlistName);
             
-            // Add tracks to playlist
             for (const track of similarTracks) {
                 db.addTrackToPlaylist(newPlaylist.id, track.id);
             }
@@ -599,14 +659,12 @@ function setupRoutes() {
                 playlist: newPlaylist,
                 trackCount: similarTracks.length
             });
-            
         } catch (error) {
             console.error('Create similar playlist error:', error);
             res.status(500).json({ error: error.message });
         }
     });
 
-    // Stats endpoint
     app.get('/api/stats', (req, res) => {
         try {
             const db = getDb();
@@ -616,7 +674,6 @@ function setupRoutes() {
         }
     });
 
-    // Tag editor endpoint
     app.put('/api/tracks/:id/tags', async (req, res) => {
         try {
             const db = getDb();
@@ -642,7 +699,6 @@ function setupRoutes() {
         }
     });
 
-    // Export playlist endpoint
     app.post('/api/playlists/:id/export', async (req, res) => {
         try {
             const db = getDb();
@@ -677,7 +733,6 @@ function setupRoutes() {
         }
     });
 
-    // Import playlist endpoint
     app.post('/api/playlists/import', async (req, res) => {
         try {
             const db = getDb();
@@ -728,7 +783,6 @@ function setupRoutes() {
         }
     });
 
-    // Library export to CSV
     app.post('/api/library/export', async (req, res) => {
         try {
             const db = getDb();
@@ -742,7 +796,6 @@ function setupRoutes() {
         }
     });
 
-    // Advanced search endpoint
     app.post('/api/search/advanced', (req, res) => {
         try {
             const db = getDb();
@@ -774,7 +827,6 @@ function setupRoutes() {
         }
     });
 
-    // CUE sheet parse endpoint
     app.post('/api/cue/parse', async (req, res) => {
         try {
             const { cuePath, audioBaseDir } = req.body;
@@ -788,7 +840,6 @@ function setupRoutes() {
         }
     });
 
-    // CUE sheet generate endpoint
     app.post('/api/cue/generate', async (req, res) => {
         try {
             const db = getDb();
@@ -805,7 +856,6 @@ function setupRoutes() {
         }
     });
 
-    // Playback settings
     let gaplessEnabled = true;
     let crossfadeDuration = 0;
 
@@ -820,7 +870,6 @@ function setupRoutes() {
         res.json({ gaplessEnabled, crossfadeDuration });
     });
 
-    // Real BPM detection endpoint
     app.post('/api/tracks/:id/detect-bpm', async (req, res) => {
         try {
             const db = getDb();
@@ -838,17 +887,16 @@ function setupRoutes() {
     });
 }
 
-// =============================================================================
-// START SERVER
-// =============================================================================
-
 async function startServer(port, userDataPath) {
     serverUserDataPath = userDataPath;
     initDatabase(userDataPath);
     
-    // Load AI user history
     userHistory = loadUserHistory(userDataPath);
     console.log(`🧠 AI user history loaded: ${Object.keys(userHistory).length} tracks with interactions`);
+    
+    // تنظیم پوشه موقت برای پردازش صدا
+    const extractTempDir = path.join(userDataPath, 'temp_extract');
+    AudioSeparator.setTempDirectory(extractTempDir);
     
     setupRoutes();
     

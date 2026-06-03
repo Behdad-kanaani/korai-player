@@ -266,9 +266,6 @@
                 <h4 id="playerTitle" class="truncate-text">Ready to Play</h4>
                 <p id="playerArtist" class="truncate-text">Select a track</p>
             </div>
-            <button class="small-like-btn" id="likeBtnK">
-                <i class="fa-regular fa-heart"></i>
-            </button>
         </div>
 
         <div class="player-center-controls">
@@ -296,7 +293,13 @@
                     <input type="range" class="volume-input-range" id="volumeSlider" min="0" max="1" step="0.01" value="0.7">
                 </div>
             </div>
-            <button class="utility-trigger-btn expand" id="fullscreenBtn"><i class="fa-solid fa-maximize"></i></button>
+            <button class="utility-trigger-btn expand small-like-btn" id="fullscreenBtn"><i class="fa-solid fa-maximize"></i></button>
+            <button class="small-like-btn" id="songInfoBtn" title="Song Info &amp; Vocal Extraction">
+                <i class="fa-solid fa-circle-info"></i>
+            </button>
+            <button class="small-like-btn" id="likeBtnK">
+                <i class="fa-regular fa-heart"></i>
+            </button>
         </div>
     </footer>
 
@@ -426,35 +429,6 @@
             </div>
 
             <div class="dsp-control-group divider-bottom">
-                <span style="font-size:0.75rem; color:var(--spotify-text-muted);" data-translate="vocalSeparatorMode">Vocal Separator (Remove Vocals):</span>
-                <label class="switch">
-                    <input type="checkbox" id="vocalSeparatorToggle">
-                    <span class="switch-slider"></span>
-                </label>
-            </div>
-
-            <div id="vocalSeparatorAdvancedControls" style="display: none; margin-top: 12px;">
-                <div class="dsp-control-group">
-                    <label class="dsp-label-display">
-                        <span><i class="fa-solid fa-microphone-slash"></i> Vocal Removal Intensity:</span>
-                        <strong id="vocalRemovalIntensityVal" style="color: var(--accent-cyan);">85%</strong>
-                    </label>
-                    <input type="range" id="vocalRemovalIntensitySlider" min="0" max="1" step="0.01" value="0.85" class="dsp-slider-track">
-                </div>
-                
-                <div class="dsp-control-group">
-                    <label class="dsp-label-display">
-                        <span><i class="fa-solid fa-waveform"></i> Detection Sensitivity:</span>
-                        <strong id="vocalDetectionSensitivityVal" style="color: var(--accent-cyan);">0.12</strong>
-                    </label>
-                    <input type="range" id="vocalDetectionSensitivitySlider" min="0.03" max="0.3" step="0.005" value="0.12" class="dsp-slider-track">
-                    <p style="font-size: 0.6rem; color: var(--spotify-text-muted); margin-top: 6px;">
-                        Lower = more aggressive vocal removal, Higher = preserves more instruments
-                    </p>
-                </div>
-            </div>
-
-            <div class="dsp-control-group divider-bottom">
                 <label class="dsp-label-display">
                     <span>Gapless Playback:</span>
                     <label class="switch">
@@ -499,6 +473,28 @@
                     <input type="range" class="eq-slider" id="eqSlider4" min="-12" max="12" step="1" value="0">
                     <span class="eq-label">14kHz</span>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Song Info Modal -->
+    <div class="custom-modal-overlay" id="songInfoModal" style="display: none;">
+        <div class="custom-modal-card" style="max-width: 480px;">
+            <div class="modal-indicator-header">
+                <i class="fa-solid fa-music" style="color: var(--accent-cyan);"></i>
+                <h4>Song Info</h4>
+                <button class="close-modal-btn" onclick="closeSongInfoModal()" style="margin-right: auto;">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div id="songInfoContent">
+                <!-- populated dynamically -->
+            </div>
+            <div class="modal-buttons-footer">
+                <button class="modal-btn cancel" onclick="closeSongInfoModal()">Close</button>
+                <button class="modal-btn confirm" id="extractVocalBtn" style="background: var(--accent-cyan); color: #000;">
+                    <i class="fa-solid fa-microphone-slash"></i> Extract Vocal (new track)
+                </button>
             </div>
         </div>
     </div>

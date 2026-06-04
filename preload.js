@@ -148,7 +148,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // =========================================================================
     // REAL BPM DETECTION
     // =========================================================================
-    detectRealBPM: (trackId) => ipcRenderer.invoke('detect-real-bpm', trackId)
+    detectRealBPM: (trackId) => ipcRenderer.invoke('detect-real-bpm', trackId),
+
+
+    // =========================================================================
+    // REAL BPM DETECTION
+    // =========================================================================
+    importPlaylistAuto: (filePath) => ipcRenderer.invoke('import-playlist-auto', filePath),
+    showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
 });
 
 console.log('✅ Preload script loaded');

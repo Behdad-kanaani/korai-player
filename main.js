@@ -1040,6 +1040,28 @@ ipcMain.on('register-global-shortcut', (event, command) => {
     }
 });
 
+
+ipcMain.handle('import-playlist-auto', async (event, filePath) => {
+    try {
+        const fetchModule = await import('node-fetch');
+        const fetch = fetchModule.default;
+        const response = await fetch(`http://127.0.0.1:${serverPort}/api/playlists/import-auto`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filePath })
+        });
+        return await response.json();
+    } catch (err) {
+        console.error('Auto import error:', err);
+        return null;
+    }
+});
+
+ipcMain.handle('show-open-dialog', async (event, options) => {
+    const result = await dialog.showOpenDialog(mainWindow, options);
+    return result;
+});
+
 // =============================================================================
 // APP LIFECYCLE
 // =============================================================================

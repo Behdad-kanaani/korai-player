@@ -783,6 +783,85 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
         }
     });
 
+    // Auto-detect and import any playlist format
+    app.post('/api/playlists/import-auto', async (req, res) => {
+        try {
+            const db = getDb();
+            const { filePath } = req.body;
+            if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+            
+            const ext = path.extname(filePath).toLowerCase();
+            let format = '';
+            let importedTracks = [];
+            
+            // Dispatch based on file extension
+            switch (ext) {
+                case '.m3u':
+                    format = 'm3u';
+                    importedTracks = await importFromM3U(filePath, path.dirname(filePath));
+                    break;
+                case '.m3u8':
+                    format = 'm3u8';
+                    importedTracks = await importFromM3U(filePath, path.dirname(filePath));
+                    break;
+                case '.pls':
+                    format = 'pls';
+                    importedTracks = importFromPLS(filePath);
+                    break;
+                case '.xspf':
+                    format = 'xspf';
+                    importedTracks = await importFromXSPF(filePath, path.dirname(filePath));
+                    break;
+                case '.asx':
+                    format = 'asx';
+                    importedTracks = await importFromASX(filePath, path.dirname(filePath));
+                    break;
+                case '.wpl':
+                    format = 'wpl';
+                    importedTracks = await importFromWPL(filePath, path.dirname(filePath));
+                    break;
+                case '.json':
+                    format = 'json';
+                    importedTracks = await importFromJSON(filePath, path.dirname(filePath));
+                    break;
+                default:
+                    return res.status(400).json({ error: 'Unsupported playlist format' });
+            }
+            
+            const playlistName = path.basename(filePath, ext);
+            const newPlaylist = db.createPlaylist(playlistName);
+            let importedCount = 0;
+            
+            for (const imported of importedTracks) {
+                let existing = db.getAllTracks().find(t => t.filePath === imported.filePath);
+                if (!existing) {
+                    const analysis = await analyzeAudioFile(imported.filePath);
+                    existing = db.addTrack({
+                        title: imported.title || analysis.title,
+                        artist: analysis.artist,
+                        filePath: imported.filePath,
+                        duration: analysis.duration,
+                        bpm: analysis.bpm,
+                        energy: analysis.energy,
+                        genre: analysis.genre,
+                        album: analysis.album,
+                        coverImage: analysis.coverImage,
+                        featureVector: analysis.featureVector
+                    }, false);
+                }
+                if (existing) {
+                    db.addTrackToPlaylist(newPlaylist.id, existing.id);
+                    importedCount++;
+                }
+            }
+            db.save();
+            res.json({ success: true, playlist: newPlaylist, importedCount, format });
+        } catch (error) {
+            console.error('Auto import error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
     app.post('/api/library/export', async (req, res) => {
         try {
             const db = getDb();

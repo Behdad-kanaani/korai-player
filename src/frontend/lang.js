@@ -186,7 +186,8 @@ const translations = {
         downloadNow: "Download Now",
         newVersionAvailable: "A new version of KORAI Player is available!",
         currentVersionLabel: "Current version",
-        newVersionLabel: "New version"
+        newVersionLabel: "New version",
+        navAlbumsText: "Albums"
     },
     fa: {
         welcomeEarlyMorning: "☀️ طلوع کردی؟ وقت آهنگ‌های پرانرژیه!",
@@ -375,6 +376,7 @@ const translations = {
         extractionComplete: "استخراج کامل شد!",
         vocalTrackAdded: "آهنگ صدا اضافه شد",
         extractionNoTrack: "آهنگ اضافه شد اما پخش خودکار انجام نشد",
-        extractionFailed: "خطا در استخراج"
+        extractionFailed: "خطا در استخراج",
+        navAlbumsText: "آلبوم‌ها"
     }
 };

@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
 
 <img src="korai.png" width="120" alt="KORAI Logo" />
 
@@ -207,10 +207,13 @@ Not everyone has a gaming rig. KORAI v1.3 detects low-resource devices automatic
 
 <div align="center">
   
-*(Coming soon for v1.3 — expect 3D cover effects, waveform timeline, and artist view)*
+| v1.2 | v1.3 |
+|:----:|:----:|
+| ![v1.2](screenshot/V1.2/demo.png) | ![v1.3](screenshot/V1.3/demo.png) |
+
+*KORAI evolution — v1.2 (left) → v1.3 (right)*
 
 </div>
-
 ---
 
 ## ⚙️ **Technical Specifications**
@@ -531,6 +534,5 @@ You may NOT:
 ---
 
 *KORAI — Open source. Local first. Intelligence built in.*
-
 
 </div>

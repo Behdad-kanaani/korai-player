@@ -5,15 +5,24 @@
  * Provides safe APIs for file dialogs, window controls, mini-player,
  * file association handling, tag editing, playlist export/import,
  * advanced search, CUE sheet support, and update management.
+ * 
+ * Improved: reliable port retrieval using Promise + event.
  */
 
 const { contextBridge, ipcRenderer } = require('electron');
 
 console.log('🔌 Preload script starting...');
 
-// Log server port when received
+// Create a promise that resolves when server port is received from main process
+let resolvePortPromise = null;
+const portPromise = new Promise((resolve) => {
+    resolvePortPromise = resolve;
+});
+
+// Listen for the port sent by main process after server starts
 ipcRenderer.on('server-port', (event, port) => {
     console.log('📡 Preload received port:', port);
+    if (resolvePortPromise) resolvePortPromise(port);
 });
 
 // Forward global shortcuts
@@ -22,9 +31,9 @@ ipcRenderer.on('global-shortcut', (event, command) => {
     window.dispatchEvent(new CustomEvent('global-shortcut', { detail: command }));
 });
 
-// Get server port from main process
+// Get server port - returns a Promise that resolves when port is available
 const getServerPort = () => {
-    return ipcRenderer.invoke('get-server-port');
+    return portPromise;
 };
 
 // Expose safe APIs to renderer
@@ -32,7 +41,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // =========================================================================
     // SERVER AND FILE OPERATIONS
     // =========================================================================
-    getServerPort: getServerPort,
+    getServerPort: getServerPort,        // returns Promise<number>
     selectAudioFiles: () => ipcRenderer.invoke('select-audio-files'),
     selectAudioFolder: () => ipcRenderer.invoke('select-audio-folder'),
     
@@ -91,20 +100,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // =========================================================================
     // VERSION AND UPDATE MANAGEMENT
     // =========================================================================
-    /**
-     * Listen for initial app version from main process
-     */
     onAppVersion: (callback) => ipcRenderer.on('app-version', (event, data) => callback(data)),
-    
-    /**
-     * Listen for update status changes (update available or not)
-     */
     onUpdateStatus: (callback) => ipcRenderer.on('update-status', (event, data) => callback(data)),
-    
-    /**
-     * Manually check for update status from renderer
-     * Returns: { hasUpdate: boolean, currentVersion: string, latestVersion: string|null, url: string|null, error: string|null }
-     */
     checkUpdateStatus: () => ipcRenderer.invoke('check-update-status'),
 
     // =========================================================================
@@ -150,10 +147,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // =========================================================================
     detectRealBPM: (trackId) => ipcRenderer.invoke('detect-real-bpm', trackId),
 
+    // =========================================================================
+    // PLUGINS
+    // =========================================================================
     getPlugins: () => ipcRenderer.invoke('get-plugins'),
 
     // =========================================================================
-    // Play List
+    // PLAYLIST AUTO IMPORT
     // =========================================================================
     importPlaylistAuto: (filePath) => ipcRenderer.invoke('import-playlist-auto', filePath),
     showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),

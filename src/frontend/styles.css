@@ -4170,3 +4170,24 @@ body.ltr.theme-liquid-glass .spotify-music-card:hover .hover-play-bubble {
     background-color: var(--spotify-light-grey);
     opacity: 0.5;
 }
+
+.setting-select {
+    background-color: var(--spotify-grey);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 8px 12px;
+    color: var(--spotify-text-active);
+    font-size: 0.8rem;
+    cursor: pointer;
+    outline: none;
+    transition: var(--transition-smooth);
+}
+
+.setting-select option {
+    background-color: var(--spotify-dark);
+    color: var(--spotify-text-active);
+}
+
+.setting-select:hover {
+    border-color: var(--accent-cyan);
+}

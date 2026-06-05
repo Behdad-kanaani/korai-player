@@ -16,6 +16,7 @@
   "license": "Apache-2.0 WITH Commons-Clause",
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "adm-zip": "^0.5.17",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "find-free-port": "^2.0.0",

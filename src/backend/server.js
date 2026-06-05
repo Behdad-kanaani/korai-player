@@ -1,6 +1,13 @@
 /**
  * server.js - KORAI Music Player Backend API with AI
  * Complete Express server with AI recommendation endpoints
+ * 
+ * FIXES APPLIED:
+ * - Added adm-zip dependency for plugin installation
+ * - Fixed plugin installation endpoint with proper error handling
+ * - Added serverUserDataPath validation
+ * - Added directory creation with permission handling
+ * - Preserved ALL existing functionality
  */
 
 const express = require('express');
@@ -39,6 +46,13 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+/**
+ * Download a file from URL with redirect handling
+ */
 function downloadFile(fileUrl, destPath, redirectCount = 0) {
     if (redirectCount > 5) {
         return Promise.reject(new Error('Too many redirects'));
@@ -77,7 +91,29 @@ function downloadFile(fileUrl, destPath, redirectCount = 0) {
     });
 }
 
+/**
+ * Ensure a directory exists, create it if necessary
+ */
+function ensureDirectoryExists(dirPath) {
+    if (!fs.existsSync(dirPath)) {
+        try {
+            fs.mkdirSync(dirPath, { recursive: true, mode: 0o755 });
+            console.log(`📁 Created directory: ${dirPath}`);
+            return true;
+        } catch (err) {
+            console.error(`❌ Failed to create directory ${dirPath}:`, err.message);
+            return false;
+        }
+    }
+    return true;
+}
+
+// =============================================================================
+// ROUTE SETUP
+// =============================================================================
+
 function setupRoutes() {
+    // ========== SETTINGS ROUTES ==========
     app.get('/api/settings', (req, res) => {
         try {
             const db = getDb();
@@ -126,10 +162,12 @@ function setupRoutes() {
         }
     });
 
+    // ========== HEALTH CHECK ==========
     app.get('/api/health', (req, res) => {
         res.json({ status: 'ok', timestamp: Date.now() });
     });
 
+    // ========== TRACKS ROUTES ==========
     app.get('/api/tracks', (req, res) => {
         try {
             const db = getDb();
@@ -303,6 +341,7 @@ function setupRoutes() {
         }
     });
 
+    // ========== PLAYLIST ROUTES ==========
     app.get('/api/playlists', (req, res) => {
         try {
             const db = getDb();
@@ -354,6 +393,7 @@ function setupRoutes() {
         }
     });
 
+    // ========== TRACK MANAGEMENT ==========
     app.delete('/api/tracks/:id', async (req, res) => {
         try {
             const db = getDb();
@@ -413,7 +453,7 @@ function setupRoutes() {
         }
     });
 
-    // Vocal extraction endpoint
+    // ========== VOCAL EXTRACTION ==========
     app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
         try {
             const db = getDb();
@@ -501,6 +541,7 @@ function setupRoutes() {
         }
     });
 
+    // ========== AI & RECOMMENDATION ROUTES ==========
     app.get('/api/ai/history', (req, res) => {
         try {
             res.json(userHistory);
@@ -526,7 +567,25 @@ function setupRoutes() {
             if (!track) return res.status(404).json({ error: 'Track not found' });
             
             const allTracks = db.getAllTracks();
-            const recommendations = getPersonalizedRecommendations(allTracks, track, userHistory, 12);
+            let recommendations = getPersonalizedRecommendations(allTracks, track, userHistory, 12);
+            
+            // Apply plugin hook: recommendations:modify
+            if (global.pluginManager) {
+                recommendations = recommendations.map(r => ({
+                    ...r,
+                    similarity: r.similarity || 0,
+                    reason: r.reason || '',
+                    similarityIcon: r.similarityIcon || '🎵'
+                }));
+                global.pluginManager.runHook('recommendations:modify', {
+                    sourceTrack: track,
+                    recommendations: recommendations
+                }).then(modified => {
+                    if (modified && modified.recommendations) {
+                        recommendations = modified.recommendations;
+                    }
+                }).catch(err => console.error('Recommendation hook error:', err));
+            }
             
             const safeRecs = recommendations.map(r => ({
                 id: r.id,
@@ -665,6 +724,7 @@ function setupRoutes() {
         }
     });
 
+    // ========== STATISTICS ==========
     app.get('/api/stats', (req, res) => {
         try {
             const db = getDb();
@@ -674,6 +734,7 @@ function setupRoutes() {
         }
     });
 
+    // ========== TAG EDITING ==========
     app.put('/api/tracks/:id/tags', async (req, res) => {
         try {
             const db = getDb();
@@ -699,6 +760,7 @@ function setupRoutes() {
         }
     });
 
+    // ========== PLAYLIST EXPORT/IMPORT ==========
     app.post('/api/playlists/:id/export', async (req, res) => {
         try {
             const db = getDb();
@@ -862,6 +924,7 @@ function setupRoutes() {
         }
     });
 
+    // ========== LIBRARY EXPORT ==========
     app.post('/api/library/export', async (req, res) => {
         try {
             const db = getDb();
@@ -875,6 +938,7 @@ function setupRoutes() {
         }
     });
 
+    // ========== ADVANCED SEARCH ==========
     app.post('/api/search/advanced', (req, res) => {
         try {
             const db = getDb();
@@ -906,6 +970,7 @@ function setupRoutes() {
         }
     });
 
+    // ========== CUE SHEET ROUTES ==========
     app.post('/api/cue/parse', async (req, res) => {
         try {
             const { cuePath, audioBaseDir } = req.body;
@@ -935,6 +1000,7 @@ function setupRoutes() {
         }
     });
 
+    // ========== PLAYBACK SETTINGS ==========
     let gaplessEnabled = true;
     let crossfadeDuration = 0;
 
@@ -949,6 +1015,7 @@ function setupRoutes() {
         res.json({ gaplessEnabled, crossfadeDuration });
     });
 
+    // ========== BPM DETECTION ==========
     app.post('/api/tracks/:id/detect-bpm', async (req, res) => {
         try {
             const db = getDb();
@@ -965,6 +1032,7 @@ function setupRoutes() {
         }
     });
 
+    // ========== PLUGIN ROUTES ==========
     app.get('/api/plugins', (req, res) => {
         if (global.pluginManager) {
             res.json(global.pluginManager.getPluginsList());
@@ -972,7 +1040,70 @@ function setupRoutes() {
             res.json([]);
         }
     });
+
+    app.post('/api/plugins/:id/enable', async (req, res) => {
+        if (!global.pluginManager) return res.status(500).json({ error: 'Plugin manager not ready' });
+        const { enabled } = req.body;
+        const success = await global.pluginManager.setPluginEnabled(req.params.id, enabled === true);
+        res.json({ success });
+    });
+
+    app.delete('/api/plugins/:id', async (req, res) => {
+        if (!global.pluginManager) return res.status(500).json({ error: 'Plugin manager not ready' });
+        const success = await global.pluginManager.uninstallPlugin(req.params.id);
+        if (success) {
+            res.json({ success: true });
+        } else {
+            res.status(500).json({ error: 'Failed to uninstall plugin' });
+        }
+    });
+
+    // Serve plugin icon
+    app.get('/api/plugins/icon/:id', (req, res) => {
+        if (!global.pluginManager) return res.status(404).end();
+        const plugins = global.pluginManager.plugins;
+        const plugin = plugins.get(req.params.id);
+        if (plugin && plugin.manifest.iconPath && fs.existsSync(plugin.manifest.iconPath)) {
+            res.sendFile(plugin.manifest.iconPath);
+        } else {
+            res.status(404).end();
+        }
+    });
+
+    // Plugin hook endpoints
+    app.post('/api/plugins/hook/:hookName', async (req, res) => {
+        try {
+            const { hookName } = req.params;
+            const payload = req.body;
+            if (!global.pluginManager) {
+                return res.status(500).json({ error: 'Plugin manager not ready' });
+            }
+            const result = await global.pluginManager.runHook(hookName, payload);
+            res.json({ success: true, data: result });
+        } catch (err) {
+            console.error(`Hook error (${req.params.hookName}):`, err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    app.get('/api/plugins/ui-injections', async (req, res) => {
+        try {
+            if (!global.pluginManager) {
+                return res.json({ injections: [] });
+            }
+            const result = await global.pluginManager.runHook('ui:inject', {});
+            const injections = Array.isArray(result) ? result : (result ? [result] : []);
+            res.json({ injections });
+        } catch (err) {
+            console.error('UI injection error:', err);
+            res.json({ injections: [] });
+        }
+    });
 }
+
+// =============================================================================
+// SERVER STARTUP
+// =============================================================================
 
 async function startServer(port, userDataPath) {
     serverUserDataPath = userDataPath;
@@ -984,13 +1115,232 @@ async function startServer(port, userDataPath) {
     // ========== PLUGIN MANAGER INITIALIZATION ==========
     const PluginManager = require('./pluginManager');
     const pluginsDir = path.join(userDataPath, 'plugins');
-    global.pluginManager = new PluginManager(pluginsDir);
+    global.pluginManager = new PluginManager(pluginsDir, getDb());
     await global.pluginManager.loadPlugins();
     // ===================================================
     
     // Set temporary directory for audio processing
     const extractTempDir = path.join(userDataPath, 'temp_extract');
     AudioSeparator.setTempDirectory(extractTempDir);
+    
+    // ======================== PLUGIN INSTALLATION ENDPOINT ========================
+    const multer = require('multer');
+    const AdmZip = require('adm-zip');
+    
+    const pluginUploadDir = path.join(serverUserDataPath, 'temp_plugins');
+    
+    // Ensure upload directory exists with proper error handling
+    if (!ensureDirectoryExists(pluginUploadDir)) {
+        console.error('❌ Failed to create plugin upload directory');
+    }
+    
+    const upload = multer({ dest: pluginUploadDir });
+    
+    /**
+     * POST /api/plugins/install
+     * Install a plugin from a ZIP file upload
+     */
+    app.post('/api/plugins/install', upload.single('plugin'), async (req, res) => {
+        try {
+            // Validate server user data path
+            if (!serverUserDataPath) {
+                console.error('❌ serverUserDataPath not set');
+                return res.status(500).json({ error: 'Server user data path not initialized' });
+            }
+            
+            // Validate file was uploaded
+            const file = req.file;
+            if (!file) {
+                return res.status(400).json({ error: 'No file uploaded' });
+            }
+            
+            // Validate file extension
+            if (!file.originalname.toLowerCase().endsWith('.zip')) {
+                try { fs.unlinkSync(file.path); } catch (e) {}
+                return res.status(400).json({ error: 'Only .zip files are allowed' });
+            }
+            
+            // Ensure plugins base directory exists
+            const pluginsBaseDir = path.join(serverUserDataPath, 'plugins');
+            if (!ensureDirectoryExists(pluginsBaseDir)) {
+                throw new Error('Failed to create plugins directory');
+            }
+            
+            // Prepare extraction path
+            const folderName = path.basename(file.originalname, '.zip');
+            const extractPath = path.join(pluginsBaseDir, folderName);
+            
+            // Remove old plugin folder if exists
+            if (fs.existsSync(extractPath)) {
+                try {
+                    fs.rmSync(extractPath, { recursive: true, force: true });
+                    console.log(`🗑️ Removed existing plugin folder: ${folderName}`);
+                } catch (rmErr) {
+                    console.warn(`⚠️ Could not remove existing plugin folder: ${rmErr.message}`);
+                }
+            }
+            
+            // Extract ZIP file
+            const zip = new AdmZip(file.path);
+            const entries = zip.getEntries();
+            
+            if (!entries || entries.length === 0) {
+                throw new Error('ZIP file is empty or corrupted');
+            }
+            
+            zip.extractAllTo(extractPath, true);
+            console.log(`📦 Extracted plugin to: ${extractPath}`);
+            
+            // Clean up uploaded file
+            try { fs.unlinkSync(file.path); } catch (e) {}
+            
+            // Flatten nested folder structure (if ZIP contains a single top-level folder)
+            const extractedItems = fs.readdirSync(extractPath);
+            if (extractedItems.length === 1) {
+                const onlyItem = path.join(extractPath, extractedItems[0]);
+                if (fs.statSync(onlyItem).isDirectory()) {
+                    const nestedItems = fs.readdirSync(onlyItem);
+                    for (const item of nestedItems) {
+                        const sourcePath = path.join(onlyItem, item);
+                        const destPath = path.join(extractPath, item);
+                        fs.renameSync(sourcePath, destPath);
+                    }
+                    fs.rmdirSync(onlyItem);
+                    console.log(`📁 Flattened nested folder for plugin: ${folderName}`);
+                }
+            }
+            
+            // Validate plugin has required files
+            const manifestPath = path.join(extractPath, 'manifest.json');
+            const indexPath = path.join(extractPath, 'index.js');
+            
+            if (!fs.existsSync(manifestPath)) {
+                throw new Error('Plugin missing manifest.json file');
+            }
+            if (!fs.existsSync(indexPath)) {
+                throw new Error('Plugin missing index.js file');
+            }
+            
+            // Validate manifest JSON format
+            let manifest;
+            try {
+                manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+                if (!manifest.id || !manifest.name || !manifest.version) {
+                    throw new Error('Manifest missing required fields: id, name, version');
+                }
+            } catch (parseErr) {
+                throw new Error(`Invalid manifest.json: ${parseErr.message}`);
+            }
+            
+            // Reload plugins to include the newly installed one
+            if (global.pluginManager) {
+                await global.pluginManager.loadPlugins();
+                console.log(`✅ Plugin reloaded: ${manifest.name} v${manifest.version}`);
+            } else {
+                console.warn('⚠️ Plugin manager not available, plugin installed but not loaded');
+            }
+            
+            console.log(`✅ Plugin installed successfully: ${folderName}`);
+            res.json({ 
+                success: true, 
+                pluginPath: extractPath, 
+                pluginName: folderName,
+                manifest: manifest
+            });
+            
+        } catch (err) {
+            console.error('❌ Plugin installation error:', err);
+            
+            // Clean up uploaded file if it exists
+            if (req.file && fs.existsSync(req.file.path)) {
+                try { fs.unlinkSync(req.file.path); } catch (e) {}
+            }
+            
+            res.status(500).json({ error: err.message });
+        }
+    });
+    
+    /**
+     * GET /api/plugins/install-from-url
+     * Install a plugin from a ZIP file URL
+     */
+    app.get('/api/plugins/install-from-url', async (req, res) => {
+        const { url } = req.query;
+        if (!url) return res.status(400).json({ error: 'URL parameter required' });
+        
+        try {
+            // Validate server user data path
+            if (!serverUserDataPath) {
+                return res.status(500).json({ error: 'Server user data path not initialized' });
+            }
+            
+            const fetch = (await import('node-fetch')).default;
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                return res.status(400).json({ error: `Download failed: ${response.statusText}` });
+            }
+            
+            // Ensure temp directory exists
+            const pluginUploadDir = path.join(serverUserDataPath, 'temp_plugins');
+            ensureDirectoryExists(pluginUploadDir);
+            
+            const tempZipPath = path.join(pluginUploadDir, `plugin_${Date.now()}.zip`);
+            const fileStream = fs.createWriteStream(tempZipPath);
+            
+            await new Promise((resolve, reject) => {
+                response.body.pipe(fileStream);
+                response.body.on('error', reject);
+                fileStream.on('finish', resolve);
+            });
+            
+            // Ensure plugins base directory exists
+            const pluginsBaseDir = path.join(serverUserDataPath, 'plugins');
+            ensureDirectoryExists(pluginsBaseDir);
+            
+            const folderName = path.basename(url).split('?')[0].replace(/\.zip$/i, '') || 'plugin';
+            const extractPath = path.join(pluginsBaseDir, folderName);
+            
+            // Remove old folder if exists
+            if (fs.existsSync(extractPath)) {
+                try { fs.rmSync(extractPath, { recursive: true, force: true }); } catch (e) {}
+            }
+            
+            // Extract ZIP
+            const AdmZip = require('adm-zip');
+            const zip = new AdmZip(tempZipPath);
+            zip.extractAllTo(extractPath, true);
+            
+            // Clean up
+            try { fs.unlinkSync(tempZipPath); } catch (e) {}
+            
+            // Flatten nested folder structure
+            const extractedItems = fs.readdirSync(extractPath);
+            if (extractedItems.length === 1) {
+                const onlyItem = path.join(extractPath, extractedItems[0]);
+                if (fs.statSync(onlyItem).isDirectory()) {
+                    const nestedItems = fs.readdirSync(onlyItem);
+                    for (const item of nestedItems) {
+                        fs.renameSync(path.join(onlyItem, item), path.join(extractPath, item));
+                    }
+                    fs.rmdirSync(onlyItem);
+                }
+            }
+            
+            // Reload plugins
+            if (global.pluginManager) {
+                await global.pluginManager.loadPlugins();
+            }
+            
+            console.log(`✅ Plugin installed from URL: ${folderName}`);
+            res.json({ success: true, pluginPath: extractPath, pluginName: folderName });
+            
+        } catch (err) {
+            console.error('URL plugin install error:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+    // ============================================================================
     
     setupRoutes();
     

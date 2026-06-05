@@ -1,333 +1,96 @@
-// additional.js - KORAI Player Extended Functions (ULTIMATE FIX)
+// additional.js - KORAI Player Extended Functions (Fully Fixed)
+// Includes: Settings Modal, Plugin Management, Persistent Settings, Vocal Extraction placeholders
+// FIX: Plugin list now refreshes correctly after installation
 
-let isExtracting = false;
+// ======================== GLOBAL VARIABLES ========================
+let settingsModal = null;
+let currentSettings = {};
 
-// ======================== INJECT MISSING CSS ========================
-const settingsModalCSS = `
-<style id="korai-settings-style">
-.settings-modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.85);
-    backdrop-filter: blur(12px);
-    z-index: 10020;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.25s ease, visibility 0.25s ease;
-}
-.settings-modal-overlay.open {
-    opacity: 1;
-    visibility: visible;
-}
-.settings-modal-container {
-    width: 90%;
-    max-width: 900px;
-    max-height: 85vh;
-    background: linear-gradient(135deg, var(--spotify-dark) 0%, var(--spotify-grey) 100%);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    transform: scale(0.95);
-    transition: transform 0.3s cubic-bezier(0.34, 1.2, 0.64, 1);
-    box-shadow: 0 25px 50px rgba(0,0,0,0.5);
-    display: flex;
-    flex-direction: column;
-}
-.settings-modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 20px 24px;
-    border-bottom: 1px solid var(--border-color);
-    background: rgba(0,0,0,0.2);
-}
-.settings-modal-body {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-}
-.settings-tabs {
-    width: 200px;
-    background: rgba(0,0,0,0.2);
-    padding: 20px 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    border-right: 1px solid var(--border-color);
-}
-body.rtl .settings-tabs {
-    border-right: none;
-    border-left: 1px solid var(--border-color);
-}
-.settings-tab-btn {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 20px;
-    background: transparent;
-    border: none;
-    color: var(--spotify-text-muted);
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: var(--transition-smooth);
-    width: 100%;
-    text-align: left;
-}
-.settings-tab-btn.active {
-    background: linear-gradient(90deg, rgba(29,185,84,0.15) 0%, transparent 100%);
-    color: var(--accent-cyan);
-    border-left: 3px solid var(--accent-cyan);
-}
-.settings-content {
-    flex: 1;
-    padding: 24px;
-    overflow-y: auto;
-}
-.settings-tab-pane {
-    display: none;
-    animation: fadeInPane 0.3s ease;
-}
-.settings-tab-pane.active-pane {
-    display: block;
-}
-@keyframes fadeInPane {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-.setting-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
-}
-.setting-toggle {
-    position: relative;
-    display: inline-block;
-    width: 50px;
-    height: 26px;
-}
-.setting-toggle input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-.toggle-slider {
-    position: absolute;
-    cursor: pointer;
-    inset: 0;
-    background-color: var(--spotify-light-grey);
-    transition: 0.3s;
-    border-radius: 34px;
-    border: 1px solid var(--border-color);
-}
-.toggle-slider:before {
-    position: absolute;
-    content: "";
-    height: 18px;
-    width: 18px;
-    left: 3px;
-    bottom: 3px;
-    background-color: white;
-    transition: 0.3s;
-    border-radius: 50%;
-}
-input:checked + .toggle-slider {
-    background-color: var(--accent-cyan);
-}
-input:checked + .toggle-slider:before {
-    transform: translateX(24px);
-}
-.setting-slider {
-    width: 180px;
-    -webkit-appearance: none;
-    appearance: none;
-    height: 4px;
-    border-radius: 4px;
-    background: linear-gradient(90deg, var(--accent-cyan) 0%, var(--spotify-light-grey) 100%);
-    outline: none;
-}
-.setting-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: var(--accent-cyan);
-    cursor: pointer;
-}
-.setting-value {
-    min-width: 50px;
-    font-size: 0.8rem;
-    font-family: monospace;
-    color: var(--accent-cyan);
-}
-.settings-group-title {
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--accent-cyan);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 16px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--border-color);
-}
-.settings-modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-    padding: 16px 24px;
-    border-top: 1px solid var(--border-color);
-    background: rgba(0,0,0,0.2);
-}
-.settings-footer-btn {
-    padding: 8px 20px;
-    border-radius: var(--radius-md);
-    font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: var(--transition-smooth);
-    border: none;
-}
-.settings-footer-btn.cancel {
-    background: var(--spotify-grey);
-    color: var(--spotify-text-active);
-}
-.settings-footer-btn.save {
-    background: var(--accent-cyan);
-    color: #000;
-}
-.danger-zone {
-    margin-top: 32px;
-    padding: 16px;
-    background: rgba(244,63,94,0.1);
-    border: 1px solid rgba(244,63,94,0.3);
-    border-radius: var(--radius-md);
-}
-.danger-btn {
-    background: rgba(244,63,94,0.15);
-    border: 1px solid var(--accent-pink);
-    border-radius: var(--radius-md);
-    padding: 8px 16px;
-    color: var(--accent-pink);
-    font-size: 0.75rem;
-    font-weight: 600;
-    cursor: pointer;
-}
-.radio-group {
-    display: flex;
-    gap: 16px;
-}
-.radio-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    font-size: 0.8rem;
-}
-</style>`;
-if (!document.getElementById('korai-settings-style')) {
-    document.head.insertAdjacentHTML('beforeend', settingsModalCSS);
+const defaultSettings = {
+    gaplessEnabled: true,
+    crossfadeDuration: 0,
+    librarySortKey: 'createdAt',
+    librarySortOrder: 'desc',
+    libraryGenreFilter: 'all',
+    theme: 'default',
+    language: 'en',
+    showWaveform: true,
+    autoScanOnStartup: false,
+    scanFolders: [],
+    anonymousAnalytics: true,
+    defaultVolume: 70
+};
+
+// Helper to wait for API port (improved: waits for window.apiPort to be set)
+function waitForApiPort(timeout = 5000) {
+    return new Promise((resolve, reject) => {
+        if (window.apiPort && typeof window.apiPort === 'number') {
+            resolve(window.apiPort);
+            return;
+        }
+        const start = Date.now();
+        const interval = setInterval(() => {
+            if (window.apiPort && typeof window.apiPort === 'number') {
+                clearInterval(interval);
+                resolve(window.apiPort);
+            } else if (Date.now() - start > timeout) {
+                clearInterval(interval);
+                reject(new Error('API port not available after timeout'));
+            }
+        }, 100);
+    });
 }
 
-// ======================== SONG INFO (unchanged) ========================
-function showSongInfo() {
-    if (!currentTrack) {
-        showNotification(t('noTrackPlaying'), 'warning');
-        return;
-    }
-    const modal = document.getElementById('songInfoModal');
-    if (!modal) return;
-    const contentDiv = document.getElementById('songInfoContent');
-    const coverUrl = currentTrack.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${currentTrack.id}/cover` : null;
-    const lang = currentLanguage;
-    contentDiv.innerHTML = `
-        <div style="display: flex; gap: 20px; margin-bottom: 20px;">
-            <div style="width: 80px; height: 80px; border-radius: var(--radius-md); overflow: hidden; background: var(--spotify-grey); display: flex; align-items: center; justify-content: center;">
-                ${coverUrl ? `<img src="${coverUrl}" style="width:100%;height:100%;object-fit:cover;">` : '<i class="fa-solid fa-music" style="font-size:2rem;"></i>'}
-            </div>
-            <div style="flex:1;">
-                <h3 style="font-size:1.1rem;">${escapeHtml(currentTrack.title || 'Untitled')}</h3>
-                <p style="color:var(--spotify-text-muted);">${escapeHtml(currentTrack.artist || 'Unknown Artist')}</p>
-                <p style="font-size:0.7rem;"><i class="fa-regular fa-clock"></i> ${formatTime(currentTrack.duration)}</p>
-            </div>
-        </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
-            <div><span style="color:var(--accent-cyan);">BPM:</span> ${currentTrack.bpm || '—'}</div>
-            <div><span style="color:var(--accent-cyan);">Energy:</span> ${currentTrack.energy ? Math.round(currentTrack.energy*100)+'%' : '—'}</div>
-            <div><span style="color:var(--accent-cyan);">Genre:</span> ${escapeHtml(currentTrack.genre || '—')}</div>
-            <div><span style="color:var(--accent-cyan);">Album:</span> ${escapeHtml(currentTrack.album || '—')}</div>
-            <div><span style="color:var(--accent-cyan);">Bitrate:</span> ${currentTrack.bitrate ? (currentTrack.bitrate/1000).toFixed(0)+' kbps' : '—'}</div>
-            <div><span style="color:var(--accent-cyan);">Sample Rate:</span> ${currentTrack.sampleRate ? (currentTrack.sampleRate/1000).toFixed(1)+' kHz' : '—'}</div>
-        </div>
-        <hr style="border-color:var(--border-color); margin: 10px 0;">
-        <p style="font-size:0.75rem; color:var(--spotify-text-muted);"><i class="fa-solid fa-info-circle"></i> ${lang === 'fa' ? 'استخراج صدای خواننده به صورت یک آهنگ جدید (پردازش Mid-Side)' : 'Extract vocal as a new track (AI-based mid-side processing)'}</p>
-    `;
-    modal.style.display = 'flex';
-}
-function closeSongInfoModal() {
-    const modal = document.getElementById('songInfoModal');
-    if (modal) modal.style.display = 'none';
-}
-async function extractVocalFromCurrentTrack() {
-    if (!currentTrack) { showNotification(t('noTrackPlaying'), 'warning'); return; }
-    if (isExtracting) { showNotification(t('extractionInProgress'), 'info'); return; }
-    isExtracting = true;
-    showImportProgress(1);
-    updateImportProgress(10, t('preparingExtraction'));
+// ======================== SETTINGS MANAGEMENT ========================
+async function loadSettingsFromServer() {
     try {
-        updateImportProgress(30, t('extractingVocal'));
-        const response = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/${currentTrack.id}/extract-vocal`, {
+        const port = await waitForApiPort();
+        const res = await fetch(`http://127.0.0.1:${port}/api/settings`);
+        if (!res.ok) throw new Error('Failed to fetch settings');
+        const serverSettings = await res.json();
+        currentSettings = { ...defaultSettings, ...serverSettings };
+        
+        // IMPORTANT: Do NOT apply settings to global functions here.
+        // Applying them (e.g., changeClientLanguage) would cause unwanted re-renders
+        // such as reloading the home page when opening the settings modal.
+        // The applied settings are already active from previous saves or initial app load.
+        
+        return currentSettings;
+    } catch (err) {
+        console.error('Failed to load settings:', err);
+        currentSettings = { ...defaultSettings };
+        return currentSettings;
+    }
+}
+
+async function saveSettingsToServer(settings) {
+    try {
+        const port = await waitForApiPort();
+        const res = await fetch(`http://127.0.0.1:${port}/api/settings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode: 'vocal' })
+            body: JSON.stringify(settings)
         });
-        if (!response.ok) throw new Error((await response.json()).error || 'Extraction failed');
-        const data = await response.json();
-        updateImportProgress(90, t('addingToLibrary'));
-        await loadTracks();
-        await loadPlaylists();
-        const newTrack = data.track;
-        if (newTrack) {
-            updateImportProgress(100, t('extractionComplete'));
-            setTimeout(async () => {
-                hideImportProgress();
-                closeSongInfoModal();
-                await playTrack(newTrack.id);
-                showNotification(`${t('vocalTrackAdded')}: ${newTrack.title}`, 'success');
-            }, 500);
-        } else {
-            hideImportProgress();
-            showNotification(t('extractionNoTrack'), 'warning');
-        }
+        if (!res.ok) throw new Error('Save failed');
+        
+        // Apply changes to app state
+        if (typeof window.setGaplessMode === 'function') window.setGaplessMode(settings.gaplessEnabled);
+        if (typeof window.setCrossfadeMode === 'function') window.setCrossfadeMode(settings.crossfadeDuration);
+        if (typeof window.changeClientLanguage === 'function') window.changeClientLanguage(settings.language);
+        if (typeof window.applyGlobalSkin === 'function') window.applyGlobalSkin(settings.theme);
+        if (typeof window.setLibrarySort === 'function') window.setLibrarySort(settings.librarySortKey, settings.librarySortOrder);
+        if (typeof window.renderLibrary === 'function') window.renderLibrary();
+        return true;
     } catch (err) {
-        console.error(err);
-        hideImportProgress();
-        showNotification(`${t('extractionFailed')}: ${err.message}`, 'error');
-    } finally {
-        isExtracting = false;
+        console.error('Save settings error:', err);
+        return false;
     }
 }
-window.showSongInfo = showSongInfo;
-window.closeSongInfoModal = closeSongInfoModal;
-window.extractVocalFromCurrentTrack = extractVocalFromCurrentTrack;
 
-// ======================== SETTINGS MODAL ========================
-let settingsModal = null;
-const defaultSettings = {
-    gaplessEnabled: true, crossfadeDuration: 0,
-    librarySortKey: 'createdAt', librarySortOrder: 'desc', libraryGenreFilter: 'all',
-    theme: 'default', language: 'en', showWaveform: true,
-    autoScanOnStartup: false, scanFolders: [], anonymousAnalytics: true
-};
-let currentSettings = { ...defaultSettings };
-
+// ======================== SETTINGS MODAL UI ========================
 function createSettingsModal() {
     if (document.getElementById('settingsModal')) return;
+    
     const modalHtml = `
         <div id="settingsModal" class="settings-modal-overlay">
             <div class="settings-modal-container">
@@ -340,15 +103,15 @@ function createSettingsModal() {
                         <button class="settings-tab-btn active" data-tab="playback"><i class="fa-solid fa-headphones"></i> Playback</button>
                         <button class="settings-tab-btn" data-tab="library"><i class="fa-solid fa-music"></i> Library</button>
                         <button class="settings-tab-btn" data-tab="appearance"><i class="fa-solid fa-palette"></i> Appearance</button>
-                        <button class="settings-tab-btn" data-tab="advanced"><i class="fa-solid fa-microchip"></i> Advanced</button>
+                        <button class="settings-tab-btn" data-tab="plugins"><i class="fa-solid fa-puzzle-piece"></i> Plugins</button>
                         <button class="settings-tab-btn" data-tab="about"><i class="fa-solid fa-circle-info"></i> About</button>
                     </div>
                     <div class="settings-content">
-                        <div class="settings-tab-pane active-pane" id="tab-playback"><!-- filled by JS --></div>
-                        <div class="settings-tab-pane" id="tab-library"><!-- filled by JS --></div>
-                        <div class="settings-tab-pane" id="tab-appearance"><!-- filled by JS --></div>
-                        <div class="settings-tab-pane" id="tab-advanced"><!-- filled by JS --></div>
-                        <div class="settings-tab-pane" id="tab-about"><!-- filled by JS --></div>
+                        <div class="settings-tab-pane active-pane" id="tab-playback"></div>
+                        <div class="settings-tab-pane" id="tab-library"></div>
+                        <div class="settings-tab-pane" id="tab-appearance"></div>
+                        <div class="settings-tab-pane" id="tab-plugins"></div>
+                        <div class="settings-tab-pane" id="tab-about"></div>
                     </div>
                 </div>
                 <div class="settings-modal-footer">
@@ -360,25 +123,87 @@ function createSettingsModal() {
     `;
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     settingsModal = document.getElementById('settingsModal');
-    if (!settingsModal) return;
-    // Populate tabs with minimal content (can be expanded)
-    document.getElementById('tab-playback').innerHTML = `
-        <div class="settings-group"><div class="settings-group-title">Playback Engine</div>
-        <div class="setting-row"><div class="setting-info"><div class="setting-label">Gapless Playback</div></div><div class="setting-control"><label class="setting-toggle"><input type="checkbox" id="settingGapless"><span class="toggle-slider"></span></label></div></div>
-        <div class="setting-row"><div class="setting-info"><div class="setting-label">Crossfade Duration</div></div><div class="setting-control"><input type="range" id="settingCrossfade" class="setting-slider" min="0" max="12" step="0.5" value="0"><span id="crossfadeValue" class="setting-value">0s</span></div></div>
-        <div class="setting-row"><div class="setting-info"><div class="setting-label">Default Volume</div></div><div class="setting-control"><input type="range" id="settingVolume" class="setting-slider" min="0" max="100" step="1" value="70"><span id="volumeValue" class="setting-value">70%</span></div></div>
-        </div>`;
-    document.getElementById('tab-library').innerHTML = `<div class="settings-group"><div class="settings-group-title">Sorting</div><div class="setting-row"><div class="setting-info"><div class="setting-label">Sort By</div></div><div class="setting-control"><select id="settingSortKey"><option value="createdAt">Date Added</option><option value="title">Title</option></select></div></div></div>`;
-    document.getElementById('tab-appearance').innerHTML = `<div class="settings-group"><div class="settings-group-title">Theme</div><div class="setting-row"><div class="radio-group"><label class="radio-label"><input type="radio" name="themeRadio" value="default"> Default</label><label class="radio-label"><input type="radio" name="themeRadio" value="liquid-glass"> Liquid Glass</label></div></div><div class="setting-row"><div class="radio-group"><label class="radio-label"><input type="radio" name="langRadio" value="en"> English</label><label class="radio-label"><input type="radio" name="langRadio" value="fa"> فارسی</label></div></div></div>`;
-    document.getElementById('tab-advanced').innerHTML = `<div class="danger-zone"><button id="resetSettingsBtn" class="danger-btn">Reset All Settings</button></div>`;
-    document.getElementById('tab-about').innerHTML = `<div style="text-align:center"><i class="fa-solid fa-compact-disc" style="font-size:4rem;color:var(--accent-cyan)"></i><h2>KORAI Player</h2><p>Version 1.3.0</p><button id="githubLinkBtn">GitHub</button></div>`;
-    initSettingsEventListeners();
+    populateSettingsTabs();
+    attachSettingsEvents();
 }
 
-function initSettingsEventListeners() {
+function populateSettingsTabs() {
+    // Playback tab
+    document.getElementById('tab-playback').innerHTML = `
+        <div class="settings-group">
+            <div class="settings-group-title">Playback Engine</div>
+            <div class="setting-row">
+                <div class="setting-info"><div class="setting-label">Gapless Playback</div><div class="setting-desc">Seamless track transitions</div></div>
+                <div class="setting-control"><label class="setting-toggle"><input type="checkbox" id="settingGapless"><span class="toggle-slider"></span></label></div>
+            </div>
+            <div class="setting-row">
+                <div class="setting-info"><div class="setting-label">Crossfade Duration (seconds)</div></div>
+                <div class="setting-control"><input type="range" id="settingCrossfade" class="setting-slider" min="0" max="12" step="0.5"><span id="crossfadeValue" class="setting-value">0s</span></div>
+            </div>
+            <div class="setting-row">
+                <div class="setting-info"><div class="setting-label">Default Volume</div></div>
+                <div class="setting-control"><input type="range" id="settingVolume" class="setting-slider" min="0" max="100" step="1"><span id="volumeValue" class="setting-value">70%</span></div>
+            </div>
+        </div>
+    `;
+    // Library tab
+    document.getElementById('tab-library').innerHTML = `
+        <div class="settings-group">
+            <div class="settings-group-title">Sorting & Filters</div>
+            <div class="setting-row">
+                <div class="setting-info"><div class="setting-label">Sort By</div></div>
+                <div class="setting-control"><select id="settingSortKey" class="setting-select"><option value="createdAt">Date Added</option><option value="title">Title</option><option value="artist">Artist</option><option value="bpm">BPM</option><option value="duration">Duration</option></select></div>
+            </div>
+            <div class="setting-row">
+                <div class="setting-info"><div class="setting-label">Sort Order</div></div>
+                <div class="setting-control"><select id="settingSortOrder" class="setting-select"><option value="desc">Descending</option><option value="asc">Ascending</option></select></div>
+            </div>
+        </div>
+    `;
+    // Appearance tab with fixed select styling
+    document.getElementById('tab-appearance').innerHTML = `
+        <div class="settings-group">
+            <div class="settings-group-title">Theme & Language</div>
+            <div class="setting-row">
+                <div class="setting-info"><div class="setting-label">UI Theme</div></div>
+                <div class="setting-control">
+                    <select id="settingTheme" class="setting-select">
+                        <option value="default">Default Dark</option>
+                        <option value="liquid-glass">Liquid Glass</option>
+                    </select>
+                </div>
+            </div>
+            <div class="setting-row">
+                <div class="setting-info"><div class="setting-label">Language</div></div>
+                <div class="setting-control">
+                    <select id="settingLanguage" class="setting-select">
+                        <option value="en">English</option>
+                        <option value="fa">فارسی</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    `;
+    // Plugins tab (will be populated dynamically)
+    document.getElementById('tab-plugins').innerHTML = `<div id="pluginsListContainer" class="settings-group"><div class="settings-group-title">Installed Plugins</div><div id="pluginsList"></div></div>`;
+    // About tab
+    document.getElementById('tab-about').innerHTML = `
+        <div style="text-align:center">
+            <i class="fa-solid fa-compact-disc" style="font-size:4rem;color:var(--accent-cyan)"></i>
+            <h2>KORAI Player</h2>
+            <p>Version 1.3.0</p>
+            <button id="githubLinkBtn" class="modal-btn confirm">GitHub Repository</button>
+        </div>
+    `;
+}
+
+function attachSettingsEvents() {
     if (!settingsModal) return;
+    
+    // Tab switching
     const tabBtns = settingsModal.querySelectorAll('.settings-tab-btn');
     const tabPanes = settingsModal.querySelectorAll('.settings-tab-pane');
+    
     tabBtns.forEach(btn => {
         btn.addEventListener('click', () => {
             const tabId = btn.dataset.tab;
@@ -387,24 +212,40 @@ function initSettingsEventListeners() {
             tabPanes.forEach(pane => pane.classList.remove('active-pane'));
             const activePane = document.getElementById(`tab-${tabId}`);
             if (activePane) activePane.classList.add('active-pane');
+            
+            // Refresh plugins list when switching to plugins tab
+            if (tabId === 'plugins') {
+                populatePluginsListUI();
+            }
         });
     });
+    
+    // Close / Cancel buttons
     const closeBtn = settingsModal.querySelector('#settingsCloseBtn');
     const cancelBtn = settingsModal.querySelector('#settingsCancelBtn');
     if (closeBtn) closeBtn.addEventListener('click', closeSettingsModal);
     if (cancelBtn) cancelBtn.addEventListener('click', closeSettingsModal);
     settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) closeSettingsModal(); });
+    
+    // Save button
     const saveBtn = settingsModal.querySelector('#settingsSaveBtn');
-    if (saveBtn) saveBtn.addEventListener('click', saveSettings);
-    // sliders
+    if (saveBtn) saveBtn.addEventListener('click', saveAllSettings);
+    
+    // Live value updates
     const crossfadeSlider = document.getElementById('settingCrossfade');
-    if (crossfadeSlider) crossfadeSlider.addEventListener('input', (e) => document.getElementById('crossfadeValue').textContent = parseFloat(e.target.value).toFixed(1)+'s');
+    if (crossfadeSlider) crossfadeSlider.addEventListener('input', (e) => {
+        document.getElementById('crossfadeValue').innerText = parseFloat(e.target.value).toFixed(1) + 's';
+    });
     const volumeSlider = document.getElementById('settingVolume');
-    if (volumeSlider) volumeSlider.addEventListener('input', (e) => document.getElementById('volumeValue').textContent = e.target.value+'%');
-    const resetBtn = document.getElementById('resetSettingsBtn');
-    if (resetBtn) resetBtn.addEventListener('click', () => { if(confirm('Reset all settings?')) loadSettingsIntoUI(defaultSettings); });
+    if (volumeSlider) volumeSlider.addEventListener('input', (e) => {
+        document.getElementById('volumeValue').innerText = e.target.value + '%';
+    });
+    
+    // GitHub link
     const githubBtn = document.getElementById('githubLinkBtn');
-    if (githubBtn && window.electronAPI) githubBtn.addEventListener('click', () => window.electronAPI.openExternalLink('https://github.com/Behdad-kanaani/korai-player'));
+    if (githubBtn && window.electronAPI) {
+        githubBtn.addEventListener('click', () => window.electronAPI.openExternalLink('https://github.com/Behdad-kanaani/korai-player'));
+    }
 }
 
 function loadSettingsIntoUI(settings) {
@@ -415,117 +256,452 @@ function loadSettingsIntoUI(settings) {
     const volume = document.getElementById('settingVolume');
     if (volume) volume.value = settings.defaultVolume || 70;
     const sortKey = document.getElementById('settingSortKey');
-    if (sortKey) sortKey.value = settings.librarySortKey;
-    const themeRadios = document.querySelectorAll('input[name="themeRadio"]');
-    themeRadios.forEach(r => { if(r.value === (settings.theme || 'default')) r.checked = true; });
-    const langRadios = document.querySelectorAll('input[name="langRadio"]');
-    langRadios.forEach(r => { if(r.value === (settings.language || 'en')) r.checked = true; });
+    if (sortKey) sortKey.value = settings.librarySortKey || 'createdAt';
+    const sortOrder = document.getElementById('settingSortOrder');
+    if (sortOrder) sortOrder.value = settings.librarySortOrder || 'desc';
+    const theme = document.getElementById('settingTheme');
+    if (theme) theme.value = settings.theme || 'default';
+    const language = document.getElementById('settingLanguage');
+    if (language) language.value = settings.language || 'en';
+    
+    // Update displayed values
+    if (crossfade && document.getElementById('crossfadeValue')) {
+        document.getElementById('crossfadeValue').innerText = parseFloat(settings.crossfadeDuration).toFixed(1) + 's';
+    }
+    if (volume && document.getElementById('volumeValue')) {
+        document.getElementById('volumeValue').innerText = (settings.defaultVolume || 70) + '%';
+    }
 }
 
 function collectSettingsFromUI() {
-    const settings = { ...currentSettings };
-    const gapless = document.getElementById('settingGapless');
-    if (gapless) settings.gaplessEnabled = gapless.checked;
-    const crossfade = document.getElementById('settingCrossfade');
-    if (crossfade) settings.crossfadeDuration = parseFloat(crossfade.value);
-    const volume = document.getElementById('settingVolume');
-    if (volume) settings.defaultVolume = parseInt(volume.value);
-    const sortKey = document.getElementById('settingSortKey');
-    if (sortKey) settings.librarySortKey = sortKey.value;
-    const themeRadio = document.querySelector('input[name="themeRadio"]:checked');
-    if (themeRadio) settings.theme = themeRadio.value;
-    const langRadio = document.querySelector('input[name="langRadio"]:checked');
-    if (langRadio) settings.language = langRadio.value;
-    return settings;
+    return {
+        gaplessEnabled: document.getElementById('settingGapless')?.checked ?? true,
+        crossfadeDuration: parseFloat(document.getElementById('settingCrossfade')?.value ?? 0),
+        defaultVolume: parseInt(document.getElementById('settingVolume')?.value ?? 70),
+        librarySortKey: document.getElementById('settingSortKey')?.value ?? 'createdAt',
+        librarySortOrder: document.getElementById('settingSortOrder')?.value ?? 'desc',
+        theme: document.getElementById('settingTheme')?.value ?? 'default',
+        language: document.getElementById('settingLanguage')?.value ?? 'en',
+        libraryGenreFilter: currentSettings.libraryGenreFilter || 'all',
+        showWaveform: true,
+        autoScanOnStartup: false,
+        anonymousAnalytics: true
+    };
 }
 
-function applySettings(settings) {
-    if (settings.theme && typeof applyGlobalSkin === 'function') applyGlobalSkin(settings.theme);
-    if (settings.language && typeof changeClientLanguage === 'function') changeClientLanguage(settings.language);
-    if (typeof window.setGaplessMode === 'function') window.setGaplessMode(settings.gaplessEnabled);
-    if (typeof window.setCrossfadeMode === 'function') window.setCrossfadeMode(settings.crossfadeDuration);
-}
-
-async function saveSettingsToServer(settings) {
-    try {
-        if (window.apiPort) {
-            await fetch(`http://127.0.0.1:${window.apiPort}/api/settings`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings)
-            });
-        }
-    } catch(e) { console.error(e); }
-}
-
-async function saveSettings() {
+async function saveAllSettings() {
     const newSettings = collectSettingsFromUI();
-    currentSettings = newSettings;
-    applySettings(newSettings);
-    await saveSettingsToServer(newSettings);
-    showNotification('Settings saved', 'success');
-    closeSettingsModal();
+    const success = await saveSettingsToServer(newSettings);
+    if (success) {
+        currentSettings = newSettings;
+        showNotification('Settings saved successfully', 'success');
+        closeSettingsModal();
+        if (typeof window.renderLibrary === 'function') window.renderLibrary();
+    } else {
+        showNotification('Failed to save settings', 'error');
+    }
 }
 
-function loadCurrentSettings() {
-    const temp = { ...defaultSettings };
-    if (typeof window.librarySortKey !== 'undefined') temp.librarySortKey = window.librarySortKey;
-    if (typeof window.currentLanguage !== 'undefined') temp.language = window.currentLanguage;
-    if (typeof window.currentSkin !== 'undefined') temp.theme = window.currentSkin;
-    if (typeof window.gaplessEnabled !== 'undefined') temp.gaplessEnabled = window.gaplessEnabled;
-    if (typeof window.crossfadeDuration !== 'undefined') temp.crossfadeDuration = window.crossfadeDuration;
-    currentSettings = { ...currentSettings, ...temp };
-    loadSettingsIntoUI(currentSettings);
-}
-
-function openSettingsModal() {
+// ======================== OPEN / CLOSE MODAL ========================
+async function openSettingsModal() {
     if (!settingsModal) createSettingsModal();
-    if (!settingsModal) return;
-    loadCurrentSettings();
+    if (!settingsModal) {
+        console.error('Failed to create settings modal');
+        return;
+    }
+    
     settingsModal.classList.add('open');
+    
+    try {
+        const settings = await loadSettingsFromServer();
+        loadSettingsIntoUI(settings);
+        
+        // Check which tab is active and load content accordingly
+        const activeTab = settingsModal.querySelector('.settings-tab-btn.active');
+        if (activeTab && activeTab.dataset.tab === 'plugins') {
+            await populatePluginsListUI();
+        }
+    } catch (err) {
+        console.error('Error loading settings into modal:', err);
+        loadSettingsIntoUI(defaultSettings);
+    }
 }
+
 function closeSettingsModal() {
     if (settingsModal) settingsModal.classList.remove('open');
 }
 
-// ======================== FORCE FIX THE SETTINGS BUTTON ========================
-function fixSettingsButton() {
-    const btn = document.getElementById('settingsBtn');
-    if (!btn) {
-        console.warn('Settings button not found yet, will retry');
-        return false;
+// ======================== PLUGINS UI (with install from ZIP) ========================
+async function populatePluginsListUI() {
+    const container = document.getElementById('pluginsList');
+    if (!container) return;
+    
+    // Show a loading indicator
+    container.innerHTML = `<div class="setting-row"><span>Loading plugins...</span></div>`;
+    
+    try {
+        const port = await waitForApiPort();
+        const res = await fetch(`http://127.0.0.1:${port}/api/plugins`);
+        const plugins = await res.json();
+        
+        // Build install button bar with refresh button
+        let html = `
+            <div class="plugin-install-bar" style="margin-bottom: 20px; text-align: center; display: flex; gap: 10px; justify-content: center;">
+                <button id="installPluginBtn" class="modal-btn confirm" style="background: var(--accent-cyan); color: #000;">
+                    <i class="fa-solid fa-download"></i> Install Plugin (.zip)
+                </button>
+                <button id="refreshPluginsBtn" class="modal-btn" style="background: var(--spotify-grey);">
+                    <i class="fa-solid fa-rotate-right"></i> Refresh
+                </button>
+            </div>
+        `;
+        
+        if (!plugins.length) {
+            html += `<div class="setting-row"><span style="color:var(--spotify-text-muted)">No plugins installed. Click the button above to install a plugin from a .zip file.</span></div>`;
+            container.innerHTML = html;
+            attachInstallButtonListener();
+            attachRefreshButtonListener();
+            return;
+        }
+        
+        for (const p of plugins) {
+            const iconUrl = p.iconPath ? `http://127.0.0.1:${port}${p.iconPath}` : null;
+            html += `
+                <div class="plugin-card" data-plugin-id="${p.id}">
+                    <div class="plugin-icon">
+                        ${iconUrl ? `<img src="${iconUrl}" alt="${p.name}">` : '<i class="fa-solid fa-puzzle-piece"></i>'}
+                    </div>
+                    <div class="plugin-info">
+                        <div class="plugin-name">${escapeHtml(p.name)} <span class="plugin-version">v${p.version}</span></div>
+                        <div class="plugin-desc">${escapeHtml(p.description || 'No description')}</div>
+                        ${p.author ? `<div class="plugin-author" style="font-size:0.65rem; color:var(--spotify-text-muted);">by ${escapeHtml(p.author)}</div>` : ''}
+                    </div>
+                    <div class="plugin-actions">
+                        <button class="plugin-toggle ${p.enabled ? 'active' : ''}" data-enabled="${p.enabled}" data-id="${p.id}">${p.enabled ? 'Disable' : 'Enable'}</button>
+                        <button class="plugin-delete" data-id="${p.id}"><i class="fa-solid fa-trash"></i> Remove</button>
+                    </div>
+                </div>
+            `;
+        }
+        container.innerHTML = html;
+        
+        attachPluginActionListeners();
+        attachInstallButtonListener();
+        attachRefreshButtonListener();
+        
+    } catch (err) {
+        console.error('Plugins load error:', err);
+        container.innerHTML = `<div class="setting-row"><span class="error">Could not load plugins. Make sure the server is running.</span></div>`;
     }
-    // Remove all existing listeners by cloning
-    const newBtn = btn.cloneNode(true);
-    btn.parentNode.replaceChild(newBtn, btn);
+}
+
+function attachPluginActionListeners() {
+    const container = document.getElementById('pluginsList');
+    if (!container) return;
+    
+    // Toggle enable/disable
+    container.querySelectorAll('.plugin-toggle').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const pluginId = btn.dataset.id;
+            const currentlyEnabled = btn.dataset.enabled === 'true';
+            const newEnabled = !currentlyEnabled;
+            try {
+                const port = await waitForApiPort();
+                const res = await fetch(`http://127.0.0.1:${port}/api/plugins/${pluginId}/enable`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: newEnabled })
+                });
+                if (res.ok) {
+                    showNotification(`Plugin ${newEnabled ? 'enabled' : 'disabled'}`, 'success');
+                    await populatePluginsListUI(); // refresh
+                } else {
+                    showNotification('Failed to change plugin state', 'error');
+                }
+            } catch (err) {
+                showNotification('Error changing plugin state', 'error');
+            }
+        });
+    });
+    
+    // Delete plugin
+    container.querySelectorAll('.plugin-delete').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const pluginId = btn.dataset.id;
+            if (confirm('Are you sure you want to uninstall this plugin? The folder will be deleted.')) {
+                try {
+                    const port = await waitForApiPort();
+                    const res = await fetch(`http://127.0.0.1:${port}/api/plugins/${pluginId}`, { method: 'DELETE' });
+                    if (res.ok) {
+                        showNotification('Plugin uninstalled', 'success');
+                        await populatePluginsListUI();
+                    } else {
+                        showNotification('Uninstall failed', 'error');
+                    }
+                } catch (err) {
+                    showNotification('Error uninstalling plugin', 'error');
+                }
+            }
+        });
+    });
+}
+
+// Refresh button listener - reloads plugins from server
+function attachRefreshButtonListener() {
+    const refreshBtn = document.getElementById('refreshPluginsBtn');
+    if (!refreshBtn) return;
+    
+    // Remove existing listener to avoid duplicates
+    const newRefreshBtn = refreshBtn.cloneNode(true);
+    refreshBtn.parentNode.replaceChild(newRefreshBtn, refreshBtn);
+    
+    newRefreshBtn.addEventListener('click', async () => {
+        showNotification('Refreshing plugins...', 'info');
+        try {
+            // Optional: Call reload endpoint if available
+            const port = await waitForApiPort();
+            try {
+                await fetch(`http://127.0.0.1:${port}/api/plugins/reload`, { method: 'POST' });
+            } catch (reloadErr) {
+                // If reload endpoint doesn't exist, just refresh the UI
+                console.log('Reload endpoint not available, using cached data');
+            }
+            await populatePluginsListUI();
+            showNotification('Plugins refreshed', 'success');
+        } catch (err) {
+            console.error('Refresh error:', err);
+            showNotification('Failed to refresh plugins', 'error');
+        }
+    });
+}
+
+function attachInstallButtonListener() {
+    const installBtn = document.getElementById('installPluginBtn');
+    if (!installBtn) return;
+    
+    // Remove existing listener to avoid duplicates
+    const newInstallBtn = installBtn.cloneNode(true);
+    installBtn.parentNode.replaceChild(newInstallBtn, installBtn);
+    
+    newInstallBtn.addEventListener('click', async () => {
+        // Create hidden file input
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.zip';
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            showNotification('Installing plugin...', 'info');
+            const formData = new FormData();
+            formData.append('plugin', file);
+            
+            try {
+                const port = await waitForApiPort();
+                const res = await fetch(`http://127.0.0.1:${port}/api/plugins/install`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (res.ok) {
+                    const data = await res.json();
+                    showNotification(`Plugin installed successfully: ${data.pluginName || file.name}`, 'success');
+                    
+                    // CRITICAL FIX: Refresh the plugins list after successful installation
+                    await populatePluginsListUI();
+                    
+                    // Also refresh UI injections if any
+                    if (typeof window.loadPluginUIInjections === 'function') {
+                        await window.loadPluginUIInjections();
+                    }
+                } else {
+                    const err = await res.json();
+                    showNotification(`Installation failed: ${err.error || 'Unknown error'}`, 'error');
+                }
+            } catch (err) {
+                console.error('Plugin install error:', err);
+                showNotification('Error installing plugin', 'error');
+            }
+        };
+        input.click();
+    });
+}
+
+// ======================== UTILITIES ========================
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>]/g, m => {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
+function showNotification(message, type = 'info') {
+    const existing = document.querySelector('.notification');
+    if (existing) existing.remove();
+    const notif = document.createElement('div');
+    notif.className = `notification notif-${type}`;
+    let icon = 'fa-info-circle';
+    if (type === 'success') icon = 'fa-check-circle';
+    if (type === 'error') icon = 'fa-triangle-exclamation';
+    notif.innerHTML = `<i class="fas ${icon}"></i><div class="notif-content"><p style="margin: 0; font-size: 0.8rem;">${message}</p></div>`;
+    document.body.appendChild(notif);
+    setTimeout(() => notif.classList.add('show'), 50);
+    setTimeout(() => {
+        notif.classList.remove('show');
+        setTimeout(() => notif.remove(), 400);
+    }, 3000);
+}
+
+// ======================== VOCAL EXTRACTION STUBS ========================
+window.showSongInfo = window.showSongInfo || function() { showNotification('Song info not yet available', 'info'); };
+window.extractVocalFromCurrentTrack = window.extractVocalFromCurrentTrack || function() { showNotification('Vocal extraction not ready', 'info'); };
+window.closeSongInfoModal = window.closeSongInfoModal || function() {};
+
+// ======================== INITIALIZATION ========================
+function attachSettingsButtonHandler() {
+    const settingsBtn = document.getElementById('settingsBtn');
+    if (!settingsBtn) return;
+    const newBtn = settingsBtn.cloneNode(true);
+    settingsBtn.parentNode.replaceChild(newBtn, settingsBtn);
     newBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        e.stopPropagation();
-        console.log('Settings button clicked - opening modal');
         openSettingsModal();
     });
-    console.log('✅ Settings button fixed');
-    return true;
 }
 
-// Run fix when DOM ready and also after a short delay to catch late modifications
+// Inject additional CSS for .setting-select and plugin cards if not already present
+function injectSettingSelectStyles() {
+    if (document.getElementById('setting-select-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'setting-select-styles';
+    style.textContent = `
+        .setting-select {
+            background-color: var(--spotify-grey);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 8px 12px;
+            color: var(--spotify-text-active);
+            font-size: 0.8rem;
+            cursor: pointer;
+            outline: none;
+            transition: var(--transition-smooth);
+        }
+        .setting-select option {
+            background-color: var(--spotify-dark);
+            color: var(--spotify-text-active);
+        }
+        .setting-select:hover {
+            border-color: var(--accent-cyan);
+        }
+        .plugin-install-bar {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .plugin-card {
+            background: var(--spotify-grey);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            transition: all 0.2s;
+        }
+        .plugin-card:hover {
+            background: var(--spotify-light-grey);
+            border-color: var(--accent-cyan);
+        }
+        .plugin-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-md);
+            background: var(--bg-black);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        .plugin-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .plugin-icon i {
+            font-size: 1.6rem;
+            color: var(--accent-cyan);
+        }
+        .plugin-info {
+            flex: 1;
+        }
+        .plugin-name {
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+        .plugin-version {
+            font-size: 0.65rem;
+            color: var(--accent-cyan);
+            margin-left: 8px;
+        }
+        .plugin-desc {
+            font-size: 0.7rem;
+            color: var(--spotify-text-muted);
+            margin-top: 4px;
+        }
+        .plugin-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .plugin-toggle {
+            background: var(--spotify-light-grey);
+            border: 1px solid var(--border-color);
+            border-radius: 30px;
+            padding: 6px 12px;
+            font-size: 0.7rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .plugin-toggle.active {
+            background: var(--accent-cyan);
+            color: #000;
+        }
+        .plugin-toggle.disabled {
+            opacity: 0.5;
+        }
+        .plugin-delete {
+            background: rgba(244,63,94,0.15);
+            border: 1px solid var(--accent-pink);
+            border-radius: 30px;
+            padding: 6px 12px;
+            font-size: 0.7rem;
+            cursor: pointer;
+            color: var(--accent-pink);
+        }
+        .plugin-delete:hover {
+            background: var(--accent-pink);
+            color: #000;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+// Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-    fixSettingsButton();
-    // Also observe if button gets replaced later
-    const observer = new MutationObserver(() => {
-        if (fixSettingsButton()) observer.disconnect();
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-    // Create modal
-    createSettingsModal();
+    injectSettingSelectStyles();
+    attachSettingsButtonHandler();
+    createSettingsModal(); // pre-create modal but hidden
+    if (settingsModal) settingsModal.classList.remove('open');
 });
-// Also try immediately if DOM already loaded
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => fixSettingsButton());
-} else {
-    setTimeout(fixSettingsButton, 100);
-}
 
-// Export for global use
+// Export global functions
 window.openSettingsModal = openSettingsModal;
 window.closeSettingsModal = closeSettingsModal;
 window.openUnifiedSettings = openSettingsModal;
 window.closeUnifiedSettings = closeSettingsModal;
+window.populatePluginsListUI = populatePluginsListUI; // Export for external refresh

@@ -1655,23 +1655,39 @@ function setupDragAndDrop() {
 // =============================================================================
 
 async function waitForAPI() {
-    const maxAttempts = 15;
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-            if (window.electronAPI && typeof window.electronAPI.getServerPort === 'function') {
-                const port = await window.electronAPI.getServerPort();
-                if (port) {
-                    apiPort = port;
-                    console.log('✅ API connected on port:', apiPort);
-                    return true;
-                }
+    try {
+        if (window.electronAPI && typeof window.electronAPI.waitForPort === 'function') {
+            const port = await window.electronAPI.waitForPort();
+            if (port) {
+                apiPort = port;
+                window.apiPort = port;
+                console.log('✅ API connected on port:', apiPort);
+                return true;
             }
-        } catch (e) { console.error('API connection attempt failed:', e); }
-        await new Promise(resolve => setTimeout(resolve, 200));
+        }
+    } catch (e) {
+        console.error('API connection failed:', e);
     }
+    // Fallback
     apiPort = 3000;
+    window.apiPort = 3000;
     console.log('⚠️ Using fallback port 3000');
     return true;
+}
+
+async function runPluginHook(hookName, payload) {
+    try {
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/plugins/hook/${hookName}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        return data.success ? data.data : payload;
+    } catch (err) {
+        console.error(`Plugin hook ${hookName} failed:`, err);
+        return payload;
+    }
 }
 
 async function loadTracks() {
@@ -1996,6 +2012,21 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
         window.currentTrackId = trackId;
         window.currentTrack = currentTrack;
         
+        // ========== BEFORE PLAY HOOK ==========
+        let modifiedTrack = await runPluginHook('track:beforePlay', { 
+            track: { ...currentTrack }, 
+            sourceType, 
+            sourceId 
+        });
+        if (modifiedTrack && modifiedTrack.track) {
+            // Apply modifications from plugin (e.g., changed title, artist, etc.)
+            Object.assign(currentTrack, modifiedTrack.track);
+            // Also update in tracks array
+            const idx = tracks.findIndex(t => t.id === currentTrack.id);
+            if (idx !== -1) tracks[idx] = currentTrack;
+        }
+        // ======================================
+        
         if (sourceTracksArray) {
             setPlaySource(sourceType, sourceId, sourceTracksArray);
         } else {
@@ -2019,7 +2050,6 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
             queueIndex = queue.findIndex(t => t.id === trackId);
             if (queueIndex === -1) { queue.unshift(currentTrack); queueIndex = 0; }
         } else {
-            // In shuffle mode, ensure current track is in queue with correct index
             const existingIndex = queue.findIndex(t => t.id === trackId);
             if (existingIndex !== -1) {
                 queueIndex = existingIndex;
@@ -2032,14 +2062,23 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
         initAudio();
         setupAudioNodes();
         
-        // If karaoke mode was active, we need to reconnect the graph after source creation        
         if (audioCtx && audioCtx.state === 'suspended') await audioCtx.resume();
         
         const streamUrl = `http://127.0.0.1:${apiPort}/api/tracks/${trackId}/stream`;
         audioElement.src = streamUrl;
         await audioElement.play();
         
-        // If karaoke was active, reapply it after source is ready
+        // ========== AFTER PLAY HOOK (triggered when audio actually starts) ==========
+        audioElement.addEventListener('playing', async () => {
+            await runPluginHook('track:afterPlay', { 
+                track: currentTrack, 
+                sourceType, 
+                sourceId 
+            });
+        }, { once: true });
+        // ============================================================================
+        
+        // If karaoke was active, reapply it
         if (wasVocalSeparatorActive && typeof reconnectAudioGraph === 'function') {
             setTimeout(async () => {
                 await reconnectAudioGraph(true);
@@ -2821,6 +2860,7 @@ function initSettingsTabs() {
             if (tabId === 'telemetry') contents.telemetry.style.display = 'block';
             if (tabId === 'plugins') contents.plugins.style.display = 'block';
             if (tabId === 'telemetry') refreshTelemetryStats();
+            if (tabId === 'plugins') {if (typeof populatePluginsList === 'function') populatePluginsList();}
         });
     });
 }
@@ -3268,6 +3308,22 @@ async function initVersionStatus() {
     }
 }
 
+async function loadPluginUIInjections() {
+    try {
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/plugins/ui-injections`);
+        const { injections } = await res.json();
+        const container = document.querySelector('.plugin-injection-container') || (() => {
+            const div = document.createElement('div');
+            div.className = 'plugin-injection-container';
+            document.body.appendChild(div);
+            return div;
+        })();
+        container.innerHTML = injections.join('');
+    } catch (err) {
+        console.error('Failed to load UI injections:', err);
+    }
+}
+
 // =============================================================================
 // DOM CONTENT LOADED INITIALIZATION
 // =============================================================================
@@ -3295,6 +3351,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         updateBodyClasses();
         switchSection('home');
         detectPerformanceMode();
+        loadPluginUIInjections();
         if (typeof setAIIconOnlyMode === 'function') setAIIconOnlyMode();
         if (typeof updateAITooltips === 'function') updateAITooltips();
         initVersionStatus();

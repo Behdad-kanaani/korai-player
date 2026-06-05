@@ -19,7 +19,9 @@ const {
     getDiscoveryRecommendations 
 } = require('./recommender');
 const { detectRealBPM } = require('./bpmDetector');
-const { exportToM3U, exportToPLS, exportLibraryToCSV, exportPlaylistToCSV, importFromM3U, importFromPLS } = require('./playlistExporter');
+const { exportToM3U, exportToPLS, exportLibraryToCSV, exportPlaylistToCSV, 
+        importFromM3U, importFromPLS, importFromXSPF, importFromASX, 
+        importFromWPL, importFromJSON } = require('./playlistExporter');
 const { getTracksFromCue, generateCueSheet } = require('./cueParser');
 const { advancedSearchFilter } = require('../frontend/advancedSearch');
 const AudioSeparator = require('./audioSeparator');
@@ -411,95 +413,93 @@ function setupRoutes() {
         }
     });
 
-// Vocal extraction endpoint (با هندلینگ خطای تحلیل فایل)
-app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
-    try {
-        const db = getDb();
-        const track = db.getTrackById(parseInt(req.params.id));
-        if (!track || !track.filePath) {
-            return res.status(404).json({ error: 'Track not found or file missing' });
-        }
-
-        if (!fs.existsSync(track.filePath)) {
-            return res.status(404).json({ error: 'Audio file does not exist on disk' });
-        }
-
-        const { mode = 'vocal' } = req.body;
-        if (mode !== 'vocal') {
-            return res.status(400).json({ error: 'Only "vocal" mode is supported' });
-        }
-
-        const extractedDir = path.join(serverUserDataPath, 'extracted_vocals');
-        if (!fs.existsSync(extractedDir)) fs.mkdirSync(extractedDir, { recursive: true });
-
-        const ext = path.extname(track.filePath);
-        const baseName = path.basename(track.filePath, ext);
-        const outputFileName = `${baseName}_vocals_${Date.now()}.wav`;
-        const outputFilePath = path.join(extractedDir, outputFileName);
-
-        console.log(`🎤 Extracting vocals from: ${track.filePath}`);
-        await AudioSeparator.extractVocal(track.filePath, outputFilePath);
-
-        // تحلیل فایل خروجی با fallback در صورت خطا
-        let analysis;
+    // Vocal extraction endpoint
+    app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
         try {
-            analysis = await analyzeAudioFile(outputFilePath);
-        } catch (analysisErr) {
-            console.warn('⚠️ Audio analysis failed for extracted file, using fallback metadata:', analysisErr.message);
-            // متادیتای پیش‌فرض برای فایل استخراج شده
-            analysis = {
-                duration: 0,
-                bpm: 120,
-                energy: 0.5,
-                loudness: -12,
-                sampleRate: 22050,
-                bitrate: 0,
-                codec: 'wav',
-                genre: track.genre || 'Extracted Vocal',
+            const db = getDb();
+            const track = db.getTrackById(parseInt(req.params.id));
+            if (!track || !track.filePath) {
+                return res.status(404).json({ error: 'Track not found or file missing' });
+            }
+
+            if (!fs.existsSync(track.filePath)) {
+                return res.status(404).json({ error: 'Audio file does not exist on disk' });
+            }
+
+            const { mode = 'vocal' } = req.body;
+            if (mode !== 'vocal') {
+                return res.status(400).json({ error: 'Only "vocal" mode is supported' });
+            }
+
+            const extractedDir = path.join(serverUserDataPath, 'extracted_vocals');
+            if (!fs.existsSync(extractedDir)) fs.mkdirSync(extractedDir, { recursive: true });
+
+            const ext = path.extname(track.filePath);
+            const baseName = path.basename(track.filePath, ext);
+            const outputFileName = `${baseName}_vocals_${Date.now()}.wav`;
+            const outputFilePath = path.join(extractedDir, outputFileName);
+
+            console.log(`🎤 Extracting vocals from: ${track.filePath}`);
+            await AudioSeparator.extractVocal(track.filePath, outputFilePath);
+
+            let analysis;
+            try {
+                analysis = await analyzeAudioFile(outputFilePath);
+            } catch (analysisErr) {
+                console.warn('⚠️ Audio analysis failed for extracted file, using fallback metadata:', analysisErr.message);
+                analysis = {
+                    duration: 0,
+                    bpm: 120,
+                    energy: 0.5,
+                    loudness: -12,
+                    sampleRate: 22050,
+                    bitrate: 0,
+                    codec: 'wav',
+                    genre: track.genre || 'Extracted Vocal',
+                    title: `${track.title} (Vocals)`,
+                    artist: track.artist,
+                    album: track.album,
+                    featureVector: null,
+                    rawFeatures: null,
+                    coverImage: null
+                };
+            }
+
+            let coverImage = null;
+            if (track.coverPath && fs.existsSync(track.coverPath)) {
+                try {
+                    coverImage = fs.readFileSync(track.coverPath);
+                } catch (err) {
+                    console.warn('Could not read cover image:', err.message);
+                }
+            }
+
+            const newTrack = db.addTrack({
                 title: `${track.title} (Vocals)`,
                 artist: track.artist,
+                filePath: outputFilePath,
+                duration: analysis.duration,
+                bpm: analysis.bpm,
+                energy: analysis.energy,
+                loudness: analysis.loudness,
+                genre: analysis.genre,
                 album: track.album,
-                featureVector: null,
-                rawFeatures: null,
-                coverImage: null
-            };
+                coverImage: coverImage,
+                lyrics: track.lyrics,
+                sampleRate: analysis.sampleRate,
+                bitrate: analysis.bitrate,
+                codec: analysis.codec,
+                featureVector: analysis.featureVector,
+                rawFeatures: analysis.rawFeatures
+            });
+
+            console.log(`✅ Extracted vocal track added: ${newTrack.title} (ID: ${newTrack.id})`);
+            res.json({ success: true, track: newTrack });
+        } catch (error) {
+            console.error('Vocal extraction error:', error);
+            res.status(500).json({ error: error.message });
         }
-
-        let coverImage = null;
-        if (track.coverPath && fs.existsSync(track.coverPath)) {
-            try {
-                coverImage = fs.readFileSync(track.coverPath);
-            } catch (err) {
-                console.warn('Could not read cover image:', err.message);
-            }
-        }
-
-        const newTrack = db.addTrack({
-            title: `${track.title} (Vocals)`,
-            artist: track.artist,
-            filePath: outputFilePath,
-            duration: analysis.duration,
-            bpm: analysis.bpm,
-            energy: analysis.energy,
-            loudness: analysis.loudness,
-            genre: analysis.genre,
-            album: track.album,
-            coverImage: coverImage,
-            lyrics: track.lyrics,
-            sampleRate: analysis.sampleRate,
-            bitrate: analysis.bitrate,
-            codec: analysis.codec,
-            featureVector: analysis.featureVector,
-            rawFeatures: analysis.rawFeatures
-        });
-
-        console.log(`✅ Extracted vocal track added: ${newTrack.title} (ID: ${newTrack.id})`);
-        res.json({ success: true, track: newTrack });
-    } catch (error) {
-        console.error('Vocal extraction error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
+    });
 
     app.get('/api/ai/history', (req, res) => {
         try {
@@ -964,6 +964,14 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
             res.status(500).json({ error: error.message });
         }
     });
+
+    app.get('/api/plugins', (req, res) => {
+        if (global.pluginManager) {
+            res.json(global.pluginManager.getPluginsList());
+        } else {
+            res.json([]);
+        }
+    });
 }
 
 async function startServer(port, userDataPath) {
@@ -973,7 +981,14 @@ async function startServer(port, userDataPath) {
     userHistory = loadUserHistory(userDataPath);
     console.log(`🧠 AI user history loaded: ${Object.keys(userHistory).length} tracks with interactions`);
     
-    // تنظیم پوشه موقت برای پردازش صدا
+    // ========== PLUGIN MANAGER INITIALIZATION ==========
+    const PluginManager = require('./pluginManager');
+    const pluginsDir = path.join(userDataPath, 'plugins');
+    global.pluginManager = new PluginManager(pluginsDir);
+    await global.pluginManager.loadPlugins();
+    // ===================================================
+    
+    // Set temporary directory for audio processing
     const extractTempDir = path.join(userDataPath, 'temp_extract');
     AudioSeparator.setTempDirectory(extractTempDir);
     

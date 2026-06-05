@@ -2557,6 +2557,274 @@ async function toggleLikeWithAI() {
 window.toggleLike = toggleLikeWithAI;
 window.handleAiRecommendations = handleAiRecommendationsEnhanced;
 
+// Open unified settings
+function openUnifiedSettings() {
+    const modal = document.getElementById('unifiedSettingsModal');
+    if (!modal) return;
+    populateGeneralSettings();
+    populateAudioSettings();
+    populateTelemetry();
+    populatePluginsList();
+    modal.style.display = 'flex';
+}
+
+function closeUnifiedSettings() {
+    const modal = document.getElementById('unifiedSettingsModal');
+    if (modal) modal.style.display = 'none';
+    if (window.spectrumAnimationFrame) cancelAnimationFrame(window.spectrumAnimationFrame);
+}
+
+function populateGeneralSettings() {
+    const container = document.getElementById('settingsTabGeneral');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="setting-group">
+            <h5><i class="fa-solid fa-globe"></i> Language & Appearance</h5>
+            <div class="setting-row">
+                <span class="setting-label">Language</span>
+                <div class="skin-selector-pill" style="margin:0">
+                    <button class="skin-btn ${currentLanguage === 'fa' ? 'active' : ''}" onclick="changeClientLanguage('fa')">FA</button>
+                    <button class="skin-btn ${currentLanguage === 'en' ? 'active' : ''}" onclick="changeClientLanguage('en')">EN</button>
+                </div>
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">UI Theme</span>
+                <div class="skin-selector-pill" style="margin:0">
+                    <button class="skin-btn ${currentSkin === 'default' ? 'active' : ''}" data-skin="default" onclick="applyGlobalSkin('default')">Default</button>
+                    <button class="skin-btn ${currentSkin === 'liquid-glass' ? 'active' : ''}" data-skin="liquid-glass" onclick="applyGlobalSkin('liquid-glass')">Liquid Glass</button>
+                </div>
+            </div>
+        </div>
+        <div class="setting-group">
+            <h5><i class="fa-solid fa-folder-tree"></i> Library Management</h5>
+            <div class="setting-row">
+                <button class="modal-btn confirm" style="padding:6px 12px" onclick="exportLibraryToCSV()">Export Library CSV</button>
+                <button class="modal-btn cancel" style="padding:6px 12px" onclick="importCueSheet()">Import CUE Sheet</button>
+            </div>
+        </div>
+    `;
+}
+
+function populateAudioSettings() {
+    const container = document.getElementById('settingsTabAudio');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="setting-group">
+            <h5><i class="fa-solid fa-sliders-h"></i> Equalizer</h5>
+            <div class="eq-grid" style="margin-top:0; padding:12px; height:180px;">
+                ${eqBands.map((freq, idx) => `
+                    <div class="eq-slider-col">
+                        <span class="eq-val" id="eqVal${idx}">0dB</span>
+                        <input type="range" class="eq-slider" id="eqSlider${idx}" min="-12" max="12" step="1" value="0" oninput="updateEqualizerBand(${idx}, this.value)">
+                        <span class="eq-label">${freq}Hz</span>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+        <div class="setting-group">
+            <h5><i class="fa-solid fa-waveform"></i> Playback</h5>
+            <div class="setting-row">
+                <span class="setting-label">Playback Speed</span>
+                <input type="range" id="tempoSliderSettings" min="0.5" max="2.0" step="0.05" value="1.0" style="width:160px" oninput="updatePlaybackSpeed(this.value)">
+                <span id="tempoValSettings" style="color:var(--accent-cyan)">1.00x</span>
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">Preserve Pitch</span>
+                <label class="switch"><input type="checkbox" id="pitchToggleSettings" checked onchange="togglePitchPreservation(this.checked)"><span class="switch-slider"></span></label>
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">Gapless Playback</span>
+                <label class="switch"><input type="checkbox" id="gaplessToggleSettings" checked onchange="setGaplessMode(this.checked)"><span class="switch-slider"></span></label>
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">Crossfade (seconds)</span>
+                <input type="range" id="crossfadeSliderSettings" min="0" max="12" step="0.5" value="0" style="width:160px" oninput="setCrossfadeMode(parseFloat(this.value))">
+                <span id="crossfadeValSettings" style="color:var(--accent-cyan)">0s</span>
+            </div>
+        </div>
+        <div class="setting-group">
+            <h5><i class="fa-solid fa-microphone-slash"></i> Vocal Isolation</h5>
+            <div class="setting-row">
+                <span class="setting-label">Karaoke Mode</span>
+                <button id="karaokeToggleBtn" class="modal-btn confirm" style="background:var(--accent-pink); padding:6px 16px" onclick="toggleVocalIsolator()">Enable</button>
+            </div>
+        </div>
+    `;
+    // Sync values
+    document.getElementById('tempoSliderSettings').addEventListener('input', (e) => {
+        document.getElementById('tempoValSettings').innerText = parseFloat(e.target.value).toFixed(2)+'x';
+    });
+    document.getElementById('crossfadeSliderSettings').addEventListener('input', (e) => {
+        document.getElementById('crossfadeValSettings').innerText = parseFloat(e.target.value).toFixed(1)+'s';
+    });
+}
+
+function populateTelemetry() {
+    const container = document.getElementById('settingsTabTelemetry');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="setting-group">
+            <h5><i class="fa-solid fa-chart-line"></i> Live Statistics</h5>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:20px">
+                <div class="live-stat-card" style="padding:12px"><i class="fa-solid fa-music"></i><h5>Tracks</h5><h2 id="teleTotalTracks">0</h2></div>
+                <div class="live-stat-card" style="padding:12px"><i class="fa-solid fa-headphones"></i><h5>Plays</h5><h2 id="teleTotalPlays">0</h2></div>
+                <div class="live-stat-card" style="padding:12px"><i class="fa-solid fa-heart"></i><h5>Likes</h5><h2 id="teleTotalLikes">0</h2></div>
+            </div>
+            <div class="most-played-highlight" style="padding:12px; margin-bottom:16px">
+                <i class="fa-solid fa-trophy"></i>
+                <div><span class="hero-label">Most Played</span><h3 id="teleMostPlayedTitle">-</h3><p id="teleMostPlayedArtist"></p></div>
+            </div>
+            <h5><i class="fa-solid fa-wave-square"></i> Real-time Spectrum</h5>
+            <canvas id="telemetrySpectrumCanvasSettings" width="600" height="150" style="width:100%; height:150px; background:#0c0c0e; border-radius:var(--radius-md); border:1px solid var(--border-color);"></canvas>
+        </div>
+    `;
+    // Refresh stats every 5 seconds
+    refreshTelemetryStats();
+    setInterval(refreshTelemetryStats, 5000);
+    // Start spectrum analyzer on this canvas
+    startTelemetrySpectrum('telemetrySpectrumCanvasSettings');
+}
+
+async function refreshTelemetryStats() {
+    try {
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/stats`);
+        const stats = await res.json();
+        document.getElementById('teleTotalTracks').innerText = stats.totalTracks || 0;
+        document.getElementById('teleTotalPlays').innerText = stats.totalPlayCount || 0;
+        document.getElementById('teleTotalLikes').innerText = stats.totalLikes || 0;
+        if (stats.mostPlayed) {
+            document.getElementById('teleMostPlayedTitle').innerText = stats.mostPlayed.title || '-';
+            document.getElementById('teleMostPlayedArtist').innerText = stats.mostPlayed.artist || '';
+        }
+    } catch(e) { console.warn('Stats fetch failed'); }
+}
+
+function startTelemetrySpectrum(canvasId) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !window.analyser) return;
+    const ctx = canvas.getContext('2d');
+    const bufferLength = window.analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    function draw() {
+        if (!canvas || !canvas.isConnected || document.getElementById('unifiedSettingsModal').style.display !== 'flex') {
+            window.spectrumAnimationFrame && cancelAnimationFrame(window.spectrumAnimationFrame);
+            return;
+        }
+        window.spectrumAnimationFrame = requestAnimationFrame(draw);
+        if (!window.analyser) return;
+        window.analyser.getByteFrequencyData(dataArray);
+        ctx.fillStyle = '#0a0a0c';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const barWidth = (canvas.width / bufferLength) * 2.2;
+        let x = 0;
+        const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
+        gradient.addColorStop(0, '#1db954');
+        gradient.addColorStop(0.5, '#00e5ff');
+        gradient.addColorStop(1, '#fc3c44');
+        for (let i = 0; i < bufferLength; i++) {
+            const barHeight = dataArray[i] / 1.5;
+            ctx.fillStyle = gradient;
+            ctx.fillRect(x, canvas.height - barHeight, barWidth - 1, barHeight);
+            x += barWidth;
+        }
+    }
+    draw();
+}
+
+async function populatePluginsList() {
+    const container = document.getElementById('settingsTabPlugins');
+    if (!container) return;
+    try {
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/plugins`);
+        const plugins = await res.json();
+        if (!plugins.length) {
+            container.innerHTML = `<div class="setting-group"><p style="color:var(--spotify-text-muted)">No plugins installed. Create a folder inside user data /plugins</p></div>`;
+            return;
+        }
+        let html = `<div class="setting-group"><h5><i class="fa-solid fa-puzzle-piece"></i> Active Plugins</h5>`;
+        plugins.forEach(p => {
+            html += `<div class="setting-row"><span><strong>${p.name}</strong> v${p.version}<br><small>${p.description || ''}</small></span><span class="setting-label">Enabled (always)</span></div>`;
+        });
+        html += `</div>`;
+        container.innerHTML = html;
+    } catch(e) {
+        container.innerHTML = `<div class="setting-group"><p class="error">Could not load plugins</p></div>`;
+    }
+}
+
+let moodRingActive = true;
+let moodRingInterval = null;
+
+function updateMoodRing() {
+    if (!moodRingActive || !currentTrack) return;
+    const bpm = currentTrack.bpm || 120;
+    const energy = currentTrack.energy || 0.5;
+    // Map BPM to hue (120 BPM = green, 80 BPM = blue, 160 BPM = red)
+    let hue;
+    if (bpm < 90) hue = 240; // blue/calm
+    else if (bpm < 110) hue = 200; // cyan
+    else if (bpm < 130) hue = 120; // green
+    else if (bpm < 150) hue = 60; // yellow
+    else hue = 0; // red
+    // Adjust saturation and lightness by energy
+    const sat = 40 + (energy * 40);
+    const light = 15 + (energy * 20);
+    const color = `hsla(${hue}, ${sat}%, ${light}%, 0.4)`;
+    let overlay = document.querySelector('.mood-ring-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'mood-ring-overlay';
+        document.body.appendChild(overlay);
+    }
+    overlay.style.background = `radial-gradient(circle at 50% 50%, ${color}, transparent 70%)`;
+    // Pulse effect based on BPM
+    if (moodRingInterval) clearInterval(moodRingInterval);
+    const pulseInterval = 60000 / (bpm * 2); // half note
+    if (pulseInterval > 100 && pulseInterval < 2000) {
+        document.body.classList.add('mood-pulse');
+        moodRingInterval = setInterval(() => {
+            if (!isPlaying) return;
+            overlay.style.opacity = '0.6';
+            setTimeout(() => { if(overlay) overlay.style.opacity = '0.35'; }, 100);
+        }, pulseInterval);
+    } else {
+        document.body.classList.remove('mood-pulse');
+    }
+}
+
+function toggleMoodRing() {
+    moodRingActive = !moodRingActive;
+    const overlay = document.querySelector('.mood-ring-overlay');
+    if (!moodRingActive && overlay) overlay.style.display = 'none';
+    else if (moodRingActive && overlay) overlay.style.display = 'block';
+    showNotification(`Mood Ring ${moodRingActive ? 'activated' : 'deactivated'}`, 'info');
+}
+
+
+// Tab switching inside settings
+function initSettingsTabs() {
+    const tabs = document.querySelectorAll('.settings-tab-btn');
+    const contents = {
+        general: document.getElementById('settingsTabGeneral'),
+        audio: document.getElementById('settingsTabAudio'),
+        telemetry: document.getElementById('settingsTabTelemetry'),
+        plugins: document.getElementById('settingsTabPlugins')
+    };
+    tabs.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabId = btn.getAttribute('data-tab');
+            tabs.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            Object.values(contents).forEach(c => { if(c) c.style.display = 'none'; });
+            if (tabId === 'general') contents.general.style.display = 'block';
+            if (tabId === 'audio') contents.audio.style.display = 'block';
+            if (tabId === 'telemetry') contents.telemetry.style.display = 'block';
+            if (tabId === 'plugins') contents.plugins.style.display = 'block';
+            if (tabId === 'telemetry') refreshTelemetryStats();
+        });
+    });
+}
+
 // =============================================================================
 // IMPORT HANDLERS
 // =============================================================================

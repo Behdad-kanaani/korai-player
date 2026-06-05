@@ -1062,6 +1062,10 @@ ipcMain.handle('show-open-dialog', async (event, options) => {
     return result;
 });
 
+ipcMain.handle('get-plugins', async () => {
+    return global.pluginManager.getPluginsList();
+});
+
 // =============================================================================
 // APP LIFECYCLE
 // =============================================================================

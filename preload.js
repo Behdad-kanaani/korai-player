@@ -150,9 +150,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // =========================================================================
     detectRealBPM: (trackId) => ipcRenderer.invoke('detect-real-bpm', trackId),
 
+    getPlugins: () => ipcRenderer.invoke('get-plugins'),
 
     // =========================================================================
-    // REAL BPM DETECTION
+    // Play List
     // =========================================================================
     importPlaylistAuto: (filePath) => ipcRenderer.invoke('import-playlist-auto', filePath),
     showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),

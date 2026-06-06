@@ -336,7 +336,6 @@ async function populatePluginsListUI() {
     const container = document.getElementById('pluginsList');
     if (!container) return;
     
-    // Show a loading indicator
     container.innerHTML = `<div class="setting-row"><span>Loading plugins...</span></div>`;
     
     try {
@@ -344,7 +343,6 @@ async function populatePluginsListUI() {
         const res = await fetch(`http://127.0.0.1:${port}/api/plugins`);
         const plugins = await res.json();
         
-        // Build install button bar with refresh button
         let html = `
             <div class="plugin-install-bar" style="margin-bottom: 20px; text-align: center; display: flex; gap: 10px; justify-content: center;">
                 <button id="installPluginBtn" class="modal-btn confirm" style="background: var(--accent-cyan); color: #000;">
@@ -356,13 +354,15 @@ async function populatePluginsListUI() {
             </div>
         `;
         
-        if (!plugins.length) {
+        if (!plugins || plugins.length === 0) {
             html += `<div class="setting-row"><span style="color:var(--spotify-text-muted)">No plugins installed. Click the button above to install a plugin from a .zip file.</span></div>`;
             container.innerHTML = html;
             attachInstallButtonListener();
             attachRefreshButtonListener();
             return;
         }
+        
+        html += `<div class="plugins-grid" style="display: flex; flex-direction: column; gap: 12px;">`;
         
         for (const p of plugins) {
             const iconUrl = p.iconPath ? `http://127.0.0.1:${port}${p.iconPath}` : null;
@@ -383,6 +383,8 @@ async function populatePluginsListUI() {
                 </div>
             `;
         }
+        
+        html += `</div>`;
         container.innerHTML = html;
         
         attachPluginActionListeners();

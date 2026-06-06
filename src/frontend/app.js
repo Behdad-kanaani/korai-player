@@ -3488,16 +3488,37 @@ async function initVersionStatus() {
 }
 
 async function loadPluginUIInjections() {
+    if (!apiPort) return;
     try {
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/plugins/ui-injections`);
-        const { injections } = await res.json();
-        const container = document.querySelector('.plugin-injection-container') || (() => {
-            const div = document.createElement('div');
-            div.className = 'plugin-injection-container';
-            document.body.appendChild(div);
-            return div;
-        })();
-        container.innerHTML = injections.join('');
+        const data = await res.json();
+        const injections = data.injections || [];
+        
+        if (injections.length > 0) {
+            let container = document.querySelector('.plugin-injection-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.className = 'plugin-injection-container';
+                container.style.cssText = 'display: contents;';
+                
+                const sidebar = document.querySelector('.spotify-sidebar');
+                const aiPanel = document.querySelector('.ai-recommendation-panel');
+                
+                if (aiPanel && aiPanel.parentNode) {
+                    aiPanel.parentNode.insertBefore(container, aiPanel.nextSibling);
+                } else if (sidebar) {
+                    sidebar.appendChild(container);
+                } else {
+                    document.body.appendChild(container);
+                }
+            }
+            
+            const injectionHtml = injections.filter(inj => inj && typeof inj === 'string').join('\n');
+            if (injectionHtml.trim()) {
+                container.innerHTML = injectionHtml;
+                console.log(`Loaded ${injections.length} UI injections from plugins`);
+            }
+        }
     } catch (err) {
         console.error('Failed to load UI injections:', err);
     }

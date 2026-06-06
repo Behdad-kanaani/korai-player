@@ -1228,7 +1228,18 @@ function setupRoutes() {
                 return res.json({ injections: [] });
             }
             const result = await global.pluginManager.runHook('ui:inject', {});
-            const injections = Array.isArray(result) ? result : (result ? [result] : []);
+            let injections = [];
+            
+            if (typeof result === 'string') {
+                injections = [result];
+            } else if (Array.isArray(result)) {
+                injections = result;
+            } else if (result && result.html) {
+                injections = [result.html];
+            } else if (result && typeof result === 'object') {
+                injections = Object.values(result);
+            }
+            
             res.json({ injections });
         } catch (err) {
             console.error('UI injection error:', err);

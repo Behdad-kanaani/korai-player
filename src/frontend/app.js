@@ -1,6 +1,20 @@
 /**
- * app.js - KORAI Music Player Frontend Logic
+ * app.js - KORAI Music Player Frontend Logic (Enhanced with Full Plugin Hooks)
+ * 
  * FIXED: Shuffle play, timeline visualizer, and other bugs
+ * ENHANCED: Full plugin hook integration across all application layers
+ * 
+ * Plugin Hooks Added:
+ * - playback:beforePlay, playback:afterPlay, playback:onPause, playback:onResume
+ * - playback:onSeek, playback:volumeChange, playback:beforeNext, playback:beforePrev
+ * - playback:onEnded, playback:audioNodeCreate
+ * - library:beforeImport, library:afterImport, library:beforeDelete, library:trackMetadataUpdate
+ * - ui:inject (existing), ui:addSidebarItem, ui:addContextMenuItem, ui:addPlaybackButton
+ * - ui:addSettingsTab, ui:beforeSectionRender, ui:afterSectionRender
+ * - queue:beforeAdd, queue:afterAdd, queue:beforeRemove
+ * - playlist:beforeCreate, playlist:afterCreate, playlist:addTrack, playlist:removeTrack
+ * - settings:beforeSave, settings:afterLoad
+ * - recommendations:modify (existing), recommendations:train
  */
 
 // =============================================================================
@@ -74,8 +88,6 @@ let sleepTimeRemaining = 0;
 const urlParams = new URLSearchParams(window.location.search);
 const isMiniWindowMode = urlParams.get('mode') === 'mini';
 
-
-//
 let currentActiveAlbumId = null;
 
 // Make variables available globally
@@ -89,6 +101,68 @@ window.currentTrackId = currentTrackId;
 window.isPlaying = isPlaying;
 window.setPlayState = setPlayState;
 window.showNotification = showNotification;
+
+// =============================================================================
+// PLUGIN HOOK HELPER FUNCTIONS
+// =============================================================================
+
+/**
+ * Run a plugin hook (async) by calling the server endpoint
+ * @param {string} hookName - Name of the hook to execute
+ * @param {object} payload - Data to pass to hooks
+ * @returns {Promise<object>} - Modified payload after all hooks
+ */
+async function runPluginHook(hookName, payload) {
+    if (!apiPort) return payload;
+    try {
+        const response = await fetch(`http://127.0.0.1:${apiPort}/api/plugins/hook/${hookName}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        return data.success ? data.data : payload;
+    } catch (err) {
+        console.warn(`Plugin hook ${hookName} failed:`, err);
+        return payload;
+    }
+}
+
+/**
+ * Run a plugin hook with cancel capability
+ */
+async function runPluginHookWithCancel(hookName, payload) {
+    if (!apiPort) return { cancelled: false, payload };
+    try {
+        const response = await fetch(`http://127.0.0.1:${apiPort}/api/plugins/hook/${hookName}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...payload, _withCancel: true })
+        });
+        const data = await response.json();
+        if (data.cancelled) return { cancelled: true, payload: data.data };
+        return { cancelled: false, payload: data.data || payload };
+    } catch (err) {
+        console.warn(`Plugin hook ${hookName} failed:`, err);
+        return { cancelled: false, payload };
+    }
+}
+
+/**
+ * Emit an event to plugins (fire-and-forget)
+ */
+async function emitPluginEvent(eventName, data) {
+    if (!apiPort) return;
+    try {
+        await fetch(`http://127.0.0.1:${apiPort}/api/plugins/event/${eventName}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }).catch(() => {});
+    } catch (err) {
+        // Silent fail
+    }
+}
 
 // =============================================================================
 // UTILITY FUNCTIONS
@@ -374,7 +448,7 @@ function applyGlobalSkin(skinName) {
 }
 
 // =============================================================================
-// PLAYBACK CONTROL FUNCTIONS
+// PLAYBACK CONTROL FUNCTIONS (with hooks)
 // =============================================================================
 
 function setPlayState(playing) {
@@ -471,6 +545,8 @@ function setVolume(v) {
             icon.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
         }
     }
+    // Run plugin hook
+    runPluginHook('playback:volumeChange', { volume, isMuted }).catch(() => {});
 }
 
 function toggleMute() {
@@ -535,7 +611,10 @@ function updateRepeatUI() {
 function seekTo(percent) {
     if (isMiniWindowMode) return;
     if (!audioElement || !audioElement.duration) return;
+    const oldTime = audioElement.currentTime;
     audioElement.currentTime = (percent / 100) * audioElement.duration;
+    // Run plugin hook
+    runPluginHook('playback:onSeek', { oldTime, newTime: audioElement.currentTime, percent }).catch(() => {});
 }
 
 function handleMirrorSeek(event) {
@@ -579,12 +658,16 @@ function togglePlay() {
         audioElement.pause();
         document.body.classList.add('playing');
         setPlayState(false);
+        runPluginHook('playback:onPause', { trackId: currentTrackId, currentTime: audioElement.currentTime }).catch(() => {});
     } else {
         document.body.classList.remove('playing');
         if (typeof setupAudioNodes === 'function') setupAudioNodes();
         if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
         audioElement.play()
-            .then(() => setPlayState(true))
+            .then(() => {
+                setPlayState(true);
+                runPluginHook('playback:onResume', { trackId: currentTrackId, currentTime: audioElement.currentTime }).catch(() => {});
+            })
             .catch((err) => {
                 console.error('Play failed:', err);
                 showNotification('Playback failed: ' + err.message, 'warning');
@@ -724,7 +807,7 @@ function getNextShuffleTrack() {
 }
 
 // =============================================================================
-// QUEUE MANAGEMENT
+// QUEUE MANAGEMENT (with hooks)
 // =============================================================================
 
 function setPlaySource(sourceType, sourceId = null, sourceTracksArray = null) {
@@ -772,21 +855,27 @@ function renderQueue() {
     listEl.innerHTML = html;
 }
 
-function playFromQueue(idx) {
+async function playFromQueue(idx) {
     if (idx >= 0 && idx < queue.length) {
+        // Run before add hook? Actually this is playing from existing queue
         queueIndex = idx;
-        playTrack(queue[idx].id);
+        await playTrack(queue[idx].id);
     }
 }
 
-function removeFromQueue(idx) {
+async function removeFromQueue(idx) {
+    const removedTrack = queue[idx];
+    // Run before remove hook
+    const hookResult = await runPluginHookWithCancel('queue:beforeRemove', { index: idx, track: removedTrack });
+    if (hookResult.cancelled) return;
+    
     queue.splice(idx, 1);
     if (idx < queueIndex) {
         queueIndex--;
     } else if (idx === queueIndex) {
         if (queue.length > 0) {
             queueIndex = Math.min(queueIndex, queue.length - 1);
-            playTrack(queue[queueIndex].id);
+            await playTrack(queue[queueIndex].id);
         } else {
             queueIndex = -1;
             currentTrackId = null;
@@ -798,6 +887,7 @@ function removeFromQueue(idx) {
         }
     }
     renderQueue();
+    emitPluginEvent('queue:afterRemove', { index: idx, track: removedTrack });
 }
 
 function toggleQueue() {
@@ -837,7 +927,7 @@ function toggleMiniPlayer() {
 }
 
 // =============================================================================
-// FIXED NEXT & PREV TRACK FUNCTIONS
+// FIXED NEXT & PREV TRACK FUNCTIONS (with hooks)
 // =============================================================================
 
 async function nextTrackEnhanced() {
@@ -847,6 +937,10 @@ async function nextTrackEnhanced() {
         }
         return;
     }
+    
+    // Run before next hook
+    const hookResult = await runPluginHookWithCancel('playback:beforeNext', { currentTrackId, queueIndex });
+    if (hookResult.cancelled) return;
     
     // Repeat One mode
     if (repeatOneMode && currentTrackId) {
@@ -888,6 +982,8 @@ async function nextTrackEnhanced() {
         } else {
             // End of queue, stop
             setPlayState(false);
+            // Run onEnded hook
+            runPluginHook('playback:onEnded', { trackId: currentTrackId }).catch(() => {});
         }
     }
 }
@@ -899,6 +995,10 @@ async function prevTrackEnhanced() {
         }
         return;
     }
+    
+    // Run before prev hook
+    const hookResult = await runPluginHookWithCancel('playback:beforePrev', { currentTrackId, queueIndex });
+    if (hookResult.cancelled) return;
     
     // If current time > 3 seconds, just seek to start
     if (audioElement && audioElement.currentTime > 3) {
@@ -1039,7 +1139,14 @@ function setupAudioNodes() {
             window.analyser.connect(window.gainNode);
             window.gainNode.connect(window.audioCtx.destination);
             
-            // Ensure analyser is connected for visualizer
+            // Run plugin hook for audio node creation
+            runPluginHook('playback:audioNodeCreate', {
+                audioContext: window.audioCtx,
+                analyser: window.analyser,
+                gainNode: window.gainNode,
+                eqFilters: window.eqFilters
+            }).catch(() => {});
+            
             console.log('✅ Audio nodes setup complete');
         }
     } catch (e) {
@@ -1420,6 +1527,9 @@ async function saveTagChanges() {
         const trackInList = tracks.find(t => t.id === currentTrack.id);
         if (trackInList) Object.assign(trackInList, updatedData);
         
+        // Run plugin hook
+        runPluginHook('library:trackMetadataUpdate', { trackId: currentTrack.id, updates: updatedData }).catch(() => {});
+        
         showNotification('Metadata saved successfully!', 'success');
         closeTagEditor();
         updatePlayerUI();
@@ -1637,17 +1747,38 @@ function setupDragAndDrop() {
         });
         if (filePaths.length === 0) return;
         showNotification(t('dragNotify'), 'info');
-        try {
-            const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePaths })
-            });
-            if (!res.ok) throw new Error();
-            const result = await res.json();
+        await importAudioFiles(filePaths);
+    });
+}
+
+// Helper for importing files (used by drag & drop and file open)
+async function importAudioFiles(filePaths) {
+    try {
+        // Run before import hook
+        const hookResult = await runPluginHookWithCancel('library:beforeImport', { filePaths });
+        if (hookResult.cancelled) return;
+        filePaths = hookResult.payload.filePaths;
+        
+        showImportProgress(filePaths.length);
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePaths })
+        });
+        if (!res.ok) throw new Error();
+        const result = await res.json();
+        updateImportProgress(100, `Imported ${result.imported} tracks!`);
+        setTimeout(async () => {
+            hideImportProgress();
             showNotification(`${result.imported} ${t('dragSuccess')}`, 'success');
             await loadTracks();
             switchSection(currentActiveSection);
-        } catch (err) { console.error('Drag Import error:', err); showNotification(t('dragError'), 'error'); }
-    });
+            // Run after import hook
+            runPluginHook('library:afterImport', { imported: result.imported, total: filePaths.length }).catch(() => {});
+        }, 500);
+    } catch (err) { 
+        console.error('Import error:', err); 
+        hideImportProgress();
+        showNotification(t('dragError'), 'error'); 
+    }
 }
 
 // =============================================================================
@@ -1656,8 +1787,8 @@ function setupDragAndDrop() {
 
 async function waitForAPI() {
     try {
-        if (window.electronAPI && typeof window.electronAPI.waitForPort === 'function') {
-            const port = await window.electronAPI.waitForPort();
+        if (window.electronAPI && typeof window.electronAPI.getServerPort === 'function') {
+            const port = await window.electronAPI.getServerPort();
             if (port) {
                 apiPort = port;
                 window.apiPort = port;
@@ -1675,27 +1806,15 @@ async function waitForAPI() {
     return true;
 }
 
-async function runPluginHook(hookName, payload) {
-    try {
-        const res = await fetch(`http://127.0.0.1:${apiPort}/api/plugins/hook/${hookName}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        return data.success ? data.data : payload;
-    } catch (err) {
-        console.error(`Plugin hook ${hookName} failed:`, err);
-        return payload;
-    }
-}
-
 async function loadTracks() {
     if (isMiniWindowMode) return;
     try {
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks`);
         if (!res.ok) throw new Error('Failed to fetch tracks');
-        const serverTracks = await res.json();
+        let serverTracks = await res.json();
+        
+        // Run plugin hook to modify tracks
+        serverTracks = await runPluginHook('library:getTracks', serverTracks);
         
         tracks = await Promise.all(serverTracks.map(async (track) => {
             try {
@@ -1731,7 +1850,7 @@ async function loadPlaylists() {
 }
 
 // =============================================================================
-// PLAYLIST RENDERING & MANAGEMENT
+// PLAYLIST RENDERING & MANAGEMENT (with hooks)
 // =============================================================================
 
 function renderPlaylistsSidebar() {
@@ -1783,11 +1902,16 @@ function promptCreatePlaylist() {
             return; 
         }
         
+        // Run before create hook
+        const hookResult = await runPluginHookWithCancel('playlist:beforeCreate', { name });
+        if (hookResult.cancelled) return;
+        const finalName = hookResult.payload.name;
+        
         try {
             const res = await fetch(`http://127.0.0.1:${apiPort}/api/playlists`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name })
+                body: JSON.stringify({ name: finalName })
             });
             
             if (res.ok) {
@@ -1795,6 +1919,8 @@ function promptCreatePlaylist() {
                 showNotification(currentLanguage === 'fa' ? 'پلی‌لیست با موفقیت ساخته شد' : 'Playlist created successfully', 'success');
                 await loadPlaylists();
                 closeCreatePlaylistModal();
+                // Run after create hook
+                runPluginHook('playlist:afterCreate', { playlist: data }).catch(() => {});
                 
                 if (data && data.id) {
                     setTimeout(() => {
@@ -1834,6 +1960,8 @@ async function deletePlaylist(id) {
                 showNotification('Playlist deleted', 'info');
                 await loadPlaylists();
                 if (currentActiveSection === 'playlist' && currentActivePlaylistId === id) switchSection('home');
+                // Run hook
+                runPluginHook('playlist:afterDelete', { playlistId: id }).catch(() => {});
             }
         } catch (e) { showNotification('Error deleting playlist', 'error'); }
     });
@@ -1884,12 +2012,18 @@ function renderPlaylistView() {
 }
 
 async function removeTrackFromPlaylist(playlistId, trackId) {
+    // Run before remove hook
+    const hookResult = await runPluginHookWithCancel('playlist:removeTrack', { playlistId, trackId });
+    if (hookResult.cancelled) return;
+    
     try {
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/playlists/${playlistId}/tracks/${trackId}`, { method: 'DELETE' });
         if (res.ok) {
             showNotification('Track removed from playlist', 'info');
             await loadPlaylists();
             if (currentActiveSection === 'playlist') openPlaylist(playlistId);
+            // Run hook
+            runPluginHook('playlist:trackRemoved', { playlistId, trackId }).catch(() => {});
         }
     } catch (e) { showNotification('Error removing track from playlist', 'error'); }
 }
@@ -1915,10 +2049,10 @@ function playArtist(artistName) {
 }
 
 // =============================================================================
-// CONTEXT MENU
+// CONTEXT MENU (with plugin hook for adding items)
 // =============================================================================
 
-function showPlaylistContextMenu(trackId, x, y) {
+async function showPlaylistContextMenu(trackId, x, y) {
     if (isMiniWindowMode) return;
     const menu = document.getElementById('playlistContextMenu');
     const container = document.getElementById('contextPlaylistItems');
@@ -1958,6 +2092,28 @@ function showPlaylistContextMenu(trackId, x, y) {
         menu.appendChild(editItem);
     }
     
+    // Allow plugins to add custom context menu items
+    const pluginItems = await runPluginHook('ui:addContextMenuItem', { trackId, existingItems: [] });
+    if (pluginItems && pluginItems.items && pluginItems.items.length) {
+        const pluginSeparator = document.createElement('div');
+        pluginSeparator.className = 'context-separator';
+        pluginSeparator.style.height = '1px';
+        pluginSeparator.style.backgroundColor = 'var(--border-color)';
+        pluginSeparator.style.margin = '6px 0';
+        menu.appendChild(pluginSeparator);
+        
+        pluginItems.items.forEach(item => {
+            const pluginItem = document.createElement('div');
+            pluginItem.className = 'context-item';
+            pluginItem.innerHTML = `<i class="${item.icon || 'fa-solid fa-puzzle-piece'}"></i> <span>${escapeHtml(item.label)}</span>`;
+            pluginItem.onclick = () => {
+                menu.style.display = 'none';
+                if (item.action) item.action(trackId);
+            };
+            menu.appendChild(pluginItem);
+        });
+    }
+    
     menu.style.display = 'block';
     menu.style.top = `${y}px`;
     menu.style.left = `${x}px`;
@@ -1975,6 +2131,10 @@ function openTagEditorFromContext(trackId) {
 }
 
 async function addTrackToPlaylist(playlistId, trackId) {
+    // Run before add hook
+    const hookResult = await runPluginHookWithCancel('playlist:addTrack', { playlistId, trackId });
+    if (hookResult.cancelled) return;
+    
     try {
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/playlists/${playlistId}/tracks`, {
             method: 'POST',
@@ -1986,13 +2146,15 @@ async function addTrackToPlaylist(playlistId, trackId) {
             if (data.success) {
                 showNotification('Track added to playlist', 'success');
                 await loadPlaylists();
+                // Run after add hook
+                runPluginHook('playlist:trackAdded', { playlistId, trackId }).catch(() => {});
             } else { showNotification('Track already in playlist', 'info'); }
         }
     } catch (e) { showNotification('Error adding to playlist', 'error'); }
 }
 
 // =============================================================================
-// CORE PLAYBACK FUNCTION
+// CORE PLAYBACK FUNCTION (with before/after hooks)
 // =============================================================================
 
 async function playTrack(trackId, sourceType = 'library', sourceId = null, sourceTracksArray = null) {
@@ -2005,27 +2167,34 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
     try {
         console.log('🎵 Playing track:', trackId, 'Source:', sourceType);
         
-        currentTrackId = trackId;
-        currentTrack = tracks.find(t => t.id === trackId);
+        // Run beforePlay hook with cancel capability
+        const beforeHook = await runPluginHookWithCancel('playback:beforePlay', { 
+            trackId, 
+            sourceType, 
+            sourceId,
+            currentTrack,
+            queueIndex
+        });
+        if (beforeHook.cancelled) {
+            console.log('Playback cancelled by plugin');
+            return;
+        }
+        // Use modified trackId if plugin changed it
+        let finalTrackId = beforeHook.payload.trackId || trackId;
+        
+        currentTrackId = finalTrackId;
+        currentTrack = tracks.find(t => t.id === finalTrackId);
         if (!currentTrack) { showNotification('Track not found', 'error'); return; }
         
-        window.currentTrackId = trackId;
-        window.currentTrack = currentTrack;
-        
-        // ========== BEFORE PLAY HOOK ==========
-        let modifiedTrack = await runPluginHook('track:beforePlay', { 
-            track: { ...currentTrack }, 
-            sourceType, 
-            sourceId 
-        });
-        if (modifiedTrack && modifiedTrack.track) {
-            // Apply modifications from plugin (e.g., changed title, artist, etc.)
-            Object.assign(currentTrack, modifiedTrack.track);
-            // Also update in tracks array
+        // Apply any modifications from plugin (e.g., changed title, artist)
+        if (beforeHook.payload.modifications) {
+            Object.assign(currentTrack, beforeHook.payload.modifications);
             const idx = tracks.findIndex(t => t.id === currentTrack.id);
             if (idx !== -1) tracks[idx] = currentTrack;
         }
-        // ======================================
+        
+        window.currentTrackId = currentTrackId;
+        window.currentTrack = currentTrack;
         
         if (sourceTracksArray) {
             setPlaySource(sourceType, sourceId, sourceTracksArray);
@@ -2047,10 +2216,10 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
         
         // Update queue index for normal playback
         if (!shuffleMode) {
-            queueIndex = queue.findIndex(t => t.id === trackId);
+            queueIndex = queue.findIndex(t => t.id === finalTrackId);
             if (queueIndex === -1) { queue.unshift(currentTrack); queueIndex = 0; }
         } else {
-            const existingIndex = queue.findIndex(t => t.id === trackId);
+            const existingIndex = queue.findIndex(t => t.id === finalTrackId);
             if (existingIndex !== -1) {
                 queueIndex = existingIndex;
             } else {
@@ -2064,19 +2233,17 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
         
         if (audioCtx && audioCtx.state === 'suspended') await audioCtx.resume();
         
-        const streamUrl = `http://127.0.0.1:${apiPort}/api/tracks/${trackId}/stream`;
+        const streamUrl = `http://127.0.0.1:${apiPort}/api/tracks/${finalTrackId}/stream`;
         audioElement.src = streamUrl;
         await audioElement.play();
         
-        // ========== AFTER PLAY HOOK (triggered when audio actually starts) ==========
-        audioElement.addEventListener('playing', async () => {
-            await runPluginHook('track:afterPlay', { 
-                track: currentTrack, 
-                sourceType, 
-                sourceId 
-            });
-        }, { once: true });
-        // ============================================================================
+        // After play hook
+        runPluginHook('playback:afterPlay', { 
+            track: currentTrack, 
+            sourceType, 
+            sourceId,
+            success: true
+        }).catch(() => {});
         
         // If karaoke was active, reapply it
         if (wasVocalSeparatorActive && typeof reconnectAudioGraph === 'function') {
@@ -2089,12 +2256,20 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
         updatePlayerUI();
         syncWithWindowsMediaSystem();
         
-        fetch(`http://127.0.0.1:${apiPort}/api/tracks/${trackId}/play`, { method: 'POST' }).catch(e => console.error(e));
+        fetch(`http://127.0.0.1:${apiPort}/api/tracks/${finalTrackId}/play`, { method: 'POST' }).catch(e => console.error(e));
         renderQueue();
     } catch (err) {
         console.error('Play error:', err);
         showNotification('Error playing audio file: ' + err.message, 'error');
         setPlayState(false);
+        // Run after play hook with error
+        runPluginHook('playback:afterPlay', { 
+            trackId: finalTrackId, 
+            sourceType, 
+            sourceId,
+            success: false,
+            error: err.message
+        }).catch(() => {});
     }
 }
 
@@ -2212,7 +2387,7 @@ function hideImportProgress() {
 }
 
 // =============================================================================
-// DELETE TRACK
+// DELETE TRACK (with hook)
 // =============================================================================
 
 function deleteTrack(trackId, event) {
@@ -2220,6 +2395,10 @@ function deleteTrack(trackId, event) {
     showCustomDialog(currentLanguage === 'fa' ? 'حذف قطعه از کتابخانه' : 'Delete track from library', 
         currentLanguage === 'fa' ? 'آیا مطمئن هستید؟ این عمل فایل اصلی شما روی کامپیوتر را پاک نخواهد کرد.' : 'Are you sure? This will not delete the actual file from your disk.',
         async () => {
+            // Run before delete hook
+            const hookResult = await runPluginHookWithCancel('library:beforeDelete', { trackId });
+            if (hookResult.cancelled) return;
+            
             try {
                 const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/${trackId}`, { method: 'DELETE' });
                 if (res.ok) {
@@ -2227,13 +2406,14 @@ function deleteTrack(trackId, event) {
                     await loadTracks();
                     await loadPlaylists();
                     switchSection(currentActiveSection);
+                    runPluginHook('library:afterDelete', { trackId }).catch(() => {});
                 }
             } catch { showNotification('Connection failed', 'error'); }
         });
 }
 
 // =============================================================================
-// LIBRARY RENDERING (WITH PAGINATION)
+// LIBRARY RENDERING (WITH PAGINATION & hooks)
 // =============================================================================
 
 function renderLibrary(filteredTracks = null) {
@@ -2262,7 +2442,7 @@ function renderLibrary(filteredTracks = null) {
     let genreFilterChipsHtml = `<button class="filter-chip ${libraryGenreFilter === 'all' ? 'active' : ''}" onclick="setLibraryGenreFilter('all')">${t('allGenres')}</button>`;
     existingGenres.forEach(genre => { genreFilterChipsHtml += `<button class="filter-chip ${libraryGenreFilter === genre ? 'active' : ''}" onclick="setLibraryGenreFilter('${genre}')">${getGenreTranslation(genre) || genre}</button>`; });
 
-    mainSection.innerHTML = `<div class="spotify-row-title library-header-panel"><div class="title-meta-box"><h3>${t('libraryArchive')} (<span id="libCount">${listToRender.length}</span>)</h3><span class="right-click-tip-lbl">${t('rightClickTip')}</span></div><div class="library-filter-controls"><div class="sort-action-group"><label class="sort-select-lbl">${t('sortByLabel')}</label><select id="libSortSelect" class="sort-dropdown-custom" onchange="changeLibrarySorting(this.value)"><option value="createdAt" ${librarySortKey === 'createdAt' ? 'selected' : ''}>${t('sortDateAdded')}</option><option value="title" ${librarySortKey === 'title' ? 'selected' : ''}>${t('sortTitle')}</option><option value="artist" ${librarySortKey === 'artist' ? 'selected' : ''}>${t('sortArtist')}</option><option value="bpm" ${librarySortKey === 'bpm' ? 'selected' : ''}>${t('sortBpm')}</option><option value="duration" ${librarySortKey === 'duration' ? 'selected' : ''}>${t('sortDuration')}</option></select><button class="sort-dir-toggle-btn" onclick="toggleLibrarySortOrder()" title="Toggle Order"><i class="fa-solid ${librarySortOrder === 'asc' ? 'fa-arrow-up-wide-short' : 'fa-arrow-down-wide-short'}"></i></button></div></div></div><div class="genre-filter-wrapper-bar">${genreFilterChipsHtml}</div><div class="library-table-wrapper"><table class="library-tracks-table"><thead><tr><th style="width:50px;">#</th><th>${currentLanguage === 'fa' ? 'عنوان' : 'Title'}</th><th>${currentLanguage === 'fa' ? 'آلبوم' : 'Album'}</th><th style="width:80px;">BPM</th><th style="width:80px;"><i class="fa-regular fa-clock"></i></th><th style="width:100px;">${currentLanguage === 'fa' ? 'عملیات' : 'Actions'}</th></tr></thead><tbody id="libraryTableBody"></tbody><table><div id="loadMoreContainer" style="text-align:center; margin-top:16px; display:none;"><button id="loadMoreBtn" class="oobe-start-btn" style="padding:8px 16px; font-size:0.75rem;">${currentLanguage === 'fa' ? 'بارگذاری بیشتر...' : 'Load more...'}</button></div></div>`;
+    mainSection.innerHTML = `<div class="spotify-row-title library-header-panel"><div class="title-meta-box"><h3>${t('libraryArchive')} (<span id="libCount">${listToRender.length}</span>)</h3><span class="right-click-tip-lbl">${t('rightClickTip')}</span></div><div class="library-filter-controls"><div class="sort-action-group"><label class="sort-select-lbl">${t('sortByLabel')}</label><select id="libSortSelect" class="sort-dropdown-custom" onchange="changeLibrarySorting(this.value)"><option value="createdAt" ${librarySortKey === 'createdAt' ? 'selected' : ''}>${t('sortDateAdded')}</option><option value="title" ${librarySortKey === 'title' ? 'selected' : ''}>${t('sortTitle')}</option><option value="artist" ${librarySortKey === 'artist' ? 'selected' : ''}>${t('sortArtist')}</option><option value="bpm" ${librarySortKey === 'bpm' ? 'selected' : ''}>${t('sortBpm')}</option><option value="duration" ${librarySortKey === 'duration' ? 'selected' : ''}>${t('sortDuration')}</option></select><button class="sort-dir-toggle-btn" onclick="toggleLibrarySortOrder()" title="Toggle Order"><i class="fa-solid ${librarySortOrder === 'asc' ? 'fa-arrow-up-wide-short' : 'fa-arrow-down-wide-short'}"></i></button></div></div></div><div class="genre-filter-wrapper-bar">${genreFilterChipsHtml}</div><div class="library-table-wrapper"><table class="library-tracks-table"><thead><tr><th style="width:50px;">#</th><th>${currentLanguage === 'fa' ? 'عنوان' : 'Title'}</th><th>${currentLanguage === 'fa' ? 'آلبوم' : 'Album'}</th><th style="width:80px;">BPM</th><th style="width:80px;"><i class="fa-regular fa-clock"></i></th><th style="width:100px;">${currentLanguage === 'fa' ? 'عملیات' : 'Actions'}</th></tr></thead><tbody id="libraryTableBody"></tbody><div id="loadMoreContainer" style="text-align:center; margin-top:16px; display:none;"><button id="loadMoreBtn" class="oobe-start-btn" style="padding:8px 16px; font-size:0.75rem;">${currentLanguage === 'fa' ? 'بارگذاری بیشتر...' : 'Load more...'}</button></div></div>`;
     
     const tbody = document.getElementById('libraryTableBody');
     const loadMoreContainer = document.getElementById('loadMoreContainer');
@@ -2487,7 +2667,7 @@ function showArtistDetail(artistName) {
 }
 
 // =============================================================================
-// AI RECOMMENDATIONS (unchanged)
+// AI RECOMMENDATIONS (with hook)
 // =============================================================================
 
 async function handleAiRecommendationsEnhanced() {
@@ -2497,7 +2677,9 @@ async function handleAiRecommendationsEnhanced() {
         fetch(`http://127.0.0.1:${apiPort}/api/ai/interaction`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: currentTrackId, action: 'play' }) }).catch(e => console.log);
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/ai/recommend/personal/${currentTrackId}`);
         if (!res.ok) throw new Error();
-        const data = await res.json();
+        let data = await res.json();
+        // Run plugin hook
+        data = await runPluginHook('recommendations:modify', data);
         if (!data.recommendations || data.recommendations.length === 0) { showNotification('No AI recommendations yet. Listen to more music!', 'info'); return; }
         renderRecommendationsUI(data);
     } catch (err) { console.error('AI error:', err); showNotification('AI recommendation failed', 'error'); }
@@ -2590,6 +2772,8 @@ async function toggleLikeWithAI() {
         if (currentTrack) currentTrack.isLiked = !isCurrentlyLiked;
         updatePlayerUI();
         showNotification(isCurrentlyLiked ? 'Removed from favorites' : 'Added to favorites', 'success');
+        // Run training hook
+        runPluginHook('recommendations:train', { trackId: currentTrackId, action }).catch(() => {});
     } catch { showNotification('Connection failed', 'error'); }
 }
 
@@ -2874,13 +3058,7 @@ async function handleImport() {
     try {
         const filePaths = await window.electronAPI.selectAudioFiles();
         if (!filePaths || filePaths.length === 0) return;
-        showNotification(`Scanning and analyzing ${filePaths.length} files...`, 'info');
-        const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePaths }) });
-        if (!res.ok) throw new Error();
-        const result = await res.json();
-        showNotification(`Successfully added ${result.imported} local tracks.`, 'success');
-        await loadTracks();
-        switchSection(currentActiveSection);
+        await importAudioFiles(filePaths);
     } catch (err) { console.error('Import error:', err); showNotification('Load and analysis phase crashed', 'error'); }
 }
 
@@ -2889,13 +3067,7 @@ async function handleFolderImport() {
     try {
         const filePaths = await window.electronAPI.selectAudioFolder();
         if (!filePaths || filePaths.length === 0) return;
-        showNotification(`Scanning and analyzing directory files...`, 'info');
-        const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePaths }) });
-        if (!res.ok) throw new Error();
-        const result = await res.json();
-        showNotification(`Successfully loaded ${result.imported} tracks.`, 'success');
-        await loadTracks();
-        switchSection(currentActiveSection);
+        await importAudioFiles(filePaths);
     } catch (err) { console.error('Folder import error:', err); showNotification('Folder scan interrupted', 'error'); }
 }
 
@@ -2923,11 +3095,15 @@ function promptDownloadFromUrl() {
 function closeDownloadUrlModal() { const modal = document.getElementById('downloadUrlModal'); if (modal) modal.style.display = 'none'; }
 
 // =============================================================================
-// SECTION SWITCHING
+// SECTION SWITCHING (with UI hooks)
 // =============================================================================
 
-window.switchSection = function(sectionName) {
+window.switchSection = async function(sectionName) {
     if (isMiniWindowMode) return;
+    
+    // Run before render hook
+    await runPluginHook('ui:beforeSectionRender', { section: sectionName });
+    
     currentActiveSection = sectionName;
     currentActivePlaylistId = null;
     document.querySelectorAll('.sidebar-nav .nav-item, .sidebar-playlist-item').forEach(item => item.classList.remove('active'));
@@ -2943,6 +3119,9 @@ window.switchSection = function(sectionName) {
     if (sectionName === 'artists') renderArtists();
     if (sectionName === 'favorites') renderFavorites();
     if (sectionName === 'stats') { renderStats().then(() => { if (audioCtx && analyser) startLiveSpectrumAnalyzer(); }); }
+    
+    // Run after render hook
+    await runPluginHook('ui:afterSectionRender', { section: sectionName });
 };
 
 // =============================================================================
@@ -3357,7 +3536,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         initVersionStatus();
 
         if (window.electronAPI && window.electronAPI.onFilesOpened) {
-            window.electronAPI.onFilesOpened(async (files) => { if (files && files.length > 0) { showImportProgress(files.length); try { const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePaths: files }) }); if (res.ok) { const result = await res.json(); updateImportProgress(100, `Imported ${result.imported} track(s)!`); setTimeout(async () => { hideImportProgress(); showNotification(`Successfully imported ${result.imported} track(s)`, 'success'); await loadTracks(); await loadPlaylists(); if (result.imported > 0 && tracks.length > 0) { const newTracks = tracks.slice(-result.imported); const lastTrack = newTracks[0]; if (lastTrack) { setTimeout(() => { playTrack(lastTrack.id, 'file'); }, 300); } } switchSection(currentActiveSection); }, 500); } else { hideImportProgress(); const error = await res.json(); showNotification(`Import failed: ${error.error || 'Unknown error'}`, 'error'); } } catch (err) { console.error('File association import error:', err); hideImportProgress(); showNotification('Error importing files opened from system', 'error'); } } });
+            window.electronAPI.onFilesOpened(async (files) => { if (files && files.length > 0) { await importAudioFiles(files); } });
         }
 
         setTimeout(async () => {

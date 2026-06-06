@@ -1,14 +1,16 @@
-// ################################################################################
-// #                                                                              #
-// #                           WRITTEN BY BEHDAD KANANI                            #
-// ##                         github.com/Behdad-kanaani/korai-player               #
-// #                                                                              #
-// #   Description:                                                               #
-// #       KORAI Music Player - Electron Main Process                             #
-// #       Handles window creation, IPC communication, system tray,              #
-// #       file dialogs, mini-player window management, and file associations.   #
-// #                                                                              #
-// ################################################################################
+/**
+ * main.js - KORAI Music Player Electron Main Process (Enhanced)
+ * 
+ * Handles window creation, IPC communication, system tray,
+ * file dialogs, mini-player window management, file associations,
+ * and plugin integration with full hook support.
+ * 
+ * Plugin Hooks Added:
+ * - window:beforeClose, window:focus, window:blur
+ * - tray:menuBuild, tray:click, tray:rightClick
+ * - file:beforeOpen, file:afterOpen
+ * - app:beforeQuit, app:secondInstance
+ */
 
 const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, shell } = require('electron');
 const path = require('path');
@@ -31,6 +33,26 @@ process.on('unhandledRejection', (reason, promise) => {
 process.on('uncaughtException', (error) => {
     console.error('❌ Uncaught Exception:', error);
 });
+
+// =============================================================================
+// PLUGIN MANAGER REFERENCE (set after server starts)
+// =============================================================================
+let pluginManager = null;
+
+// Helper to run plugin hooks from main process
+async function runPluginHook(hookName, payload) {
+    if (pluginManager && typeof pluginManager.runHook === 'function') {
+        return await pluginManager.runHook(hookName, payload);
+    }
+    return payload;
+}
+
+async function runPluginHookWithCancel(hookName, payload) {
+    if (pluginManager && typeof pluginManager.runHookWithCancel === 'function') {
+        return await pluginManager.runHookWithCancel(hookName, payload);
+    }
+    return { cancelled: false, payload };
+}
 
 // =============================================================================
 // SINGLE INSTANCE LOCK
@@ -66,18 +88,28 @@ let currentTrayState = {
 let currentLanguage = 'en';
 
 // =============================================================================
-// FILE ASSOCIATION HANDLING
+// FILE ASSOCIATION HANDLING with plugin hooks
 // =============================================================================
 
 async function processPendingFiles() {
     if (pendingFiles.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
-        const files = [...pendingFiles];
+        let files = [...pendingFiles];
         pendingFiles = [];
+        
+        // Run plugin hook before processing files
+        const hookResult = await runPluginHookWithCancel('file:beforeOpen', { files });
+        if (hookResult.cancelled) {
+            console.log('File open cancelled by plugin');
+            return;
+        }
+        files = hookResult.payload.files;
         
         setTimeout(async () => {
             try {
                 console.log('📁 Processing pending files:', files);
                 mainWindow.webContents.send('files-opened', files);
+                // After opening hook
+                await runPluginHook('file:afterOpen', { files });
             } catch (err) {
                 console.error('Error processing opened files:', err);
             }
@@ -102,17 +134,20 @@ function handleFileOpen() {
     }
 }
 
-app.on('open-file', (event, filePath) => {
+app.on('open-file', async (event, filePath) => {
     event.preventDefault();
     console.log('📁 File opened on macOS:', filePath);
     pendingFiles.push(filePath);
     if (mainWindow && !mainWindow.isDestroyed()) {
-        processPendingFiles();
+        await processPendingFiles();
     }
 });
 
-app.on('second-instance', (event, commandLine, workingDirectory) => {
+app.on('second-instance', async (event, commandLine, workingDirectory) => {
     console.log('🔄 Second instance detected, focusing main window...');
+    
+    // Run plugin hook for second instance
+    await runPluginHook('app:secondInstance', { commandLine, workingDirectory });
     
     if (mainWindow) {
         if (mainWindow.isMinimized()) mainWindow.restore();
@@ -132,7 +167,7 @@ app.on('second-instance', (event, commandLine, workingDirectory) => {
         if (files.length > 0) {
             console.log('📁 Files from second instance:', files);
             pendingFiles = files;
-            processPendingFiles();
+            await processPendingFiles();
         }
     }
 });
@@ -165,7 +200,7 @@ function getTrayIconPath() {
 }
 
 // =============================================================================
-// TRAY MENU FUNCTIONS
+// TRAY MENU FUNCTIONS (with plugin hook for menu building)
 // =============================================================================
 
 async function loadTrayLanguage() {
@@ -220,7 +255,7 @@ function getTrayMenuText() {
     };
 }
 
-function rebuildTrayMenu() {
+async function rebuildTrayMenu() {
     if (!tray) return;
     
     const text = getTrayMenuText();
@@ -348,6 +383,15 @@ function rebuildTrayMenu() {
         submenu: languageSubmenu
     });
     
+    // Allow plugins to add custom tray menu items
+    if (pluginManager) {
+        const pluginItems = await runPluginHook('tray:menuBuild', { menuTemplate, currentTrayState });
+        if (pluginItems && pluginItems.menuTemplate) {
+            // Merge plugin items (they can add before separator or at the end)
+            // For simplicity, we just run hook and let plugin modify menuTemplate in place
+        }
+    }
+    
     menuTemplate.push({ type: 'separator' });
     menuTemplate.push({
         label: text.quit,
@@ -399,11 +443,12 @@ async function createSystemTray() {
     
     try {
         tray = new Tray(trayIcon);
-        rebuildTrayMenu();
+        await rebuildTrayMenu();
         
         tray.setToolTip('KORAI Music Player');
         
-        tray.on('click', () => {
+        tray.on('click', async () => {
+            await runPluginHook('tray:click', {});
             if (mainWindow) {
                 if (mainWindow.isVisible()) {
                     mainWindow.hide();
@@ -414,7 +459,8 @@ async function createSystemTray() {
             }
         });
         
-        tray.on('right-click', () => {
+        tray.on('right-click', async () => {
+            await runPluginHook('tray:rightClick', {});
             tray.popUpContextMenu();
         });
         
@@ -507,6 +553,9 @@ async function createWindow() {
         httpServer = await startServer(serverPort, userDataPath);
         console.log('✅ HTTP Server started');
         
+        // Get plugin manager reference from server global
+        pluginManager = global.pluginManager;
+        
         // Start health check after server is running
         startHealthCheck();
 
@@ -587,7 +636,13 @@ async function createWindow() {
             }
         });
 
-        mainWindow.on('close', (event) => {
+        mainWindow.on('close', async (event) => {
+            // Run plugin hook before close
+            const hookResult = await runPluginHookWithCancel('window:beforeClose', {});
+            if (hookResult.cancelled) {
+                event.preventDefault();
+                return;
+            }
             if (!isQuitting) {
                 event.preventDefault();
                 mainWindow.hide();
@@ -598,7 +653,15 @@ async function createWindow() {
             mainWindow = null;
         });
 
-        createSystemTray();
+        mainWindow.on('focus', async () => {
+            await runPluginHook('window:focus', {});
+        });
+
+        mainWindow.on('blur', async () => {
+            await runPluginHook('window:blur', {});
+        });
+
+        await createSystemTray();
         
         // Start auto-updater (silent, non-blocking)
         try {
@@ -642,6 +705,18 @@ ipcMain.handle('check-update-status', async () => {
         url: updateInfo.url || null,
         error: updateInfo.error || null
     };
+});
+
+// Expose plugin manager to renderer (read-only)
+ipcMain.handle('get-plugins-list', () => {
+    if (pluginManager) {
+        return pluginManager.getPluginsList();
+    }
+    return [];
+});
+
+ipcMain.handle('run-plugin-hook', async (event, hookName, payload) => {
+    return await runPluginHook(hookName, payload);
 });
 
 // =============================================================================
@@ -1063,11 +1138,14 @@ ipcMain.handle('show-open-dialog', async (event, options) => {
 });
 
 ipcMain.handle('get-plugins', async () => {
-    return global.pluginManager.getPluginsList();
+    if (pluginManager) {
+        return pluginManager.getPluginsList();
+    }
+    return [];
 });
 
 // =============================================================================
-// APP LIFECYCLE
+// APP LIFECYCLE with plugin hooks
 // =============================================================================
 
 handleFileOpen();
@@ -1082,12 +1160,14 @@ app.on('activate', () => {
     }
 });
 
-app.on('will-quit', () => {
+app.on('will-quit', async () => {
+    await runPluginHook('app:beforeQuit', {});
     stopHealthCheck();
 });
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
     if (process.platform !== 'darwin') {
+        await runPluginHook('app:beforeQuit', {});
         stopHealthCheck();
         if (httpServer) {
             httpServer.close(() => {

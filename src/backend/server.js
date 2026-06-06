@@ -1,12 +1,17 @@
 /**
- * server.js - KORAI Music Player Backend API with AI
- * Complete Express server with AI recommendation endpoints
+ * server.js - KORAI Music Player Backend API with AI & Enhanced Plugin System
+ * 
+ * Complete Express server with AI recommendation endpoints, plugin management,
+ * and comprehensive hook system for unlimited plugin capabilities.
  * 
  * FIXES APPLIED:
  * - Added adm-zip dependency for plugin installation
  * - Fixed plugin installation endpoint with proper error handling
  * - Added serverUserDataPath validation
  * - Added directory creation with permission handling
+ * - Integrated plugin hooks across all major operations
+ * - Added event bus support for inter-plugin communication
+ * - Added plugin API route registration
  * - Preserved ALL existing functionality
  */
 
@@ -108,25 +113,62 @@ function ensureDirectoryExists(dirPath) {
     return true;
 }
 
+/**
+ * Run plugin hook with payload (async)
+ */
+async function runPluginHook(hookName, payload) {
+    if (global.pluginManager) {
+        return await global.pluginManager.runHook(hookName, payload);
+    }
+    return payload;
+}
+
+/**
+ * Run plugin hook with cancel capability
+ */
+async function runPluginHookWithCancel(hookName, payload) {
+    if (global.pluginManager) {
+        return await global.pluginManager.runHookWithCancel(hookName, payload);
+    }
+    return { cancelled: false, payload };
+}
+
+/**
+ * Emit event to plugins
+ */
+async function emitPluginEvent(eventName, payload, sourcePluginId = null) {
+    if (global.pluginManager) {
+        await global.pluginManager.emitEvent(eventName, payload, sourcePluginId);
+    }
+}
+
 // =============================================================================
 // ROUTE SETUP
 // =============================================================================
 
 function setupRoutes() {
     // ========== SETTINGS ROUTES ==========
-    app.get('/api/settings', (req, res) => {
+    app.get('/api/settings', async (req, res) => {
         try {
             const db = getDb();
-            res.json(db.getSettings());
+            let settings = db.getSettings();
+            // Run hook
+            settings = await runPluginHook('settings:beforeLoad', settings);
+            res.json(settings);
         } catch (error) {
             res.status(500).json({ error: error.message });
         }
     });
 
-    app.post('/api/settings', (req, res) => {
+    app.post('/api/settings', async (req, res) => {
         try {
+            let settings = req.body;
+            // Run hook before save
+            settings = await runPluginHook('settings:beforeSave', settings);
             const db = getDb();
-            const updated = db.updateSettings(req.body);
+            const updated = db.updateSettings(settings);
+            // Emit event
+            await emitPluginEvent('settings:changed', updated);
             res.json(updated);
         } catch (error) {
             res.status(500).json({ error: error.message });
@@ -168,15 +210,17 @@ function setupRoutes() {
     });
 
     // ========== TRACKS ROUTES ==========
-    app.get('/api/tracks', (req, res) => {
+    app.get('/api/tracks', async (req, res) => {
         try {
             const db = getDb();
-            const tracks = db.getAllTracks().map(track => ({
+            let tracks = db.getAllTracks().map(track => ({
                 ...track,
                 filePath: undefined,
                 coverPath: undefined,
                 coverUrl: track.hasCover ? `/api/tracks/${track.id}/cover` : null
             }));
+            // Run hook
+            tracks = await runPluginHook('library:getTracks', tracks);
             res.json(tracks);
         } catch (error) {
             res.status(500).json({ error: error.message });
@@ -196,13 +240,20 @@ function setupRoutes() {
         }
     });
 
-    app.get('/api/tracks/:id/stream', (req, res) => {
+    app.get('/api/tracks/:id/stream', async (req, res) => {
         try {
             const db = getDb();
-            const track = db.getTrackById(parseInt(req.params.id));
+            let track = db.getTrackById(parseInt(req.params.id));
             if (!track || !track.filePath || !fs.existsSync(track.filePath)) {
                 return res.status(404).json({ error: 'File not found' });
             }
+            
+            // Run hook before stream
+            const hookResult = await runPluginHookWithCancel('playback:beforeStream', { track, request: req.headers });
+            if (hookResult.cancelled) {
+                return res.status(403).json({ error: 'Stream blocked by plugin' });
+            }
+            track = hookResult.payload.track || track;
             
             const stat = fs.statSync(track.filePath);
             const fileSize = stat.size;
@@ -256,13 +307,21 @@ function setupRoutes() {
 
     app.post('/api/tracks/import', async (req, res) => {
         try {
-            const { filePaths } = req.body;
+            let { filePaths } = req.body;
             if (!filePaths || !Array.isArray(filePaths) || filePaths.length === 0) {
                 return res.status(400).json({ error: 'No file paths provided' });
             }
             
+            // Run hook before import
+            const hookResult = await runPluginHookWithCancel('library:beforeImport', { filePaths });
+            if (hookResult.cancelled) {
+                return res.status(403).json({ error: 'Import blocked by plugin' });
+            }
+            filePaths = hookResult.payload.filePaths;
+            
             const db = getDb();
             let imported = 0;
+            const importedTracks = [];
             
             for (const filePath of filePaths) {
                 try {
@@ -270,7 +329,13 @@ function setupRoutes() {
                     
                     const analysis = await analyzeAudioFile(filePath);
                     
-                    db.addTrack({
+                    // Allow plugin to modify analysis
+                    let modifiedAnalysis = await runPluginHook('library:beforeAddTrack', { analysis, filePath });
+                    if (modifiedAnalysis && modifiedAnalysis.analysis) {
+                        analysis = modifiedAnalysis.analysis;
+                    }
+                    
+                    const newTrack = db.addTrack({
                         title: analysis.title || path.basename(filePath, path.extname(filePath)),
                         artist: analysis.artist || '',
                         filePath: filePath,
@@ -290,12 +355,17 @@ function setupRoutes() {
                         rawFeatures: analysis.rawFeatures
                     }, false);
                     imported++;
+                    importedTracks.push(newTrack);
                 } catch (err) {
                     console.error(`Failed to analyze: ${filePath}`, err);
                 }
             }
             
             db.save();
+            
+            // Emit event after import
+            await emitPluginEvent('library:afterImport', { imported, total: filePaths.length, tracks: importedTracks });
+            
             res.json({ success: true, imported, total: filePaths.length });
         } catch (error) {
             res.status(500).json({ error: error.message });
@@ -304,11 +374,18 @@ function setupRoutes() {
 
     app.post('/api/tracks/download', async (req, res) => {
         try {
-            const { url } = req.body;
+            let { url } = req.body;
             if (!url) return res.status(400).json({ error: 'URL is required' });
             if (!url.startsWith('http://') && !url.startsWith('https://')) {
                 return res.status(400).json({ error: 'Invalid URL protocol' });
             }
+            
+            // Run hook before download
+            const hookResult = await runPluginHookWithCancel('http:downloadStart', { url });
+            if (hookResult.cancelled) {
+                return res.status(403).json({ error: 'Download blocked by plugin' });
+            }
+            url = hookResult.payload.url;
             
             const downloadsDir = path.join(serverUserDataPath, 'downloads');
             if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
@@ -351,42 +428,79 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/playlists', (req, res) => {
+    app.post('/api/playlists', async (req, res) => {
         try {
+            let { name } = req.body;
+            // Hook before create
+            const hookResult = await runPluginHookWithCancel('playlist:beforeCreate', { name });
+            if (hookResult.cancelled) {
+                return res.status(403).json({ error: 'Playlist creation blocked by plugin' });
+            }
+            name = hookResult.payload.name;
+            
             const db = getDb();
-            const { name } = req.body;
             const newPl = db.createPlaylist(name);
+            await emitPluginEvent('playlist:afterCreate', { playlist: newPl });
             res.json(newPl);
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
     });
 
-    app.delete('/api/playlists/:id', (req, res) => {
+    app.delete('/api/playlists/:id', async (req, res) => {
         try {
             const db = getDb();
+            const playlist = db.getPlaylists().find(p => p.id === parseInt(req.params.id));
+            if (!playlist) return res.status(404).json({ error: 'Playlist not found' });
+            
+            const hookResult = await runPluginHookWithCancel('playlist:beforeDelete', { playlist });
+            if (hookResult.cancelled) {
+                return res.status(403).json({ error: 'Playlist deletion blocked by plugin' });
+            }
+            
             const deleted = db.deletePlaylist(parseInt(req.params.id));
+            if (deleted) {
+                await emitPluginEvent('playlist:afterDelete', { playlistId: parseInt(req.params.id) });
+            }
             res.json({ success: deleted });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
     });
 
-    app.post('/api/playlists/:id/tracks', (req, res) => {
+    app.post('/api/playlists/:id/tracks', async (req, res) => {
         try {
             const db = getDb();
+            const playlistId = parseInt(req.params.id);
             const { trackId } = req.body;
-            const added = db.addTrackToPlaylist(parseInt(req.params.id), parseInt(trackId));
+            const playlist = db.getPlaylists().find(p => p.id === playlistId);
+            const track = db.getTrackById(trackId);
+            
+            const hookResult = await runPluginHookWithCancel('playlist:addTrack', { playlist, track });
+            if (hookResult.cancelled) {
+                return res.status(403).json({ error: 'Add track blocked by plugin' });
+            }
+            
+            const added = db.addTrackToPlaylist(playlistId, parseInt(trackId));
+            if (added) {
+                await emitPluginEvent('playlist:trackAdded', { playlistId, trackId });
+            }
             res.json({ success: added });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
     });
 
-    app.delete('/api/playlists/:id/tracks/:trackId', (req, res) => {
+    app.delete('/api/playlists/:id/tracks/:trackId', async (req, res) => {
         try {
             const db = getDb();
-            const removed = db.removeTrackFromPlaylist(parseInt(req.params.id), parseInt(req.params.trackId));
+            const playlistId = parseInt(req.params.id);
+            const trackId = parseInt(req.params.trackId);
+            
+            const removed = db.removeTrackFromPlaylist(playlistId, trackId);
+            if (removed) {
+                await emitPluginEvent('playlist:trackRemoved', { playlistId, trackId });
+            }
             res.json({ success: removed });
         } catch (e) {
             res.status(500).json({ error: e.message });
@@ -397,46 +511,64 @@ function setupRoutes() {
     app.delete('/api/tracks/:id', async (req, res) => {
         try {
             const db = getDb();
-            const deleted = db.deleteTrack(parseInt(req.params.id));
+            const trackId = parseInt(req.params.id);
+            const track = db.getTrackById(trackId);
+            if (!track) return res.status(404).json({ error: 'Track not found' });
+            
+            const hookResult = await runPluginHookWithCancel('library:beforeDelete', { track });
+            if (hookResult.cancelled) {
+                return res.status(403).json({ error: 'Track deletion blocked by plugin' });
+            }
+            
+            const deleted = db.deleteTrack(trackId);
+            if (deleted) {
+                await emitPluginEvent('library:afterDelete', { trackId, track });
+            }
             res.json({ success: deleted });
         } catch (error) {
             res.status(500).json({ error: error.message });
         }
     });
 
-    app.post('/api/tracks/:id/play', (req, res) => {
+    app.post('/api/tracks/:id/play', async (req, res) => {
         try {
             const db = getDb();
-            db.addPlayHistory(parseInt(req.params.id));
+            const trackId = parseInt(req.params.id);
+            db.addPlayHistory(trackId);
             if (serverUserDataPath) {
-                updateUserHistory(userHistory, parseInt(req.params.id), 'play', serverUserDataPath);
+                updateUserHistory(userHistory, trackId, 'play', serverUserDataPath);
             }
+            await emitPluginEvent('playback:trackPlayed', { trackId });
             res.json({ success: true });
         } catch (error) {
             res.status(500).json({ error: error.message });
         }
     });
 
-    app.post('/api/tracks/:id/like', (req, res) => {
+    app.post('/api/tracks/:id/like', async (req, res) => {
         try {
             const db = getDb();
-            const liked = db.likeTrack(parseInt(req.params.id));
+            const trackId = parseInt(req.params.id);
+            const liked = db.likeTrack(trackId);
             if (serverUserDataPath && liked) {
-                updateUserHistory(userHistory, parseInt(req.params.id), 'like', serverUserDataPath);
+                updateUserHistory(userHistory, trackId, 'like', serverUserDataPath);
             }
+            await emitPluginEvent('library:trackLiked', { trackId, liked: true });
             res.json({ success: true, isLiked: liked });
         } catch (error) {
             res.status(500).json({ error: error.message });
         }
     });
 
-    app.delete('/api/tracks/:id/like', (req, res) => {
+    app.delete('/api/tracks/:id/like', async (req, res) => {
         try {
             const db = getDb();
-            const unliked = db.unlikeTrack(parseInt(req.params.id));
+            const trackId = parseInt(req.params.id);
+            const unliked = db.unlikeTrack(trackId);
             if (serverUserDataPath && unliked) {
-                updateUserHistory(userHistory, parseInt(req.params.id), 'unlike', serverUserDataPath);
+                updateUserHistory(userHistory, trackId, 'unlike', serverUserDataPath);
             }
+            await emitPluginEvent('library:trackUnliked', { trackId });
             res.json({ success: true, isLiked: !unliked });
         } catch (error) {
             res.status(500).json({ error: error.message });
@@ -550,17 +682,18 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/ai/interaction', (req, res) => {
+    app.post('/api/ai/interaction', async (req, res) => {
         try {
             const { trackId, action } = req.body;
             const updated = updateUserHistory(userHistory, trackId, action, serverUserDataPath);
+            await emitPluginEvent('recommendations:train', { trackId, action, userHistory: updated });
             res.json({ success: true, history: updated });
         } catch (error) {
             res.status(500).json({ error: error.message });
         }
     });
 
-    app.get('/api/ai/recommend/personal/:trackId', (req, res) => {
+    app.get('/api/ai/recommend/personal/:trackId', async (req, res) => {
         try {
             const db = getDb();
             const track = db.getTrackById(parseInt(req.params.trackId));
@@ -569,22 +702,13 @@ function setupRoutes() {
             const allTracks = db.getAllTracks();
             let recommendations = getPersonalizedRecommendations(allTracks, track, userHistory, 12);
             
-            // Apply plugin hook: recommendations:modify
-            if (global.pluginManager) {
-                recommendations = recommendations.map(r => ({
-                    ...r,
-                    similarity: r.similarity || 0,
-                    reason: r.reason || '',
-                    similarityIcon: r.similarityIcon || '🎵'
-                }));
-                global.pluginManager.runHook('recommendations:modify', {
-                    sourceTrack: track,
-                    recommendations: recommendations
-                }).then(modified => {
-                    if (modified && modified.recommendations) {
-                        recommendations = modified.recommendations;
-                    }
-                }).catch(err => console.error('Recommendation hook error:', err));
+            // Run plugin hook
+            let modified = await runPluginHook('recommendations:modify', {
+                sourceTrack: track,
+                recommendations: recommendations
+            });
+            if (modified && modified.recommendations) {
+                recommendations = modified.recommendations;
             }
             
             const safeRecs = recommendations.map(r => ({
@@ -663,7 +787,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/playlists/similar', (req, res) => {
+    app.post('/api/playlists/similar', async (req, res) => {
         try {
             const db = getDb();
             const { trackId } = req.body;
@@ -741,7 +865,14 @@ function setupRoutes() {
             const track = db.getTrackById(parseInt(req.params.id));
             if (!track) return res.status(404).json({ error: 'Track not found' });
             
-            const { title, artist, album, genre, year, trackNumber, composer, lyrics } = req.body;
+            let updatedFields = { ...req.body };
+            // Run hook
+            updatedFields = await runPluginHook('library:trackMetadataUpdate', { trackId: track.id, track, updates: updatedFields });
+            if (updatedFields && updatedFields.updates) {
+                updatedFields = updatedFields.updates;
+            }
+            
+            const { title, artist, album, genre, year, trackNumber, composer, lyrics } = updatedFields;
             
             if (title !== undefined) track.title = title;
             if (artist !== undefined) track.artist = artist;
@@ -753,6 +884,7 @@ function setupRoutes() {
             if (lyrics !== undefined) track.lyrics = lyrics;
             
             db.save();
+            await emitPluginEvent('library:trackUpdated', { trackId: track.id, changes: updatedFields });
             res.json({ success: true, track });
         } catch (error) {
             console.error('Tag update error:', error);
@@ -856,7 +988,6 @@ function setupRoutes() {
             let format = '';
             let importedTracks = [];
             
-            // Dispatch based on file extension
             switch (ext) {
                 case '.m3u':
                     format = 'm3u';
@@ -1048,6 +1179,12 @@ function setupRoutes() {
         res.json({ success });
     });
 
+    app.post('/api/plugins/:id/reload', async (req, res) => {
+        if (!global.pluginManager) return res.status(500).json({ error: 'Plugin manager not ready' });
+        const success = await global.pluginManager.reloadPlugin(req.params.id);
+        res.json({ success });
+    });
+
     app.delete('/api/plugins/:id', async (req, res) => {
         if (!global.pluginManager) return res.status(500).json({ error: 'Plugin manager not ready' });
         const success = await global.pluginManager.uninstallPlugin(req.params.id);
@@ -1061,8 +1198,7 @@ function setupRoutes() {
     // Serve plugin icon
     app.get('/api/plugins/icon/:id', (req, res) => {
         if (!global.pluginManager) return res.status(404).end();
-        const plugins = global.pluginManager.plugins;
-        const plugin = plugins.get(req.params.id);
+        const plugin = global.pluginManager.getPlugin(req.params.id);
         if (plugin && plugin.manifest.iconPath && fs.existsSync(plugin.manifest.iconPath)) {
             res.sendFile(plugin.manifest.iconPath);
         } else {
@@ -1070,7 +1206,7 @@ function setupRoutes() {
         }
     });
 
-    // Plugin hook endpoints
+    // Plugin hook endpoints (for renderer to call)
     app.post('/api/plugins/hook/:hookName', async (req, res) => {
         try {
             const { hookName } = req.params;
@@ -1097,6 +1233,54 @@ function setupRoutes() {
         } catch (err) {
             console.error('UI injection error:', err);
             res.json({ injections: [] });
+        }
+    });
+
+    // ========== DYNAMIC PLUGIN API ROUTES ==========
+    // Store plugin routes in a Map for hot-reloading
+    const pluginRoutes = new Map();
+
+    // Endpoint for plugins to register their own routes (called via pluginContext)
+    app.post('/api/plugins/register-route', async (req, res) => {
+        try {
+            const { pluginId, route, method = 'GET', handlerCode } = req.body;
+            if (!global.pluginManager) {
+                return res.status(500).json({ error: 'Plugin manager not ready' });
+            }
+            const plugin = global.pluginManager.getPlugin(pluginId);
+            if (!plugin || !plugin.enabled) {
+                return res.status(403).json({ error: 'Plugin not enabled' });
+            }
+            
+            // Store route info
+            const routeKey = `${method}:${route}`;
+            pluginRoutes.set(routeKey, { pluginId, method, route, handlerCode });
+            
+            // Register dynamic route if not already registered
+            const existingRoute = app._router.stack.find(layer => 
+                layer.route && layer.route.path === route && layer.route.methods[method.toLowerCase()]
+            );
+            if (!existingRoute) {
+                app[method.toLowerCase()](route, async (req, res) => {
+                    const routeInfo = pluginRoutes.get(`${method}:${route}`);
+                    if (!routeInfo) return res.status(404).end();
+                    const plugin = global.pluginManager.getPlugin(routeInfo.pluginId);
+                    if (!plugin || !plugin.enabled) return res.status(403).json({ error: 'Plugin disabled' });
+                    try {
+                        // Execute handler safely
+                        const handler = new Function('req', 'res', routeInfo.handlerCode);
+                        await handler(req, res);
+                    } catch (err) {
+                        console.error(`Plugin route error:`, err);
+                        res.status(500).json({ error: err.message });
+                    }
+                });
+            }
+            
+            res.json({ success: true });
+        } catch (err) {
+            console.error('Route registration error:', err);
+            res.status(500).json({ error: err.message });
         }
     });
 }
@@ -1348,6 +1532,7 @@ async function startServer(port, userDataPath) {
         const server = app.listen(port, '127.0.0.1', () => {
             console.log(`🚀 Server on port http://127.0.0.1:${port}`);
             console.log(`🤖 AI recommendation engine active`);
+            console.log(`🔌 Plugin system active with full hook support`);
             resolve(server);
         });
     });

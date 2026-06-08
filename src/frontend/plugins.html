@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>KORAI | Plugin Studio</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-glow: #00ffd5;
+            --primary-soft: #1db954;
+            --bg-deep: #0a0a0f;
+            --bg-elevated: #12121a;
+            --bg-surface: #1a1a24;
+            --border-subtle: rgba(255,255,255,0.06);
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0b0;
+            --accent-pink: #ff2a5f;
+            --accent-purple: #8b5cf6;
+        }
+
+        html, body {
+            height: 100%;
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            background: radial-gradient(ellipse at 20% 30%, #0f0f1a 0%, #050508 100%);
+            color: var(--text-primary);
+            overflow: hidden;
+        }
+
+        .ambient-bg {
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            overflow: hidden;
+        }
+
+        .bg-blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.3;
+            animation: floatBlob 20s infinite alternate;
+        }
+
+        .bg-blob-1 { width: 500px; height: 500px; background: #00ffd5; top: -10%; right: -10%; animation-duration: 25s; }
+        .bg-blob-2 { width: 600px; height: 600px; background: #8b5cf6; bottom: -20%; left: -10%; animation-duration: 30s; }
+        .bg-blob-3 { width: 400px; height: 400px; background: #ff2a5f; top: 40%; right: 30%; animation-duration: 18s; opacity: 0.2; }
+
+        @keyframes floatBlob {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(50px, 50px) scale(1.1); }
+        }
+
+        .app-wrapper {
+            display: flex;
+            height: 100vh;
+            backdrop-filter: blur(2px);
+        }
+
+        .studio-sidebar {
+            width: 280px;
+            background: rgba(18, 18, 26, 0.75);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(0, 255, 213, 0.15);
+            padding: 28px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 32px;
+            z-index: 10;
+        }
+
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .logo-icon {
+            font-size: 28px;
+            color: var(--primary-glow);
+            filter: drop-shadow(0 0 8px rgba(0,255,213,0.5));
+            animation: subtlePulse 3s infinite;
+        }
+
+        @keyframes subtlePulse {
+            0%, 100% { opacity: 0.9; }
+            50% { opacity: 1; text-shadow: 0 0 10px #00ffd5; }
+        }
+
+        .logo-text {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #fff 0%, var(--primary-glow) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo-badge {
+            font-size: 10px;
+            font-weight: 600;
+            background: rgba(0,255,213,0.15);
+            padding: 2px 8px;
+            border-radius: 20px;
+            margin-left: 8px;
+            color: var(--primary-glow);
+        }
+
+        .nav-section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .nav-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .nav-item {
+            background: transparent;
+            border: none;
+            padding: 12px 16px;
+            border-radius: 12px;
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 14px;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .nav-item i {
+            width: 22px;
+            font-size: 16px;
+        }
+
+        .nav-item:hover {
+            background: rgba(255,255,255,0.05);
+            color: white;
+            transform: translateX(4px);
+        }
+
+        .nav-item.active {
+            background: linear-gradient(90deg, rgba(0,255,213,0.12) 0%, transparent 100%);
+            color: var(--primary-glow);
+            border-left: 3px solid var(--primary-glow);
+        }
+
+        .exit-btn {
+            margin-top: auto;
+            border-top: 1px solid var(--border-subtle);
+            padding-top: 24px;
+        }
+
+        .main-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 32px 40px;
+            position: relative;
+        }
+
+        .main-content::-webkit-scrollbar {
+            width: 5px;
+        }
+        .main-content::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.02);
+            border-radius: 10px;
+        }
+        .main-content::-webkit-scrollbar-thumb {
+            background: rgba(0,255,213,0.3);
+            border-radius: 10px;
+        }
+        .main-content::-webkit-scrollbar-thumb:hover {
+            background: var(--primary-glow);
+        }
+
+        .page-header {
+            margin-bottom: 32px;
+        }
+
+        .page-title {
+            font-size: 32px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #fff, var(--primary-glow));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+        }
+
+        .page-subtitle {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .stats-grid {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 32px;
+            flex-wrap: wrap;
+        }
+
+        .stat-card {
+            background: rgba(26, 26, 36, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            padding: 18px 24px;
+            flex: 1;
+            min-width: 160px;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            border-color: rgba(0,255,213,0.3);
+            transform: translateY(-2px);
+            background: rgba(26, 26, 36, 0.8);
+        }
+
+        .stat-label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--primary-glow);
+        }
+
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 28px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .search-container {
+            position: relative;
+            flex: 1;
+            max-width: 320px;
+        }
+
+        .search-container i {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .search-container input {
+            width: 100%;
+            padding: 12px 16px 12px 44px;
+            background: rgba(26, 26, 36, 0.7);
+            border: 1px solid var(--border-subtle);
+            border-radius: 40px;
+            color: white;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .search-container input:focus {
+            outline: none;
+            border-color: var(--primary-glow);
+            background: rgba(26, 26, 36, 0.9);
+            box-shadow: 0 0 0 3px rgba(0,255,213,0.1);
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .filter-chip {
+            padding: 8px 20px;
+            border-radius: 40px;
+            background: rgba(26, 26, 36, 0.7);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .filter-chip.active {
+            background: var(--primary-glow);
+            color: #000;
+            border-color: var(--primary-glow);
+        }
+
+        .install-btn {
+            background: linear-gradient(135deg, var(--primary-glow), #00a884);
+            border: none;
+            padding: 12px 24px;
+            border-radius: 40px;
+            font-weight: 700;
+            font-size: 14px;
+            color: #000;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.25s;
+        }
+
+        .install-btn:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 20px rgba(0,255,213,0.3);
+        }
+
+        .plugin-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 24px;
+            margin-top: 16px;
+        }
+
+        .plugin-card {
+            background: rgba(22, 22, 30, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 24px;
+            padding: 20px;
+            transition: all 0.35s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .plugin-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0,255,213,0.05), transparent);
+            transition: left 0.5s;
+        }
+
+        .plugin-card:hover {
+            border-color: var(--primary-glow);
+            transform: translateY(-4px);
+            box-shadow: 0 20px 35px -12px rgba(0,0,0,0.5);
+        }
+
+        .plugin-card:hover::before {
+            left: 100%;
+        }
+
+        .plugin-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .plugin-icon {
+            width: 52px;
+            height: 52px;
+            background: linear-gradient(135deg, #1db95420, #00ffd510);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            border: 1px solid rgba(0,255,213,0.2);
+        }
+
+        .plugin-info {
+            flex: 1;
+        }
+
+        .plugin-name {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .plugin-version {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-family: monospace;
+        }
+
+        .plugin-id {
+            font-size: 10px;
+            color: rgba(255,255,255,0.25);
+            font-family: monospace;
+            margin-top: 4px;
+        }
+
+        .plugin-badges {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge-enabled {
+            background: rgba(29, 185, 84, 0.2);
+            color: #1db954;
+            border: 1px solid rgba(29,185,84,0.3);
+        }
+
+        .badge-disabled {
+            background: rgba(255,255,255,0.05);
+            color: #888;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .badge-running {
+            background: rgba(0,255,213,0.15);
+            color: var(--primary-glow);
+            animation: pulseGlow 1.5s infinite;
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; text-shadow: 0 0 4px var(--primary-glow); }
+        }
+
+        .plugin-description {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+
+        .plugin-actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .action-btn {
+            padding: 8px 16px;
+            border-radius: 40px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-secondary);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .action-btn:hover {
+            background: rgba(255,255,255,0.1);
+            transform: translateY(-1px);
+        }
+
+        .action-primary {
+            background: rgba(0,255,213,0.1);
+            border-color: rgba(0,255,213,0.3);
+            color: var(--primary-glow);
+        }
+
+        .action-primary:hover {
+            background: var(--primary-glow);
+            color: #000;
+        }
+
+        .action-danger {
+            border-color: rgba(255,42,95,0.3);
+            color: var(--accent-pink);
+        }
+
+        .action-danger:hover {
+            background: rgba(255,42,95,0.15);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 80px 20px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state i {
+            font-size: 64px;
+            margin-bottom: 20px;
+            opacity: 0.3;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(12px);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.2s;
+        }
+
+        .modal-container {
+            background: linear-gradient(135deg, #1a1a24, #12121a);
+            border: 1px solid rgba(0,255,213,0.3);
+            border-radius: 32px;
+            width: 90%;
+            max-width: 500px;
+            padding: 32px;
+            animation: slideUp 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-header {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+
+        .modal-body {
+            margin-bottom: 28px;
+            color: var(--text-secondary);
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .dropzone {
+            border: 2px dashed rgba(0,255,213,0.3);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            margin-top: 20px;
+            transition: all 0.2s;
+        }
+
+        .dropzone.drag-over {
+            border-color: var(--primary-glow);
+            background: rgba(0,255,213,0.05);
+        }
+
+        .toast-notification {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #1a1a24;
+            border-left: 4px solid var(--primary-glow);
+            padding: 14px 20px;
+            border-radius: 12px;
+            z-index: 1100;
+            animation: slideInRight 0.3s;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+
+        @keyframes slideInRight {
+            from { transform: translateX(100px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        @media (max-width: 768px) {
+            .studio-sidebar { display: none; }
+            .main-content { padding: 20px; }
+            .plugin-grid { grid-template-columns: 1fr; }
+            .stats-grid { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="ambient-bg">
+        <div class="bg-blob bg-blob-1"></div>
+        <div class="bg-blob bg-blob-2"></div>
+        <div class="bg-blob bg-blob-3"></div>
+    </div>
+
+    <div class="app-wrapper">
+        <aside class="studio-sidebar">
+            <div class="logo-area">
+                <i class="fa-solid fa-bolt logo-icon"></i>
+                <div>
+                    <span class="logo-text">KORAI</span>
+                    <span class="logo-badge">PLUGINS</span>
+                </div>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-title">MANAGEMENT</div>
+                <button class="nav-item active" data-tab="installed">
+                    <i class="fa-solid fa-puzzle-piece"></i>
+                    <span>Installed Plugins</span>
+                </button>
+                <!-- Developer Kit removed per UX decision -->
+                <button class="nav-item" data-tab="performance">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Performance</span>
+                </button>
+            </div>
+
+            <div class="nav-section exit-btn">
+                <button id="backToPlayerBtn" class="nav-item">
+                    <i class="fa-solid fa-arrow-left"></i>
+                    <span>Exit to Player</span>
+                </button>
+            </div>
+        </aside>
+
+        <main class="main-content" id="mainContent">
+            <div class="page-header">
+                <h1 class="page-title">Plugin Studio</h1>
+                <p class="page-subtitle">Extend KORAI with powerful modules and custom integrations</p>
+            </div>
+
+            <div class="stats-grid" id="statsGrid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Plugins</div>
+                    <div class="stat-value" id="statTotal">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Active</div>
+                    <div class="stat-value" id="statActive">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Running</div>
+                    <div class="stat-value" id="statRunning">0</div>
+                </div>
+            </div>
+
+            <div class="toolbar">
+                <div class="search-container">
+                    <i class="fa-solid fa-search"></i>
+                    <input type="text" id="pluginSearch" placeholder="Search plugins by name or ID...">
+                </div>
+                <div class="filter-group">
+                    <button class="filter-chip active" data-filter="all">All</button>
+                    <button class="filter-chip" data-filter="enabled">Active</button>
+                    <button class="filter-chip" data-filter="disabled">Inactive</button>
+                </div>
+                <button class="install-btn" id="installPluginBtn">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                    Install Plugin
+                </button>
+            </div>
+
+            <div id="pluginContainer" class="plugin-grid">
+                <!-- Dynamic content -->
+            </div>
+        </main>
+    </div>
+
+    <div id="modalRoot"></div>
+
+    <script>
+        let apiBase = '';
+
+        async function resolveApiBase() {
+            if (window.electronAPI && typeof window.electronAPI.getServerPort === 'function') {
+                try {
+                    const port = await window.electronAPI.getServerPort();
+                    if (port) return `http://localhost:${port}`;
+                } catch (e) {}
+            }
+            if (location.protocol.startsWith('http')) return location.origin;
+            // Try common local ports quickly (3000..3010) in case server uses a dynamic port
+            const ports = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010];
+            for (const p of ports) {
+                try {
+                    const res = await fetch(`http://127.0.0.1:${p}/api/plugins`, { method: 'GET' });
+                    if (res.ok) return `http://127.0.0.1:${p}`;
+                } catch (e) {}
+            }
+            return 'http://localhost:3000';
+        }
+
+        function apiFetch(path, opts = {}) {
+            const url = path.startsWith('http') ? path : `${apiBase}${path.startsWith('/') ? path : '/' + path}`;
+            return fetch(url, opts);
+        }
+
+        let plugins = [];
+        let searchQuery = '';
+        let filterStatus = 'all';
+
+        const container = document.getElementById('pluginContainer');
+        const statTotal = document.getElementById('statTotal');
+        const statActive = document.getElementById('statActive');
+        const statRunning = document.getElementById('statRunning');
+        const searchInput = document.getElementById('pluginSearch');
+        const filterChips = document.querySelectorAll('.filter-chip');
+        const installBtn = document.getElementById('installPluginBtn');
+        const backBtn = document.getElementById('backToPlayerBtn');
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>]/g, m => {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+
+        function showNotification(message, type = 'info') {
+            const existing = document.querySelector('.toast-notification');
+            if (existing) existing.remove();
+            const toast = document.createElement('div');
+            toast.className = 'toast-notification';
+            toast.style.borderLeftColor = type === 'success' ? '#1db954' : type === 'error' ? '#ff2a5f' : '#00ffd5';
+            toast.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <i class="fa-solid ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-triangle' : 'fa-info-circle'}"></i>
+                    <span>${escapeHtml(message)}</span>
+                </div>
+            `;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // Small page-level overlay used for long-running plugin actions
+        function showActionOverlay(message) {
+            let o = document.getElementById('plugin-action-overlay');
+            if (!o) {
+                o = document.createElement('div');
+                o.id = 'plugin-action-overlay';
+                o.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.35);z-index:10050;';
+                const inner = document.createElement('div');
+                inner.style.cssText = 'background:linear-gradient(180deg,#121217,#0c0c10);padding:14px 18px;border-radius:10px;color:#e6fdf7;font-weight:700;box-shadow:0 8px 30px rgba(0,0,0,0.6);';
+                inner.id = 'plugin-action-overlay-inner';
+                o.appendChild(inner);
+                document.body.appendChild(o);
+            }
+            const inner = document.getElementById('plugin-action-overlay-inner');
+            if (inner) inner.textContent = message || 'Working...';
+            o.style.display = 'flex';
+        }
+
+        function hideActionOverlay() {
+            const o = document.getElementById('plugin-action-overlay');
+            if (o) o.style.display = 'none';
+        }
+
+        async function loadPlugins() {
+            try {
+                const res = await apiFetch('/api/plugins');
+                if (!res.ok) throw new Error('Failed to load plugins');
+                const data = await res.json();
+                plugins = data.plugins || [];
+                renderStats();
+                renderPlugins();
+            } catch (err) {
+                console.error('Load plugins error:', err);
+                showNotification('Failed to load plugins', 'error');
+                plugins = [];
+                renderPlugins();
+            }
+        }
+
+        function renderStats() {
+            const total = plugins.length;
+            const active = plugins.filter(p => p.enabled).length;
+            const running = plugins.filter(p => p.running).length;
+            statTotal.innerText = total;
+            statActive.innerText = active;
+            statRunning.innerText = running;
+        }
+
+        function getFilteredPlugins() {
+            return plugins.filter(p => {
+                const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                     p.id.toLowerCase().includes(searchQuery.toLowerCase());
+                const matchesFilter = filterStatus === 'all' ||
+                                     (filterStatus === 'enabled' && p.enabled) ||
+                                     (filterStatus === 'disabled' && !p.enabled);
+                return matchesSearch && matchesFilter;
+            });
+        }
+
+        async function togglePlugin(id, enable) {
+            const endpoint = enable ? `/api/plugins/${id}/disable` : `/api/plugins/${id}/enable`;
+            try {
+                const res = await apiFetch(endpoint, { method: 'POST' });
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    if (errData.error === 'missing_permissions' && errData.missing) {
+                        showNotification(`Missing permissions: ${errData.missing.join(', ')}`, 'error');
+                    } else {
+                        throw new Error(errData.error || 'Toggle failed');
+                    }
+                    return;
+                }
+                showNotification(enable ? `Plugin disabled` : `Plugin enabled`, 'success');
+                await loadPlugins();
+            } catch (err) {
+                showNotification(`Failed: ${err.message}`, 'error');
+            }
+        }
+
+        // Performs uninstall request; caller should handle confirmation and UI state
+        async function uninstallPlugin(id) {
+            try {
+                const res = await apiFetch(`/api/plugins/${id}`, { method: 'DELETE' });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.message || err.error || 'Uninstall failed');
+                }
+                showNotification('Plugin uninstalled successfully', 'success');
+                await loadPlugins();
+            } catch (err) {
+                showNotification(`Uninstall failed: ${err.message}`, 'error');
+                throw err;
+            }
+        }
+
+        async function installPluginFromFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            try {
+                showNotification('Installing plugin...', 'info');
+                const res = await apiFetch('/api/plugins/install', { method: 'POST', body: formData });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.error || 'Installation failed');
+                }
+                showNotification('Plugin installed successfully!', 'success');
+                await loadPlugins();
+            } catch (err) {
+                showNotification(`Installation failed: ${err.message}`, 'error');
+            }
+        }
+
+        function triggerFileUpload() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.zip';
+            input.onchange = (e) => {
+                if (e.target.files && e.target.files[0]) {
+                    installPluginFromFile(e.target.files[0]);
+                }
+            };
+            input.click();
+        }
+
+        async function showPerformanceDashboard() {
+            try {
+                const res = await apiFetch('/api/plugins/performance');
+                if (!res.ok) throw new Error('Failed to fetch performance');
+                const data = await res.json();
+                const summary = data.summary || {};
+                const pluginStats = data.pluginStats || [];
+                const modal = document.createElement('div');
+                modal.className = 'modal-overlay';
+                modal.innerHTML = `
+                    <div class="modal-container" style="max-width: 700px; max-height: 80vh; overflow-y: auto;">
+                        <div class="modal-header">Performance Dashboard</div>
+                        <div class="modal-body">
+                            <div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
+                                <div><strong>Total Hooks:</strong> ${summary.totalHooksCalled || 0}</div>
+                                <div><strong>Errors:</strong> ${summary.totalErrors || 0}</div>
+                                <div><strong>Avg Time/Hook:</strong> ${summary.avgTimePerHook || 0}ms</div>
+                            </div>
+                            <h4 style="margin-bottom: 12px;">Plugin Statistics</h4>
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <thead><tr style="border-bottom: 1px solid rgba(255,255,255,0.1);"><th>Plugin</th><th>Calls</th><th>Errors</th><th>Avg(ms)</th></tr></thead>
+                                <tbody>
+                                    ${pluginStats.map(s => `
+                                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                            <td style="padding: 8px 4px;">${escapeHtml(s.pluginId || '')}</td>
+                                            <td>${s.totalHooks || 0}</td>
+                                            <td style="color: #ff5a7a;">${s.errorCount || 0}</td>
+                                            <td>${(s.avgExecutionTime || 0).toFixed(2)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="action-btn" id="closePerfModal">Close</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+                modal.querySelector('#closePerfModal').addEventListener('click', () => modal.remove());
+                modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+            } catch (err) {
+                showNotification('Failed to load performance data', 'error');
+            }
+        }
+
+        // Developer Kit removed — simplified UX
+
+        function renderPlugins() {
+            const filtered = getFilteredPlugins();
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fa-solid fa-puzzle-piece"></i>
+                        <h3>No plugins found</h3>
+                        <p>Install a plugin to extend KORAI's capabilities</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = filtered.map(p => `
+                <div class="plugin-card">
+                    <div class="plugin-header">
+                        <div class="plugin-icon">
+                            <i class="fa-solid fa-plug"></i>
+                        </div>
+                        <div class="plugin-info">
+                            <div class="plugin-name">${escapeHtml(p.name)}</div>
+                            <div class="plugin-version">v${p.version}</div>
+                            <div class="plugin-id">${escapeHtml(p.id)}</div>
+                        </div>
+                    </div>
+                    <div class="plugin-badges">
+                        <span class="badge ${p.enabled ? 'badge-enabled' : 'badge-disabled'}">
+                            ${p.enabled ? 'Active' : 'Inactive'}
+                        </span>
+                        ${p.running ? '<span class="badge badge-running">Running</span>' : ''}
+                        ${p.builtin ? '<span class="badge badge-builtin">★ Built-in</span>' : ''}
+                    </div>
+                    <div class="plugin-description">
+                        ${escapeHtml(p.description || 'No description provided.')}
+                    </div>
+                    <div class="plugin-actions">
+                        <button class="action-btn action-primary" data-action="toggle" data-id="${p.id}" data-enabled="${p.enabled}" data-builtin="${p.builtin ? '1' : '0'}" ${p.builtin ? 'disabled title="Built-in plugin cannot be disabled"' : ''}>
+                            <i class="fa-solid ${p.enabled ? 'fa-toggle-on' : 'fa-toggle-off'}"></i>
+                            ${p.enabled ? (p.builtin ? 'Enabled' : 'Disable') : (p.builtin ? 'Disabled' : 'Enable')}
+                        </button>
+                        <button class="action-btn" data-action="details" data-id="${p.id}">
+                            <i class="fa-solid fa-info-circle"></i> Details
+                        </button>
+                        <button class="action-btn action-danger" data-action="uninstall" data-id="${p.id}" data-builtin="${p.builtin ? '1' : '0'}" ${p.builtin ? 'disabled title="Built-in plugin cannot be uninstalled"' : ''}>
+                            <i class="fa-solid fa-trash"></i> Uninstall
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+
+            container.querySelectorAll('[data-action="toggle"]').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const id = btn.dataset.id;
+                    const enabled = btn.dataset.enabled === 'true';
+                    await togglePlugin(id, enabled);
+                });
+            });
+            container.querySelectorAll('[data-action="uninstall"]').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const id = btn.dataset.id;
+                    const isBuiltin = btn.dataset.builtin === '1' || btn.dataset.builtin === 'true';
+                    if (isBuiltin) {
+                        showNotification('این پلاگین پیشفرض است و نمی‌توان آن را حذف کرد', 'error');
+                        return;
+                    }
+                    if (!confirm('Are you sure you want to uninstall this plugin? This action cannot be undone.')) return;
+                    const prev = btn.innerHTML;
+                    try {
+                        btn.disabled = true;
+                        btn.innerHTML = '⏳ در حال حذف...';
+                        showActionOverlay('در حال حذف...');
+                        await uninstallPlugin(id);
+                    } catch (err) {
+                        // error notification already shown by uninstallPlugin
+                    } finally {
+                        hideActionOverlay();
+                        btn.disabled = false;
+                        btn.innerHTML = prev;
+                    }
+                });
+            });
+            container.querySelectorAll('[data-action="details"]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const id = btn.dataset.id;
+                    const plugin = plugins.find(p => p.id === id);
+                    if (plugin) {
+                        alert(`Name: ${plugin.name}\nID: ${plugin.id}\nVersion: ${plugin.version}\nPath: ${plugin.path || 'N/A'}`);
+                    }
+                });
+            });
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            const activeBtn = document.querySelector(`.nav-item[data-tab="${tab}"]`);
+            if (activeBtn) activeBtn.classList.add('active');
+            if (tab === 'installed') {
+                document.querySelector('.page-title').innerHTML = 'Plugin Studio';
+                document.querySelector('.page-subtitle').innerHTML = 'Extend KORAI with powerful modules and custom integrations';
+                document.getElementById('statsGrid').style.display = 'flex';
+                document.querySelector('.toolbar').style.display = 'flex';
+                loadPlugins();
+            } else if (tab === 'performance') {
+                document.getElementById('statsGrid').style.display = 'none';
+                document.querySelector('.toolbar').style.display = 'none';
+                container.innerHTML = `<div class="empty-state"><i class="fa-solid fa-chart-line"></i><h3>Loading performance data...</h3></div>`;
+                showPerformanceDashboard();
+                setTimeout(() => {
+                    const checkModal = setInterval(() => {
+                        if (!document.querySelector('.modal-overlay')) {
+                            clearInterval(checkModal);
+                            switchTab('installed');
+                        }
+                    }, 200);
+                }, 100);
+            }
+        }
+
+        searchInput.addEventListener('input', (e) => {
+            searchQuery = e.target.value;
+            renderPlugins();
+        });
+        filterChips.forEach(chip => {
+            chip.addEventListener('click', () => {
+                filterChips.forEach(c => c.classList.remove('active'));
+                chip.classList.add('active');
+                filterStatus = chip.dataset.filter;
+                renderPlugins();
+            });
+        });
+        installBtn.addEventListener('click', triggerFileUpload);
+        backBtn.addEventListener('click', () => {
+            if (window.history.length > 1) window.history.back();
+            else window.close();
+        });
+
+        document.querySelectorAll('.nav-item[data-tab]').forEach(btn => {
+            btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+        });
+
+        (async () => {
+            apiBase = await resolveApiBase();
+            loadPlugins();
+        })();
+    </script>
+</body>
+</html>

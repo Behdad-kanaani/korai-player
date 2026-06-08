@@ -1,20 +1,6 @@
 /**
- * app.js - KORAI Music Player Frontend Logic (Enhanced with Full Plugin Hooks)
- * 
+ * app.js - KORAI Music Player Frontend Logic
  * FIXED: Shuffle play, timeline visualizer, and other bugs
- * ENHANCED: Full plugin hook integration across all application layers
- * 
- * Plugin Hooks Added:
- * - playback:beforePlay, playback:afterPlay, playback:onPause, playback:onResume
- * - playback:onSeek, playback:volumeChange, playback:beforeNext, playback:beforePrev
- * - playback:onEnded, playback:audioNodeCreate
- * - library:beforeImport, library:afterImport, library:beforeDelete, library:trackMetadataUpdate
- * - ui:inject (existing), ui:addSidebarItem, ui:addContextMenuItem, ui:addPlaybackButton
- * - ui:addSettingsTab, ui:beforeSectionRender, ui:afterSectionRender
- * - queue:beforeAdd, queue:afterAdd, queue:beforeRemove
- * - playlist:beforeCreate, playlist:afterCreate, playlist:addTrack, playlist:removeTrack
- * - settings:beforeSave, settings:afterLoad
- * - recommendations:modify (existing), recommendations:train
  */
 
 // =============================================================================
@@ -88,6 +74,8 @@ let sleepTimeRemaining = 0;
 const urlParams = new URLSearchParams(window.location.search);
 const isMiniWindowMode = urlParams.get('mode') === 'mini';
 
+
+//
 let currentActiveAlbumId = null;
 
 // Make variables available globally
@@ -101,68 +89,6 @@ window.currentTrackId = currentTrackId;
 window.isPlaying = isPlaying;
 window.setPlayState = setPlayState;
 window.showNotification = showNotification;
-
-// =============================================================================
-// PLUGIN HOOK HELPER FUNCTIONS
-// =============================================================================
-
-/**
- * Run a plugin hook (async) by calling the server endpoint
- * @param {string} hookName - Name of the hook to execute
- * @param {object} payload - Data to pass to hooks
- * @returns {Promise<object>} - Modified payload after all hooks
- */
-async function runPluginHook(hookName, payload) {
-    if (!apiPort) return payload;
-    try {
-        const response = await fetch(`http://127.0.0.1:${apiPort}/api/plugins/hook/${hookName}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        const data = await response.json();
-        return data.success ? data.data : payload;
-    } catch (err) {
-        console.warn(`Plugin hook ${hookName} failed:`, err);
-        return payload;
-    }
-}
-
-/**
- * Run a plugin hook with cancel capability
- */
-async function runPluginHookWithCancel(hookName, payload) {
-    if (!apiPort) return { cancelled: false, payload };
-    try {
-        const response = await fetch(`http://127.0.0.1:${apiPort}/api/plugins/hook/${hookName}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...payload, _withCancel: true })
-        });
-        const data = await response.json();
-        if (data.cancelled) return { cancelled: true, payload: data.data };
-        return { cancelled: false, payload: data.data || payload };
-    } catch (err) {
-        console.warn(`Plugin hook ${hookName} failed:`, err);
-        return { cancelled: false, payload };
-    }
-}
-
-/**
- * Emit an event to plugins (fire-and-forget)
- */
-async function emitPluginEvent(eventName, data) {
-    if (!apiPort) return;
-    try {
-        await fetch(`http://127.0.0.1:${apiPort}/api/plugins/event/${eventName}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        }).catch(() => {});
-    } catch (err) {
-        // Silent fail
-    }
-}
 
 // =============================================================================
 // UTILITY FUNCTIONS
@@ -448,7 +374,7 @@ function applyGlobalSkin(skinName) {
 }
 
 // =============================================================================
-// PLAYBACK CONTROL FUNCTIONS (with hooks)
+// PLAYBACK CONTROL FUNCTIONS
 // =============================================================================
 
 function setPlayState(playing) {
@@ -545,8 +471,6 @@ function setVolume(v) {
             icon.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
         }
     }
-    // Run plugin hook
-    runPluginHook('playback:volumeChange', { volume, isMuted }).catch(() => {});
 }
 
 function toggleMute() {
@@ -611,10 +535,7 @@ function updateRepeatUI() {
 function seekTo(percent) {
     if (isMiniWindowMode) return;
     if (!audioElement || !audioElement.duration) return;
-    const oldTime = audioElement.currentTime;
     audioElement.currentTime = (percent / 100) * audioElement.duration;
-    // Run plugin hook
-    runPluginHook('playback:onSeek', { oldTime, newTime: audioElement.currentTime, percent }).catch(() => {});
 }
 
 function handleMirrorSeek(event) {
@@ -658,16 +579,12 @@ function togglePlay() {
         audioElement.pause();
         document.body.classList.add('playing');
         setPlayState(false);
-        runPluginHook('playback:onPause', { trackId: currentTrackId, currentTime: audioElement.currentTime }).catch(() => {});
     } else {
         document.body.classList.remove('playing');
         if (typeof setupAudioNodes === 'function') setupAudioNodes();
         if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
         audioElement.play()
-            .then(() => {
-                setPlayState(true);
-                runPluginHook('playback:onResume', { trackId: currentTrackId, currentTime: audioElement.currentTime }).catch(() => {});
-            })
+            .then(() => setPlayState(true))
             .catch((err) => {
                 console.error('Play failed:', err);
                 showNotification('Playback failed: ' + err.message, 'warning');
@@ -807,7 +724,7 @@ function getNextShuffleTrack() {
 }
 
 // =============================================================================
-// QUEUE MANAGEMENT (with hooks)
+// QUEUE MANAGEMENT
 // =============================================================================
 
 function setPlaySource(sourceType, sourceId = null, sourceTracksArray = null) {
@@ -841,7 +758,7 @@ function renderQueue() {
     }
     let html = '';
     queue.forEach((track, idx) => {
-        html += `<div class="queue-drawer-item ${idx === queueIndex ? 'active' : ''}" onclick="playFromQueue(${idx})">
+        html += `<div class="queue-drawer-item ${idx === queueIndex ? 'active' : ''}" data-idx="${idx}" onclick="playFromQueue(${idx})">
             <span class="queue-index-no">${idx + 1}</span>
             <div class="queue-meta-data">
                 <h5>${escapeHtml(track.title || 'Untitled')}</h5>
@@ -853,29 +770,49 @@ function renderQueue() {
         </div>`;
     });
     listEl.innerHTML = html;
+    // highlight recently focused item (gentle pulse)
+    try {
+        const recentEl = listEl.querySelector(`.queue-drawer-item[data-idx="${queueIndex}"]`);
+        if (recentEl) {
+            recentEl.classList.add('recent');
+            setTimeout(() => recentEl.classList.remove('recent'), 900);
+        }
+    } catch (e) { /* ignore */ }
 }
 
-async function playFromQueue(idx) {
+// ripple helper for hero buttons
+function createRipple(e, el) {
+    const rect = el.getBoundingClientRect();
+    const span = document.createElement('span');
+    span.className = 'ripple';
+    const size = Math.max(rect.width, rect.height) * 1.2;
+    span.style.width = span.style.height = size + 'px';
+    span.style.left = (e.clientX - rect.left - size / 2) + 'px';
+    span.style.top = (e.clientY - rect.top - size / 2) + 'px';
+    el.appendChild(span);
+    setTimeout(() => { try { el.removeChild(span); } catch{} }, 650);
+}
+
+document.addEventListener('pointerdown', (e) => {
+    const btn = e.target.closest && e.target.closest('.hero-btn');
+    if (btn) createRipple(e, btn);
+});
+
+function playFromQueue(idx) {
     if (idx >= 0 && idx < queue.length) {
-        // Run before add hook? Actually this is playing from existing queue
         queueIndex = idx;
-        await playTrack(queue[idx].id);
+        playTrack(queue[idx].id);
     }
 }
 
-async function removeFromQueue(idx) {
-    const removedTrack = queue[idx];
-    // Run before remove hook
-    const hookResult = await runPluginHookWithCancel('queue:beforeRemove', { index: idx, track: removedTrack });
-    if (hookResult.cancelled) return;
-    
+function removeFromQueue(idx) {
     queue.splice(idx, 1);
     if (idx < queueIndex) {
         queueIndex--;
     } else if (idx === queueIndex) {
         if (queue.length > 0) {
             queueIndex = Math.min(queueIndex, queue.length - 1);
-            await playTrack(queue[queueIndex].id);
+            playTrack(queue[queueIndex].id);
         } else {
             queueIndex = -1;
             currentTrackId = null;
@@ -887,7 +824,6 @@ async function removeFromQueue(idx) {
         }
     }
     renderQueue();
-    emitPluginEvent('queue:afterRemove', { index: idx, track: removedTrack });
 }
 
 function toggleQueue() {
@@ -927,7 +863,7 @@ function toggleMiniPlayer() {
 }
 
 // =============================================================================
-// FIXED NEXT & PREV TRACK FUNCTIONS (with hooks)
+// FIXED NEXT & PREV TRACK FUNCTIONS
 // =============================================================================
 
 async function nextTrackEnhanced() {
@@ -937,10 +873,6 @@ async function nextTrackEnhanced() {
         }
         return;
     }
-    
-    // Run before next hook
-    const hookResult = await runPluginHookWithCancel('playback:beforeNext', { currentTrackId, queueIndex });
-    if (hookResult.cancelled) return;
     
     // Repeat One mode
     if (repeatOneMode && currentTrackId) {
@@ -982,8 +914,6 @@ async function nextTrackEnhanced() {
         } else {
             // End of queue, stop
             setPlayState(false);
-            // Run onEnded hook
-            runPluginHook('playback:onEnded', { trackId: currentTrackId }).catch(() => {});
         }
     }
 }
@@ -995,10 +925,6 @@ async function prevTrackEnhanced() {
         }
         return;
     }
-    
-    // Run before prev hook
-    const hookResult = await runPluginHookWithCancel('playback:beforePrev', { currentTrackId, queueIndex });
-    if (hookResult.cancelled) return;
     
     // If current time > 3 seconds, just seek to start
     if (audioElement && audioElement.currentTime > 3) {
@@ -1139,14 +1065,7 @@ function setupAudioNodes() {
             window.analyser.connect(window.gainNode);
             window.gainNode.connect(window.audioCtx.destination);
             
-            // Run plugin hook for audio node creation
-            runPluginHook('playback:audioNodeCreate', {
-                audioContext: window.audioCtx,
-                analyser: window.analyser,
-                gainNode: window.gainNode,
-                eqFilters: window.eqFilters
-            }).catch(() => {});
-            
+            // Ensure analyser is connected for visualizer
             console.log('✅ Audio nodes setup complete');
         }
     } catch (e) {
@@ -1527,9 +1446,6 @@ async function saveTagChanges() {
         const trackInList = tracks.find(t => t.id === currentTrack.id);
         if (trackInList) Object.assign(trackInList, updatedData);
         
-        // Run plugin hook
-        runPluginHook('library:trackMetadataUpdate', { trackId: currentTrack.id, updates: updatedData }).catch(() => {});
-        
         showNotification('Metadata saved successfully!', 'success');
         closeTagEditor();
         updatePlayerUI();
@@ -1730,6 +1646,20 @@ async function exportLibraryToCSV() {
 }
 
 // =============================================================================
+// PLUGIN MANAGER
+// =============================================================================
+
+function openPluginsManager() {
+    // Open plugins management page
+    window.location.href = 'plugins.html';
+}
+
+function openPluginStore() {
+    // Plugin store disabled — open plugin manager for manual installs
+    window.location.href = 'plugins.html';
+}
+
+// =============================================================================
 // DRAG & DROP (unchanged)
 // =============================================================================
 
@@ -1747,38 +1677,17 @@ function setupDragAndDrop() {
         });
         if (filePaths.length === 0) return;
         showNotification(t('dragNotify'), 'info');
-        await importAudioFiles(filePaths);
-    });
-}
-
-// Helper for importing files (used by drag & drop and file open)
-async function importAudioFiles(filePaths) {
-    try {
-        // Run before import hook
-        const hookResult = await runPluginHookWithCancel('library:beforeImport', { filePaths });
-        if (hookResult.cancelled) return;
-        filePaths = hookResult.payload.filePaths;
-        
-        showImportProgress(filePaths.length);
-        const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePaths })
-        });
-        if (!res.ok) throw new Error();
-        const result = await res.json();
-        updateImportProgress(100, `Imported ${result.imported} tracks!`);
-        setTimeout(async () => {
-            hideImportProgress();
+        try {
+            const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePaths })
+            });
+            if (!res.ok) throw new Error();
+            const result = await res.json();
             showNotification(`${result.imported} ${t('dragSuccess')}`, 'success');
             await loadTracks();
             switchSection(currentActiveSection);
-            // Run after import hook
-            runPluginHook('library:afterImport', { imported: result.imported, total: filePaths.length }).catch(() => {});
-        }, 500);
-    } catch (err) { 
-        console.error('Import error:', err); 
-        hideImportProgress();
-        showNotification(t('dragError'), 'error'); 
-    }
+        } catch (err) { console.error('Drag Import error:', err); showNotification(t('dragError'), 'error'); }
+    });
 }
 
 // =============================================================================
@@ -1786,22 +1695,21 @@ async function importAudioFiles(filePaths) {
 // =============================================================================
 
 async function waitForAPI() {
-    try {
-        if (window.electronAPI && typeof window.electronAPI.getServerPort === 'function') {
-            const port = await window.electronAPI.getServerPort();
-            if (port) {
-                apiPort = port;
-                window.apiPort = port;
-                console.log('✅ API connected on port:', apiPort);
-                return true;
+    const maxAttempts = 15;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            if (window.electronAPI && typeof window.electronAPI.getServerPort === 'function') {
+                const port = await window.electronAPI.getServerPort();
+                if (port) {
+                    apiPort = port;
+                    console.log('✅ API connected on port:', apiPort);
+                    return true;
+                }
             }
-        }
-    } catch (e) {
-        console.error('API connection failed:', e);
+        } catch (e) { console.error('API connection attempt failed:', e); }
+        await new Promise(resolve => setTimeout(resolve, 200));
     }
-    // Fallback
     apiPort = 3000;
-    window.apiPort = 3000;
     console.log('⚠️ Using fallback port 3000');
     return true;
 }
@@ -1811,10 +1719,7 @@ async function loadTracks() {
     try {
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks`);
         if (!res.ok) throw new Error('Failed to fetch tracks');
-        let serverTracks = await res.json();
-        
-        // Run plugin hook to modify tracks
-        serverTracks = await runPluginHook('library:getTracks', serverTracks);
+        const serverTracks = await res.json();
         
         tracks = await Promise.all(serverTracks.map(async (track) => {
             try {
@@ -1837,6 +1742,53 @@ async function loadTracks() {
     }
 }
 
+// Load enabled plugins' ui.css (if present) and inject into document
+async function loadEnabledPluginCss() {
+    try {
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/plugins`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const plugins = data.plugins || [];
+        for (const p of plugins) {
+            if (!p.enabled) continue;
+            const head = document.head || document.getElementsByTagName('head')[0];
+            // Avoid injecting twice
+            if (head.querySelector(`link[data-plugin="${p.id}"]`) || head.querySelector(`script[data-plugin="${p.id}"]`)) continue;
+            // Try fetch css first to avoid 404 noise; inject as <style> to prevent double-request
+            const cssUrl = `http://127.0.0.1:${apiPort}/api/plugin-asset/${encodeURIComponent(p.id)}/ui.css`;
+            try {
+                const cssRes = await fetch(cssUrl, { cache: 'no-store' });
+                if (cssRes.ok) {
+                    const cssText = await cssRes.text();
+                    const style = document.createElement('style');
+                    style.dataset.plugin = p.id;
+                    style.textContent = cssText;
+                    head.appendChild(style);
+                }
+            } catch (e) {
+                // ignore fetch errors
+            }
+
+            // Try load optional ui.js by fetching first; inject inline to avoid a second network request and 404
+            const jsUrl = `http://127.0.0.1:${apiPort}/api/plugin-asset/${encodeURIComponent(p.id)}/ui.js`;
+            try {
+                const jsRes = await fetch(jsUrl, { cache: 'no-store' });
+                if (jsRes.ok) {
+                    const jsText = await jsRes.text();
+                    const script = document.createElement('script');
+                    script.dataset.plugin = p.id;
+                    script.textContent = jsText;
+                    head.appendChild(script);
+                }
+            } catch (e) {
+                // not critical
+            }
+        }
+    } catch (e) {
+        console.warn('loadEnabledPluginCss error', e);
+    }
+}
+
 async function loadPlaylists() {
     if (isMiniWindowMode) return;
     try {
@@ -1850,7 +1802,7 @@ async function loadPlaylists() {
 }
 
 // =============================================================================
-// PLAYLIST RENDERING & MANAGEMENT (with hooks)
+// PLAYLIST RENDERING & MANAGEMENT
 // =============================================================================
 
 function renderPlaylistsSidebar() {
@@ -1902,16 +1854,11 @@ function promptCreatePlaylist() {
             return; 
         }
         
-        // Run before create hook
-        const hookResult = await runPluginHookWithCancel('playlist:beforeCreate', { name });
-        if (hookResult.cancelled) return;
-        const finalName = hookResult.payload.name;
-        
         try {
             const res = await fetch(`http://127.0.0.1:${apiPort}/api/playlists`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: finalName })
+                body: JSON.stringify({ name })
             });
             
             if (res.ok) {
@@ -1919,8 +1866,6 @@ function promptCreatePlaylist() {
                 showNotification(currentLanguage === 'fa' ? 'پلی‌لیست با موفقیت ساخته شد' : 'Playlist created successfully', 'success');
                 await loadPlaylists();
                 closeCreatePlaylistModal();
-                // Run after create hook
-                runPluginHook('playlist:afterCreate', { playlist: data }).catch(() => {});
                 
                 if (data && data.id) {
                     setTimeout(() => {
@@ -1960,8 +1905,6 @@ async function deletePlaylist(id) {
                 showNotification('Playlist deleted', 'info');
                 await loadPlaylists();
                 if (currentActiveSection === 'playlist' && currentActivePlaylistId === id) switchSection('home');
-                // Run hook
-                runPluginHook('playlist:afterDelete', { playlistId: id }).catch(() => {});
             }
         } catch (e) { showNotification('Error deleting playlist', 'error'); }
     });
@@ -2012,18 +1955,12 @@ function renderPlaylistView() {
 }
 
 async function removeTrackFromPlaylist(playlistId, trackId) {
-    // Run before remove hook
-    const hookResult = await runPluginHookWithCancel('playlist:removeTrack', { playlistId, trackId });
-    if (hookResult.cancelled) return;
-    
     try {
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/playlists/${playlistId}/tracks/${trackId}`, { method: 'DELETE' });
         if (res.ok) {
             showNotification('Track removed from playlist', 'info');
             await loadPlaylists();
             if (currentActiveSection === 'playlist') openPlaylist(playlistId);
-            // Run hook
-            runPluginHook('playlist:trackRemoved', { playlistId, trackId }).catch(() => {});
         }
     } catch (e) { showNotification('Error removing track from playlist', 'error'); }
 }
@@ -2049,10 +1986,10 @@ function playArtist(artistName) {
 }
 
 // =============================================================================
-// CONTEXT MENU (with plugin hook for adding items)
+// CONTEXT MENU
 // =============================================================================
 
-async function showPlaylistContextMenu(trackId, x, y) {
+function showPlaylistContextMenu(trackId, x, y) {
     if (isMiniWindowMode) return;
     const menu = document.getElementById('playlistContextMenu');
     const container = document.getElementById('contextPlaylistItems');
@@ -2092,28 +2029,6 @@ async function showPlaylistContextMenu(trackId, x, y) {
         menu.appendChild(editItem);
     }
     
-    // Allow plugins to add custom context menu items
-    const pluginItems = await runPluginHook('ui:addContextMenuItem', { trackId, existingItems: [] });
-    if (pluginItems && pluginItems.items && pluginItems.items.length) {
-        const pluginSeparator = document.createElement('div');
-        pluginSeparator.className = 'context-separator';
-        pluginSeparator.style.height = '1px';
-        pluginSeparator.style.backgroundColor = 'var(--border-color)';
-        pluginSeparator.style.margin = '6px 0';
-        menu.appendChild(pluginSeparator);
-        
-        pluginItems.items.forEach(item => {
-            const pluginItem = document.createElement('div');
-            pluginItem.className = 'context-item';
-            pluginItem.innerHTML = `<i class="${item.icon || 'fa-solid fa-puzzle-piece'}"></i> <span>${escapeHtml(item.label)}</span>`;
-            pluginItem.onclick = () => {
-                menu.style.display = 'none';
-                if (item.action) item.action(trackId);
-            };
-            menu.appendChild(pluginItem);
-        });
-    }
-    
     menu.style.display = 'block';
     menu.style.top = `${y}px`;
     menu.style.left = `${x}px`;
@@ -2131,10 +2046,6 @@ function openTagEditorFromContext(trackId) {
 }
 
 async function addTrackToPlaylist(playlistId, trackId) {
-    // Run before add hook
-    const hookResult = await runPluginHookWithCancel('playlist:addTrack', { playlistId, trackId });
-    if (hookResult.cancelled) return;
-    
     try {
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/playlists/${playlistId}/tracks`, {
             method: 'POST',
@@ -2146,15 +2057,13 @@ async function addTrackToPlaylist(playlistId, trackId) {
             if (data.success) {
                 showNotification('Track added to playlist', 'success');
                 await loadPlaylists();
-                // Run after add hook
-                runPluginHook('playlist:trackAdded', { playlistId, trackId }).catch(() => {});
             } else { showNotification('Track already in playlist', 'info'); }
         }
     } catch (e) { showNotification('Error adding to playlist', 'error'); }
 }
 
 // =============================================================================
-// CORE PLAYBACK FUNCTION (with before/after hooks)
+// CORE PLAYBACK FUNCTION
 // =============================================================================
 
 async function playTrack(trackId, sourceType = 'library', sourceId = null, sourceTracksArray = null) {
@@ -2167,33 +2076,11 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
     try {
         console.log('🎵 Playing track:', trackId, 'Source:', sourceType);
         
-        // Run beforePlay hook with cancel capability
-        const beforeHook = await runPluginHookWithCancel('playback:beforePlay', { 
-            trackId, 
-            sourceType, 
-            sourceId,
-            currentTrack,
-            queueIndex
-        });
-        if (beforeHook.cancelled) {
-            console.log('Playback cancelled by plugin');
-            return;
-        }
-        // Use modified trackId if plugin changed it
-        let finalTrackId = beforeHook.payload.trackId || trackId;
-        
-        currentTrackId = finalTrackId;
-        currentTrack = tracks.find(t => t.id === finalTrackId);
+        currentTrackId = trackId;
+        currentTrack = tracks.find(t => t.id === trackId);
         if (!currentTrack) { showNotification('Track not found', 'error'); return; }
         
-        // Apply any modifications from plugin (e.g., changed title, artist)
-        if (beforeHook.payload.modifications) {
-            Object.assign(currentTrack, beforeHook.payload.modifications);
-            const idx = tracks.findIndex(t => t.id === currentTrack.id);
-            if (idx !== -1) tracks[idx] = currentTrack;
-        }
-        
-        window.currentTrackId = currentTrackId;
+        window.currentTrackId = trackId;
         window.currentTrack = currentTrack;
         
         if (sourceTracksArray) {
@@ -2216,10 +2103,11 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
         
         // Update queue index for normal playback
         if (!shuffleMode) {
-            queueIndex = queue.findIndex(t => t.id === finalTrackId);
+            queueIndex = queue.findIndex(t => t.id === trackId);
             if (queueIndex === -1) { queue.unshift(currentTrack); queueIndex = 0; }
         } else {
-            const existingIndex = queue.findIndex(t => t.id === finalTrackId);
+            // In shuffle mode, ensure current track is in queue with correct index
+            const existingIndex = queue.findIndex(t => t.id === trackId);
             if (existingIndex !== -1) {
                 queueIndex = existingIndex;
             } else {
@@ -2231,21 +2119,14 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
         initAudio();
         setupAudioNodes();
         
+        // If karaoke mode was active, we need to reconnect the graph after source creation        
         if (audioCtx && audioCtx.state === 'suspended') await audioCtx.resume();
         
-        const streamUrl = `http://127.0.0.1:${apiPort}/api/tracks/${finalTrackId}/stream`;
+        const streamUrl = `http://127.0.0.1:${apiPort}/api/tracks/${trackId}/stream`;
         audioElement.src = streamUrl;
         await audioElement.play();
         
-        // After play hook
-        runPluginHook('playback:afterPlay', { 
-            track: currentTrack, 
-            sourceType, 
-            sourceId,
-            success: true
-        }).catch(() => {});
-        
-        // If karaoke was active, reapply it
+        // If karaoke was active, reapply it after source is ready
         if (wasVocalSeparatorActive && typeof reconnectAudioGraph === 'function') {
             setTimeout(async () => {
                 await reconnectAudioGraph(true);
@@ -2256,20 +2137,12 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
         updatePlayerUI();
         syncWithWindowsMediaSystem();
         
-        fetch(`http://127.0.0.1:${apiPort}/api/tracks/${finalTrackId}/play`, { method: 'POST' }).catch(e => console.error(e));
+        fetch(`http://127.0.0.1:${apiPort}/api/tracks/${trackId}/play`, { method: 'POST' }).catch(e => console.error(e));
         renderQueue();
     } catch (err) {
         console.error('Play error:', err);
         showNotification('Error playing audio file: ' + err.message, 'error');
         setPlayState(false);
-        // Run after play hook with error
-        runPluginHook('playback:afterPlay', { 
-            trackId: finalTrackId, 
-            sourceType, 
-            sourceId,
-            success: false,
-            error: err.message
-        }).catch(() => {});
     }
 }
 
@@ -2387,7 +2260,7 @@ function hideImportProgress() {
 }
 
 // =============================================================================
-// DELETE TRACK (with hook)
+// DELETE TRACK
 // =============================================================================
 
 function deleteTrack(trackId, event) {
@@ -2395,10 +2268,6 @@ function deleteTrack(trackId, event) {
     showCustomDialog(currentLanguage === 'fa' ? 'حذف قطعه از کتابخانه' : 'Delete track from library', 
         currentLanguage === 'fa' ? 'آیا مطمئن هستید؟ این عمل فایل اصلی شما روی کامپیوتر را پاک نخواهد کرد.' : 'Are you sure? This will not delete the actual file from your disk.',
         async () => {
-            // Run before delete hook
-            const hookResult = await runPluginHookWithCancel('library:beforeDelete', { trackId });
-            if (hookResult.cancelled) return;
-            
             try {
                 const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/${trackId}`, { method: 'DELETE' });
                 if (res.ok) {
@@ -2406,14 +2275,13 @@ function deleteTrack(trackId, event) {
                     await loadTracks();
                     await loadPlaylists();
                     switchSection(currentActiveSection);
-                    runPluginHook('library:afterDelete', { trackId }).catch(() => {});
                 }
             } catch { showNotification('Connection failed', 'error'); }
         });
 }
 
 // =============================================================================
-// LIBRARY RENDERING (WITH PAGINATION & hooks)
+// LIBRARY RENDERING (WITH PAGINATION)
 // =============================================================================
 
 function renderLibrary(filteredTracks = null) {
@@ -2442,7 +2310,7 @@ function renderLibrary(filteredTracks = null) {
     let genreFilterChipsHtml = `<button class="filter-chip ${libraryGenreFilter === 'all' ? 'active' : ''}" onclick="setLibraryGenreFilter('all')">${t('allGenres')}</button>`;
     existingGenres.forEach(genre => { genreFilterChipsHtml += `<button class="filter-chip ${libraryGenreFilter === genre ? 'active' : ''}" onclick="setLibraryGenreFilter('${genre}')">${getGenreTranslation(genre) || genre}</button>`; });
 
-    mainSection.innerHTML = `<div class="spotify-row-title library-header-panel"><div class="title-meta-box"><h3>${t('libraryArchive')} (<span id="libCount">${listToRender.length}</span>)</h3><span class="right-click-tip-lbl">${t('rightClickTip')}</span></div><div class="library-filter-controls"><div class="sort-action-group"><label class="sort-select-lbl">${t('sortByLabel')}</label><select id="libSortSelect" class="sort-dropdown-custom" onchange="changeLibrarySorting(this.value)"><option value="createdAt" ${librarySortKey === 'createdAt' ? 'selected' : ''}>${t('sortDateAdded')}</option><option value="title" ${librarySortKey === 'title' ? 'selected' : ''}>${t('sortTitle')}</option><option value="artist" ${librarySortKey === 'artist' ? 'selected' : ''}>${t('sortArtist')}</option><option value="bpm" ${librarySortKey === 'bpm' ? 'selected' : ''}>${t('sortBpm')}</option><option value="duration" ${librarySortKey === 'duration' ? 'selected' : ''}>${t('sortDuration')}</option></select><button class="sort-dir-toggle-btn" onclick="toggleLibrarySortOrder()" title="Toggle Order"><i class="fa-solid ${librarySortOrder === 'asc' ? 'fa-arrow-up-wide-short' : 'fa-arrow-down-wide-short'}"></i></button></div></div></div><div class="genre-filter-wrapper-bar">${genreFilterChipsHtml}</div><div class="library-table-wrapper"><table class="library-tracks-table"><thead><tr><th style="width:50px;">#</th><th>${currentLanguage === 'fa' ? 'عنوان' : 'Title'}</th><th>${currentLanguage === 'fa' ? 'آلبوم' : 'Album'}</th><th style="width:80px;">BPM</th><th style="width:80px;"><i class="fa-regular fa-clock"></i></th><th style="width:100px;">${currentLanguage === 'fa' ? 'عملیات' : 'Actions'}</th></tr></thead><tbody id="libraryTableBody"></tbody><div id="loadMoreContainer" style="text-align:center; margin-top:16px; display:none;"><button id="loadMoreBtn" class="oobe-start-btn" style="padding:8px 16px; font-size:0.75rem;">${currentLanguage === 'fa' ? 'بارگذاری بیشتر...' : 'Load more...'}</button></div></div>`;
+    mainSection.innerHTML = `<div class="spotify-row-title library-header-panel"><div class="title-meta-box"><h3>${t('libraryArchive')} (<span id="libCount">${listToRender.length}</span>)</h3><span class="right-click-tip-lbl">${t('rightClickTip')}</span></div><div class="library-filter-controls"><div class="sort-action-group"><label class="sort-select-lbl">${t('sortByLabel')}</label><select id="libSortSelect" class="sort-dropdown-custom" onchange="changeLibrarySorting(this.value)"><option value="createdAt" ${librarySortKey === 'createdAt' ? 'selected' : ''}>${t('sortDateAdded')}</option><option value="title" ${librarySortKey === 'title' ? 'selected' : ''}>${t('sortTitle')}</option><option value="artist" ${librarySortKey === 'artist' ? 'selected' : ''}>${t('sortArtist')}</option><option value="bpm" ${librarySortKey === 'bpm' ? 'selected' : ''}>${t('sortBpm')}</option><option value="duration" ${librarySortKey === 'duration' ? 'selected' : ''}>${t('sortDuration')}</option></select><button class="sort-dir-toggle-btn" onclick="toggleLibrarySortOrder()" title="Toggle Order"><i class="fa-solid ${librarySortOrder === 'asc' ? 'fa-arrow-up-wide-short' : 'fa-arrow-down-wide-short'}"></i></button></div></div></div><div class="genre-filter-wrapper-bar">${genreFilterChipsHtml}</div><div class="library-table-wrapper"><table class="library-tracks-table"><thead><tr><th style="width:50px;">#</th><th>${currentLanguage === 'fa' ? 'عنوان' : 'Title'}</th><th>${currentLanguage === 'fa' ? 'آلبوم' : 'Album'}</th><th style="width:80px;">BPM</th><th style="width:80px;"><i class="fa-regular fa-clock"></i></th><th style="width:100px;">${currentLanguage === 'fa' ? 'عملیات' : 'Actions'}</th></tr></thead><tbody id="libraryTableBody"></tbody><table><div id="loadMoreContainer" style="text-align:center; margin-top:16px; display:none;"><button id="loadMoreBtn" class="oobe-start-btn" style="padding:8px 16px; font-size:0.75rem;">${currentLanguage === 'fa' ? 'بارگذاری بیشتر...' : 'Load more...'}</button></div></div>`;
     
     const tbody = document.getElementById('libraryTableBody');
     const loadMoreContainer = document.getElementById('loadMoreContainer');
@@ -2571,31 +2439,321 @@ function renderHomeDashboard() {
     const mainSection = document.getElementById('dynamicSectionContainer');
     if (!mainSection) return;
     const welcomeText = getWelcomeMessage();
-    const topTracks = getTopPlayedTracks(6);
-    const suggestions = getDailySuggestions(8);
+
+    // Now playing
+    const nowPlayingTrack = currentTrack || null;
+    const nowPlayingCover = nowPlayingTrack && nowPlayingTrack.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${nowPlayingTrack.id}/cover` : null;
+
+    // Featured / top played
+    const topTracks = [...tracks].sort((a, b) => (b.playCount || 0) - (a.playCount || 0)).slice(0, 8);
+
+    // Recently added
+    const recentTracks = [...tracks].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 5);
+
+    // Suggestions (high energy, low plays)
+    const suggestions = tracks.filter(t => (t.energy || 0.5) > 0.6 && (t.playCount || 0) < 5).sort(() => Math.random() - 0.5).slice(0, 6);
+
+    // Quick stats
+    const totalTracks = tracks.length;
+    const totalLikes = tracks.filter(t => t.isLiked).length;
+    const totalPlays = tracks.reduce((sum, t) => sum + (t.playCount || 0), 0);
+
     if (tracks.length === 0) {
-        mainSection.innerHTML = `<div class="empty-illustration-state"><i class="fa-solid fa-compact-disc"></i><h3>${t('emptyLibrary')}</h3><p>${t('emptyLibraryDesc')}</p></div>`;
+        mainSection.innerHTML = `
+            <div class="empty-state-premium">
+                <i class="fa-solid fa-compact-disc"></i>
+                <h3>${t('emptyLibrary')}</h3>
+                <p>${t('emptyLibraryDesc')}</p>
+                <div style="margin-top: 24px;">
+                    <button class="hero-primary-btn" onclick="handleImport()">
+                        <i class="fa-solid fa-plus"></i> Import Your First Track
+                    </button>
+                </div>
+            </div>
+        `;
         return;
     }
-    let shortcutsHtml = '';
-    topTracks.forEach(track => {
-        const coverUrl = track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null;
-        shortcutsHtml += `<div class="shortcut-pill-card" onclick="playTrack(${track.id}, 'library')"><div class="shortcut-cover">${coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music"></i>'}</div><div class="shortcut-title-info"><h4>${escapeHtml(track.title || 'Untitled')}</h4><div class="shortcut-play-btn"><i class="fa-solid fa-play"></i></div></div></div>`;
-    });
-    let suggestionsHtml = '';
-    suggestions.forEach(track => {
-        const coverUrl = track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null;
-        const isActive = currentTrackId === track.id;
-        suggestionsHtml += `<div class="spotify-music-card ${isActive ? 'active' : ''}" data-track-id="${track.id}">
-            <div class="card-image-box" onclick="playTrack(${track.id}, 'library')" oncontextmenu="event.preventDefault(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
-                ${coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music"></i>'}
-                <div class="hover-play-bubble"><i class="fa-solid ${isActive && isPlaying ? 'fa-pause' : 'fa-play'}"></i></div>
+
+    // Build markup
+    let html = `
+        <div class="home-container-next">
+            <div class="hero-cinematic">
+                <div class="hero-gradient-bg"></div>
+                <div class="hero-content">
+                    <div class="hero-text-section">
+                        <div class="welcome-badge">
+                            <i class="fa-solid fa-waveform"></i>
+                            <span>${new Date().getHours() < 12 ? 'MORNING SESSION' : (new Date().getHours() < 18 ? 'AFTERNOON BEATS' : 'EVENING VIBES')}</span>
+                        </div>
+                        <h1 class="hero-title">${escapeHtml(welcomeText)}</h1>
+                        <p class="hero-subtitle">${t('smartRecommendations') || 'Personalized station based on your recent listening'}</p>
+                        <div class="hero-actions">
+                            <button class="hero-primary-btn" onclick="playTopSuggestions()">
+                                <i class="fa-solid fa-play"></i> ${t('playPause') || 'Play'}
+                            </button>
+                            <button class="hero-secondary-btn" onclick="switchSection('library')">
+                                <i class="fa-solid fa-music"></i> ${t('navLibText') || 'My Library'}
+                            </button>
+                            <button class="hero-secondary-btn" onclick="handleAiRecommendationsEnhanced()">
+                                <i class="fa-solid fa-brain"></i> AI Mix
+                            </button>
+                        </div>
+                    </div>
+                    <div class="hero-art-section">
+                        <div class="now-playing-pulse">
+                            <div class="pulse-ring"></div>
+                            <div class="pulse-ring"></div>
+                            <div class="pulse-ring"></div>
+                            <div class="now-playing-art">
+                                ${nowPlayingCover ? `<img src="${nowPlayingCover}" alt="Now Playing">` : '<div class="fallback-icon"><i class="fa-solid fa-compact-disc"></i></div>'}
+                            </div>
+                            ${nowPlayingTrack ? `<div class="now-playing-label">NOW PLAYING</div>` : ''}
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="card-details-info" onclick="playTrack(${track.id}, 'library')"><h4>${escapeHtml(track.title || 'Untitled')}</h4><p>${escapeHtml(track.artist || 'Unknown Artist')}</p></div>
-            <div class="card-additional-meta"><span class="bpm-indicator"><i class="fa-solid fa-heartbeat"></i> ${track.bpm || '120'} BPM</span><span>${formatTime(track.duration)}</span></div>
-        </div>`;
+
+            <div class="quick-stats-row">
+                <div class="quick-stat-card">
+                    <div class="stat-icon"><i class="fa-solid fa-music"></i></div>
+                    <div class="stat-info">
+                        <h4>${totalTracks}</h4>
+                        <p>${t('totalTracksLabel') || 'Total Tracks'}</p>
+                    </div>
+                </div>
+                <div class="quick-stat-card">
+                    <div class="stat-icon"><i class="fa-solid fa-heart"></i></div>
+                    <div class="stat-info">
+                        <h4>${totalLikes}</h4>
+                        <p>${t('popularLabel') || 'Liked Tracks'}</p>
+                    </div>
+                </div>
+                <div class="quick-stat-card">
+                    <div class="stat-icon"><i class="fa-solid fa-headphones"></i></div>
+                    <div class="stat-info">
+                        <h4>${totalPlays.toLocaleString()}</h4>
+                        <p>${t('totalPlaysLabel') || 'Total Plays'}</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mood-chips-row">
+                <div class="mood-chips-scroll">
+                    <div class="mood-chip" onclick="filterByMood('energetic')"><i class="fa-solid fa-bolt"></i> Energetic</div>
+                    <div class="mood-chip" onclick="filterByMood('chill')"><i class="fa-solid fa-cloud-moon"></i> Chill</div>
+                    <div class="mood-chip" onclick="filterByMood('focus')"><i class="fa-solid fa-brain"></i> Focus</div>
+                    <div class="mood-chip" onclick="filterByMood('workout')"><i class="fa-solid fa-dumbbell"></i> Workout</div>
+                    <div class="mood-chip" onclick="filterByMood('sad')"><i class="fa-solid fa-face-frown"></i> Melancholic</div>
+                    <div class="mood-chip" onclick="filterByMood('happy')"><i class="fa-solid fa-face-smile"></i> Happy</div>
+                    <div class="mood-chip" onclick="filterByMood('romantic')"><i class="fa-solid fa-heart"></i> Romantic</div>
+                    <div class="mood-chip" onclick="filterByMood('study')"><i class="fa-solid fa-book"></i> Study</div>
+                </div>
+            </div>
+    `;
+
+    // Featured
+    if (topTracks.length > 0) {
+        html += `
+            <div class="section-header-premium">
+                <div class="section-title-group">
+                    <h3><i class="fa-solid fa-chart-simple"></i> ${t('statsHero') || 'Most Played'}</h3>
+                    <span class="section-badge">🔥 HOT</span>
+                </div>
+                <span class="view-all-link-premium" onclick="switchSection('library')">
+                    ${t('allGenres') || 'View All'} <i class="fa-solid fa-arrow-right"></i>
+                </span>
+            </div>
+            <div class="featured-grid" id="featuredGrid">
+        `;
+
+        topTracks.forEach(track => {
+            const coverUrl = track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null;
+            html += `
+                <div class="featured-card" data-track-id="${track.id}" onclick="playTrack(${track.id}, 'library')" oncontextmenu="event.preventDefault(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
+                    <div class="featured-card-glow"></div>
+                    <div class="featured-card-image">
+                        ${coverUrl ? `<img src="${coverUrl}" alt="${escapeHtml(track.title)}">` : '<div class="fallback-icon"><i class="fa-solid fa-music"></i></div>'}
+                        <div class="play-overlay">
+                            <div class="play-button-circle"><i class="fa-solid fa-play"></i></div>
+                        </div>
+                    </div>
+                    <div class="featured-card-info">
+                        <h4>${escapeHtml(track.title || 'Untitled')}</h4>
+                        <p>${escapeHtml(track.artist || 'Unknown Artist')}</p>
+                        <div class="featured-card-meta">
+                            <span class="bpm"><i class="fa-solid fa-heartbeat"></i> ${track.bpm || '120'}</span>
+                            <span><i class="fa-regular fa-clock"></i> ${formatTime(track.duration)}</span>
+                            <span><i class="fa-solid fa-play"></i> ${(track.playCount || 0).toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `</div>`;
+    }
+
+    // Suggestions
+    if (suggestions.length > 0) {
+        html += `
+            <div class="section-header-premium">
+                <div class="section-title-group">
+                    <h3><i class="fa-solid fa-sparkles"></i> ${t('dailySuggestions') || 'Daily Discoveries'}</h3>
+                    <span class="section-badge">✨ FRESH</span>
+                </div>
+                <span class="view-all-link-premium" onclick="handleAiRecommendationsEnhanced()">
+                    More <i class="fa-solid fa-arrow-right"></i>
+                </span>
+            </div>
+            <div class="featured-grid" id="suggestionsGrid">
+        `;
+
+        suggestions.forEach(track => {
+            const coverUrl = track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null;
+            html += `
+                <div class="featured-card" data-track-id="${track.id}" onclick="playTrack(${track.id}, 'library')" oncontextmenu="event.preventDefault(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
+                    <div class="featured-card-glow"></div>
+                    <div class="featured-card-image">
+                        ${coverUrl ? `<img src="${coverUrl}" alt="${escapeHtml(track.title)}">` : '<div class="fallback-icon"><i class="fa-solid fa-music"></i></div>'}
+                        <div class="play-overlay">
+                            <div class="play-button-circle"><i class="fa-solid fa-play"></i></div>
+                        </div>
+                    </div>
+                    <div class="featured-card-info">
+                        <h4>${escapeHtml(track.title || 'Untitled')}</h4>
+                        <p>${escapeHtml(track.artist || 'Unknown Artist')}</p>
+                        <div class="featured-card-meta">
+                            <span class="bpm"><i class="fa-solid fa-heartbeat"></i> ${track.bpm || '120'}</span>
+                            <span><i class="fa-regular fa-clock"></i> ${formatTime(track.duration)}</span>
+                            ${track.energy ? `<span><i class="fa-solid fa-bolt"></i> ${Math.round(track.energy * 100)}%</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `</div>`;
+    }
+
+    // Recent
+    if (recentTracks.length > 0) {
+        html += `
+            <div class="recent-activity-section">
+                <div class="section-header-premium">
+                    <div class="section-title-group">
+                        <h3><i class="fa-solid fa-clock-rotate-left"></i> ${t('recentActivity') || 'Recently Added'}</h3>
+                        <span class="section-badge">🆕 NEW</span>
+                    </div>
+                </div>
+                <div class="recent-track-list" id="recentList">
+        `;
+
+        recentTracks.forEach(track => {
+            const coverUrl = track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null;
+            const addedDate = track.createdAt ? new Date(track.createdAt).toLocaleDateString() : 'Recently';
+            html += `
+                <div class="recent-track-item" onclick="playTrack(${track.id}, 'library')" oncontextmenu="event.preventDefault(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
+                    <div class="recent-track-cover">
+                        ${coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music"></i>'}
+                    </div>
+                    <div class="recent-track-info">
+                        <h5>${escapeHtml(track.title || 'Untitled')}</h5>
+                        <p>${escapeHtml(track.artist || 'Unknown Artist')} • ${escapeHtml(track.album || 'Single')}</p>
+                    </div>
+                    <div class="recent-track-time">
+                        ${addedDate}
+                    </div>
+                    <div class="recent-track-play">
+                        <i class="fa-solid fa-play"></i>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+            </div>
+        `;
+    }
+
+    html += `</div>`;
+
+    mainSection.innerHTML = html;
+
+    // Staggered entrance for featured cards
+    const cards = document.querySelectorAll('.featured-card');
+    cards.forEach((card, index) => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(20px)';
+        setTimeout(() => {
+            card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+            card.style.opacity = '1';
+            card.style.transform = 'translateY(0)';
+        }, index * 50);
     });
-    mainSection.innerHTML = `<div class="home-welcome-section"><h2 class="section-welcome-title">${welcomeText}</h2><div class="top-shortcuts-grid">${shortcutsHtml || `<p class="no-tracks-info">${t('emptyLibraryDesc')}</p>`}</div></div><div class="spotify-row-title"><h3><i class="fa-solid fa-calendar-day"></i> ${t('dailySuggestions')}</h3><span class="view-all-link" onclick="switchSection('library')">${currentLanguage === 'fa' ? 'مشاهده همه' : 'View All'}</span></div><div class="cards-responsive-grid">${suggestionsHtml || `<p class="no-tracks-info">${t('emptyLibraryDesc')}</p>`}</div>`;
+}
+
+// Mood filter helper (available globally below)
+function filterByMood(mood) {
+    let filteredTracks = [];
+    switch(mood) {
+        case 'energetic':
+            filteredTracks = tracks.filter(t => (t.bpm || 120) > 130 && (t.energy || 0.5) > 0.6);
+            break;
+        case 'chill':
+            filteredTracks = tracks.filter(t => (t.bpm || 120) < 100);
+            break;
+        case 'focus':
+            filteredTracks = tracks.filter(t => (t.bpm || 120) >= 100 && (t.bpm || 120) <= 130);
+            break;
+        case 'workout':
+            filteredTracks = tracks.filter(t => (t.bpm || 120) > 140);
+            break;
+        case 'sad':
+            filteredTracks = tracks.filter(t => (t.energy || 0.5) < 0.4);
+            break;
+        case 'happy':
+            filteredTracks = tracks.filter(t => (t.energy || 0.5) > 0.7);
+            break;
+        default:
+            filteredTracks = tracks;
+    }
+
+    if (filteredTracks.length > 0) {
+        renderLibrary(filteredTracks);
+        switchSection('library');
+        showNotification(`${mood.charAt(0).toUpperCase() + mood.slice(1)} mode activated - ${filteredTracks.length} tracks`, 'success');
+    } else {
+        showNotification(`No tracks found for ${mood} mood`, 'info');
+    }
+}
+// Expose filterByMood globally
+window.filterByMood = filterByMood;
+
+function scrollCarousel(trackId, dir = 1) {
+    const el = document.getElementById(trackId);
+    if (!el) return;
+    const card = el.querySelector('.carousel-card');
+    const step = card ? card.offsetWidth + 16 : 240;
+    el.scrollBy({ left: dir * step, behavior: 'smooth' });
+}
+
+// Quick helper to start playing the daily suggestions station
+function playTopSuggestions() {
+    const list = getDailySuggestions(12);
+    if (!list || list.length === 0) { showNotification(currentLanguage === 'fa' ? 'هیچ پیشنهادی موجود نیست' : 'No suggestions available', 'info'); return; }
+    // Play the first track and enqueue the rest
+    const first = list[0];
+    try {
+        // Set play source as a playlist so setPlaySource will use the provided tracks
+        playTrack(first.id, 'playlist', 'home-suggestions', list);
+        // Ensure queue reflects the suggestions
+        lastPlaySource = { type: 'playlist', sourceId: 'home-suggestions', sourceTracks: [...list] };
+        queue = [...list];
+        queueIndex = 0;
+        renderQueue();
+        showNotification(currentLanguage === 'fa' ? 'در حال پخش پیشنهادها' : 'Playing suggestions', 'success');
+    } catch (e) { console.warn('playTopSuggestions failed', e); showNotification('Playback failed', 'error'); }
 }
 
 // =============================================================================
@@ -2667,7 +2825,7 @@ function showArtistDetail(artistName) {
 }
 
 // =============================================================================
-// AI RECOMMENDATIONS (with hook)
+// AI RECOMMENDATIONS (unchanged)
 // =============================================================================
 
 async function handleAiRecommendationsEnhanced() {
@@ -2677,9 +2835,7 @@ async function handleAiRecommendationsEnhanced() {
         fetch(`http://127.0.0.1:${apiPort}/api/ai/interaction`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: currentTrackId, action: 'play' }) }).catch(e => console.log);
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/ai/recommend/personal/${currentTrackId}`);
         if (!res.ok) throw new Error();
-        let data = await res.json();
-        // Run plugin hook
-        data = await runPluginHook('recommendations:modify', data);
+        const data = await res.json();
         if (!data.recommendations || data.recommendations.length === 0) { showNotification('No AI recommendations yet. Listen to more music!', 'info'); return; }
         renderRecommendationsUI(data);
     } catch (err) { console.error('AI error:', err); showNotification('AI recommendation failed', 'error'); }
@@ -2772,282 +2928,11 @@ async function toggleLikeWithAI() {
         if (currentTrack) currentTrack.isLiked = !isCurrentlyLiked;
         updatePlayerUI();
         showNotification(isCurrentlyLiked ? 'Removed from favorites' : 'Added to favorites', 'success');
-        // Run training hook
-        runPluginHook('recommendations:train', { trackId: currentTrackId, action }).catch(() => {});
     } catch { showNotification('Connection failed', 'error'); }
 }
 
 window.toggleLike = toggleLikeWithAI;
 window.handleAiRecommendations = handleAiRecommendationsEnhanced;
-
-// Open unified settings
-function openUnifiedSettings() {
-    const modal = document.getElementById('unifiedSettingsModal');
-    if (!modal) return;
-    populateGeneralSettings();
-    populateAudioSettings();
-    populateTelemetry();
-    populatePluginsList();
-    modal.style.display = 'flex';
-}
-
-function closeUnifiedSettings() {
-    const modal = document.getElementById('unifiedSettingsModal');
-    if (modal) modal.style.display = 'none';
-    if (window.spectrumAnimationFrame) cancelAnimationFrame(window.spectrumAnimationFrame);
-}
-
-function populateGeneralSettings() {
-    const container = document.getElementById('settingsTabGeneral');
-    if (!container) return;
-    container.innerHTML = `
-        <div class="setting-group">
-            <h5><i class="fa-solid fa-globe"></i> Language & Appearance</h5>
-            <div class="setting-row">
-                <span class="setting-label">Language</span>
-                <div class="skin-selector-pill" style="margin:0">
-                    <button class="skin-btn ${currentLanguage === 'fa' ? 'active' : ''}" onclick="changeClientLanguage('fa')">FA</button>
-                    <button class="skin-btn ${currentLanguage === 'en' ? 'active' : ''}" onclick="changeClientLanguage('en')">EN</button>
-                </div>
-            </div>
-            <div class="setting-row">
-                <span class="setting-label">UI Theme</span>
-                <div class="skin-selector-pill" style="margin:0">
-                    <button class="skin-btn ${currentSkin === 'default' ? 'active' : ''}" data-skin="default" onclick="applyGlobalSkin('default')">Default</button>
-                    <button class="skin-btn ${currentSkin === 'liquid-glass' ? 'active' : ''}" data-skin="liquid-glass" onclick="applyGlobalSkin('liquid-glass')">Liquid Glass</button>
-                </div>
-            </div>
-        </div>
-        <div class="setting-group">
-            <h5><i class="fa-solid fa-folder-tree"></i> Library Management</h5>
-            <div class="setting-row">
-                <button class="modal-btn confirm" style="padding:6px 12px" onclick="exportLibraryToCSV()">Export Library CSV</button>
-                <button class="modal-btn cancel" style="padding:6px 12px" onclick="importCueSheet()">Import CUE Sheet</button>
-            </div>
-        </div>
-    `;
-}
-
-function populateAudioSettings() {
-    const container = document.getElementById('settingsTabAudio');
-    if (!container) return;
-    container.innerHTML = `
-        <div class="setting-group">
-            <h5><i class="fa-solid fa-sliders-h"></i> Equalizer</h5>
-            <div class="eq-grid" style="margin-top:0; padding:12px; height:180px;">
-                ${eqBands.map((freq, idx) => `
-                    <div class="eq-slider-col">
-                        <span class="eq-val" id="eqVal${idx}">0dB</span>
-                        <input type="range" class="eq-slider" id="eqSlider${idx}" min="-12" max="12" step="1" value="0" oninput="updateEqualizerBand(${idx}, this.value)">
-                        <span class="eq-label">${freq}Hz</span>
-                    </div>
-                `).join('')}
-            </div>
-        </div>
-        <div class="setting-group">
-            <h5><i class="fa-solid fa-waveform"></i> Playback</h5>
-            <div class="setting-row">
-                <span class="setting-label">Playback Speed</span>
-                <input type="range" id="tempoSliderSettings" min="0.5" max="2.0" step="0.05" value="1.0" style="width:160px" oninput="updatePlaybackSpeed(this.value)">
-                <span id="tempoValSettings" style="color:var(--accent-cyan)">1.00x</span>
-            </div>
-            <div class="setting-row">
-                <span class="setting-label">Preserve Pitch</span>
-                <label class="switch"><input type="checkbox" id="pitchToggleSettings" checked onchange="togglePitchPreservation(this.checked)"><span class="switch-slider"></span></label>
-            </div>
-            <div class="setting-row">
-                <span class="setting-label">Gapless Playback</span>
-                <label class="switch"><input type="checkbox" id="gaplessToggleSettings" checked onchange="setGaplessMode(this.checked)"><span class="switch-slider"></span></label>
-            </div>
-            <div class="setting-row">
-                <span class="setting-label">Crossfade (seconds)</span>
-                <input type="range" id="crossfadeSliderSettings" min="0" max="12" step="0.5" value="0" style="width:160px" oninput="setCrossfadeMode(parseFloat(this.value))">
-                <span id="crossfadeValSettings" style="color:var(--accent-cyan)">0s</span>
-            </div>
-        </div>
-        <div class="setting-group">
-            <h5><i class="fa-solid fa-microphone-slash"></i> Vocal Isolation</h5>
-            <div class="setting-row">
-                <span class="setting-label">Karaoke Mode</span>
-                <button id="karaokeToggleBtn" class="modal-btn confirm" style="background:var(--accent-pink); padding:6px 16px" onclick="toggleVocalIsolator()">Enable</button>
-            </div>
-        </div>
-    `;
-    // Sync values
-    document.getElementById('tempoSliderSettings').addEventListener('input', (e) => {
-        document.getElementById('tempoValSettings').innerText = parseFloat(e.target.value).toFixed(2)+'x';
-    });
-    document.getElementById('crossfadeSliderSettings').addEventListener('input', (e) => {
-        document.getElementById('crossfadeValSettings').innerText = parseFloat(e.target.value).toFixed(1)+'s';
-    });
-}
-
-function populateTelemetry() {
-    const container = document.getElementById('settingsTabTelemetry');
-    if (!container) return;
-    container.innerHTML = `
-        <div class="setting-group">
-            <h5><i class="fa-solid fa-chart-line"></i> Live Statistics</h5>
-            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:20px">
-                <div class="live-stat-card" style="padding:12px"><i class="fa-solid fa-music"></i><h5>Tracks</h5><h2 id="teleTotalTracks">0</h2></div>
-                <div class="live-stat-card" style="padding:12px"><i class="fa-solid fa-headphones"></i><h5>Plays</h5><h2 id="teleTotalPlays">0</h2></div>
-                <div class="live-stat-card" style="padding:12px"><i class="fa-solid fa-heart"></i><h5>Likes</h5><h2 id="teleTotalLikes">0</h2></div>
-            </div>
-            <div class="most-played-highlight" style="padding:12px; margin-bottom:16px">
-                <i class="fa-solid fa-trophy"></i>
-                <div><span class="hero-label">Most Played</span><h3 id="teleMostPlayedTitle">-</h3><p id="teleMostPlayedArtist"></p></div>
-            </div>
-            <h5><i class="fa-solid fa-wave-square"></i> Real-time Spectrum</h5>
-            <canvas id="telemetrySpectrumCanvasSettings" width="600" height="150" style="width:100%; height:150px; background:#0c0c0e; border-radius:var(--radius-md); border:1px solid var(--border-color);"></canvas>
-        </div>
-    `;
-    // Refresh stats every 5 seconds
-    refreshTelemetryStats();
-    setInterval(refreshTelemetryStats, 5000);
-    // Start spectrum analyzer on this canvas
-    startTelemetrySpectrum('telemetrySpectrumCanvasSettings');
-}
-
-async function refreshTelemetryStats() {
-    try {
-        const res = await fetch(`http://127.0.0.1:${apiPort}/api/stats`);
-        const stats = await res.json();
-        document.getElementById('teleTotalTracks').innerText = stats.totalTracks || 0;
-        document.getElementById('teleTotalPlays').innerText = stats.totalPlayCount || 0;
-        document.getElementById('teleTotalLikes').innerText = stats.totalLikes || 0;
-        if (stats.mostPlayed) {
-            document.getElementById('teleMostPlayedTitle').innerText = stats.mostPlayed.title || '-';
-            document.getElementById('teleMostPlayedArtist').innerText = stats.mostPlayed.artist || '';
-        }
-    } catch(e) { console.warn('Stats fetch failed'); }
-}
-
-function startTelemetrySpectrum(canvasId) {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas || !window.analyser) return;
-    const ctx = canvas.getContext('2d');
-    const bufferLength = window.analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-    function draw() {
-        if (!canvas || !canvas.isConnected || document.getElementById('unifiedSettingsModal').style.display !== 'flex') {
-            window.spectrumAnimationFrame && cancelAnimationFrame(window.spectrumAnimationFrame);
-            return;
-        }
-        window.spectrumAnimationFrame = requestAnimationFrame(draw);
-        if (!window.analyser) return;
-        window.analyser.getByteFrequencyData(dataArray);
-        ctx.fillStyle = '#0a0a0c';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        const barWidth = (canvas.width / bufferLength) * 2.2;
-        let x = 0;
-        const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
-        gradient.addColorStop(0, '#1db954');
-        gradient.addColorStop(0.5, '#00e5ff');
-        gradient.addColorStop(1, '#fc3c44');
-        for (let i = 0; i < bufferLength; i++) {
-            const barHeight = dataArray[i] / 1.5;
-            ctx.fillStyle = gradient;
-            ctx.fillRect(x, canvas.height - barHeight, barWidth - 1, barHeight);
-            x += barWidth;
-        }
-    }
-    draw();
-}
-
-async function populatePluginsList() {
-    const container = document.getElementById('settingsTabPlugins');
-    if (!container) return;
-    try {
-        const res = await fetch(`http://127.0.0.1:${apiPort}/api/plugins`);
-        const plugins = await res.json();
-        if (!plugins.length) {
-            container.innerHTML = `<div class="setting-group"><p style="color:var(--spotify-text-muted)">No plugins installed. Create a folder inside user data /plugins</p></div>`;
-            return;
-        }
-        let html = `<div class="setting-group"><h5><i class="fa-solid fa-puzzle-piece"></i> Active Plugins</h5>`;
-        plugins.forEach(p => {
-            html += `<div class="setting-row"><span><strong>${p.name}</strong> v${p.version}<br><small>${p.description || ''}</small></span><span class="setting-label">Enabled (always)</span></div>`;
-        });
-        html += `</div>`;
-        container.innerHTML = html;
-    } catch(e) {
-        container.innerHTML = `<div class="setting-group"><p class="error">Could not load plugins</p></div>`;
-    }
-}
-
-let moodRingActive = true;
-let moodRingInterval = null;
-
-function updateMoodRing() {
-    if (!moodRingActive || !currentTrack) return;
-    const bpm = currentTrack.bpm || 120;
-    const energy = currentTrack.energy || 0.5;
-    // Map BPM to hue (120 BPM = green, 80 BPM = blue, 160 BPM = red)
-    let hue;
-    if (bpm < 90) hue = 240; // blue/calm
-    else if (bpm < 110) hue = 200; // cyan
-    else if (bpm < 130) hue = 120; // green
-    else if (bpm < 150) hue = 60; // yellow
-    else hue = 0; // red
-    // Adjust saturation and lightness by energy
-    const sat = 40 + (energy * 40);
-    const light = 15 + (energy * 20);
-    const color = `hsla(${hue}, ${sat}%, ${light}%, 0.4)`;
-    let overlay = document.querySelector('.mood-ring-overlay');
-    if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.className = 'mood-ring-overlay';
-        document.body.appendChild(overlay);
-    }
-    overlay.style.background = `radial-gradient(circle at 50% 50%, ${color}, transparent 70%)`;
-    // Pulse effect based on BPM
-    if (moodRingInterval) clearInterval(moodRingInterval);
-    const pulseInterval = 60000 / (bpm * 2); // half note
-    if (pulseInterval > 100 && pulseInterval < 2000) {
-        document.body.classList.add('mood-pulse');
-        moodRingInterval = setInterval(() => {
-            if (!isPlaying) return;
-            overlay.style.opacity = '0.6';
-            setTimeout(() => { if(overlay) overlay.style.opacity = '0.35'; }, 100);
-        }, pulseInterval);
-    } else {
-        document.body.classList.remove('mood-pulse');
-    }
-}
-
-function toggleMoodRing() {
-    moodRingActive = !moodRingActive;
-    const overlay = document.querySelector('.mood-ring-overlay');
-    if (!moodRingActive && overlay) overlay.style.display = 'none';
-    else if (moodRingActive && overlay) overlay.style.display = 'block';
-    showNotification(`Mood Ring ${moodRingActive ? 'activated' : 'deactivated'}`, 'info');
-}
-
-
-// Tab switching inside settings
-function initSettingsTabs() {
-    const tabs = document.querySelectorAll('.settings-tab-btn');
-    const contents = {
-        general: document.getElementById('settingsTabGeneral'),
-        audio: document.getElementById('settingsTabAudio'),
-        telemetry: document.getElementById('settingsTabTelemetry'),
-        plugins: document.getElementById('settingsTabPlugins')
-    };
-    tabs.forEach(btn => {
-        btn.addEventListener('click', () => {
-            const tabId = btn.getAttribute('data-tab');
-            tabs.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            Object.values(contents).forEach(c => { if(c) c.style.display = 'none'; });
-            if (tabId === 'general') contents.general.style.display = 'block';
-            if (tabId === 'audio') contents.audio.style.display = 'block';
-            if (tabId === 'telemetry') contents.telemetry.style.display = 'block';
-            if (tabId === 'plugins') contents.plugins.style.display = 'block';
-            if (tabId === 'telemetry') refreshTelemetryStats();
-            if (tabId === 'plugins') {if (typeof populatePluginsList === 'function') populatePluginsList();}
-        });
-    });
-}
 
 // =============================================================================
 // IMPORT HANDLERS
@@ -3058,7 +2943,13 @@ async function handleImport() {
     try {
         const filePaths = await window.electronAPI.selectAudioFiles();
         if (!filePaths || filePaths.length === 0) return;
-        await importAudioFiles(filePaths);
+        showNotification(`Scanning and analyzing ${filePaths.length} files...`, 'info');
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePaths }) });
+        if (!res.ok) throw new Error();
+        const result = await res.json();
+        showNotification(`Successfully added ${result.imported} local tracks.`, 'success');
+        await loadTracks();
+        switchSection(currentActiveSection);
     } catch (err) { console.error('Import error:', err); showNotification('Load and analysis phase crashed', 'error'); }
 }
 
@@ -3067,7 +2958,13 @@ async function handleFolderImport() {
     try {
         const filePaths = await window.electronAPI.selectAudioFolder();
         if (!filePaths || filePaths.length === 0) return;
-        await importAudioFiles(filePaths);
+        showNotification(`Scanning and analyzing directory files...`, 'info');
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePaths }) });
+        if (!res.ok) throw new Error();
+        const result = await res.json();
+        showNotification(`Successfully loaded ${result.imported} tracks.`, 'success');
+        await loadTracks();
+        switchSection(currentActiveSection);
     } catch (err) { console.error('Folder import error:', err); showNotification('Folder scan interrupted', 'error'); }
 }
 
@@ -3095,15 +2992,11 @@ function promptDownloadFromUrl() {
 function closeDownloadUrlModal() { const modal = document.getElementById('downloadUrlModal'); if (modal) modal.style.display = 'none'; }
 
 // =============================================================================
-// SECTION SWITCHING (with UI hooks)
+// SECTION SWITCHING
 // =============================================================================
 
-window.switchSection = async function(sectionName) {
+window.switchSection = function(sectionName) {
     if (isMiniWindowMode) return;
-    
-    // Run before render hook
-    await runPluginHook('ui:beforeSectionRender', { section: sectionName });
-    
     currentActiveSection = sectionName;
     currentActivePlaylistId = null;
     document.querySelectorAll('.sidebar-nav .nav-item, .sidebar-playlist-item').forEach(item => item.classList.remove('active'));
@@ -3119,9 +3012,6 @@ window.switchSection = async function(sectionName) {
     if (sectionName === 'artists') renderArtists();
     if (sectionName === 'favorites') renderFavorites();
     if (sectionName === 'stats') { renderStats().then(() => { if (audioCtx && analyser) startLiveSpectrumAnalyzer(); }); }
-    
-    // Run after render hook
-    await runPluginHook('ui:afterSectionRender', { section: sectionName });
 };
 
 // =============================================================================
@@ -3313,9 +3203,39 @@ function setupEventListeners() {
 
     // --- Song Info Modal ---
     const songInfoBtn = document.getElementById('songInfoBtn');
-    if (songInfoBtn) songInfoBtn.addEventListener('click', showSongInfo);
+    if (songInfoBtn) songInfoBtn.addEventListener('click', (e) => { if (typeof window.showSongInfo === 'function') window.showSongInfo(e); else console.warn('showSongInfo not available'); });
     const extractVocalBtn = document.getElementById('extractVocalBtn');
-    if (extractVocalBtn) extractVocalBtn.addEventListener('click', extractVocalFromCurrentTrack);
+    if (extractVocalBtn) extractVocalBtn.addEventListener('click', (e) => { if (typeof window.extractVocalFromCurrentTrack === 'function') window.extractVocalFromCurrentTrack(e); else console.warn('extractVocalFromCurrentTrack not available'); });
+
+    // Ensure modal helper functions exist to avoid init errors
+    if (typeof window.showSongInfo !== 'function') {
+        window.showSongInfo = function() {
+            try {
+                const modal = document.getElementById('songInfoModal');
+                if (modal) modal.classList.add('open');
+                // populate basic content if empty
+                const content = document.getElementById('songInfoContent');
+                if (content && !content.innerHTML.trim()) content.innerHTML = '<div style="padding:8px;color:#c7ced3;">No additional song info available.</div>';
+            } catch (e) { console.warn('showSongInfo error', e); }
+        };
+    }
+    if (typeof window.closeSongInfoModal !== 'function') {
+        window.closeSongInfoModal = function() {
+            const modal = document.getElementById('songInfoModal');
+            if (modal) modal.classList.remove('open');
+        };
+    }
+
+    // Provide a safe stub for vocal extraction to avoid init errors if feature missing
+    if (typeof window.extractVocalFromCurrentTrack !== 'function') {
+        window.extractVocalFromCurrentTrack = async function() {
+            try {
+                console.warn('extractVocalFromCurrentTrack: feature not implemented in this build.');
+                // Optionally show a notification to the user if showNotification exists
+                if (typeof showNotification === 'function') showNotification('Vocal extraction not available', 'info');
+            } catch (e) { console.warn('extractVocalFromCurrentTrack stub error', e); }
+        };
+    }
 
     // ===================== NEW: Import Playlist (auto-detect) =====================
     const importPlaylistBtn = document.getElementById('importPlaylistBtn');
@@ -3487,43 +3407,6 @@ async function initVersionStatus() {
     }
 }
 
-async function loadPluginUIInjections() {
-    if (!apiPort) return;
-    try {
-        const res = await fetch(`http://127.0.0.1:${apiPort}/api/plugins/ui-injections`);
-        const data = await res.json();
-        const injections = data.injections || [];
-        
-        if (injections.length > 0) {
-            let container = document.querySelector('.plugin-injection-container');
-            if (!container) {
-                container = document.createElement('div');
-                container.className = 'plugin-injection-container';
-                container.style.cssText = 'display: contents;';
-                
-                const sidebar = document.querySelector('.spotify-sidebar');
-                const aiPanel = document.querySelector('.ai-recommendation-panel');
-                
-                if (aiPanel && aiPanel.parentNode) {
-                    aiPanel.parentNode.insertBefore(container, aiPanel.nextSibling);
-                } else if (sidebar) {
-                    sidebar.appendChild(container);
-                } else {
-                    document.body.appendChild(container);
-                }
-            }
-            
-            const injectionHtml = injections.filter(inj => inj && typeof inj === 'string').join('\n');
-            if (injectionHtml.trim()) {
-                container.innerHTML = injectionHtml;
-                console.log(`Loaded ${injections.length} UI injections from plugins`);
-            }
-        }
-    } catch (err) {
-        console.error('Failed to load UI injections:', err);
-    }
-}
-
 // =============================================================================
 // DOM CONTENT LOADED INITIALIZATION
 // =============================================================================
@@ -3542,6 +3425,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         await loadTracks();
         if (splashProgress) splashProgress.style.width = '75%';
         await loadPlaylists();
+        await loadEnabledPluginCss();
         if (splashProgress) splashProgress.style.width = '100%';
         try { const playbackRes = await fetch(`http://127.0.0.1:${apiPort}/api/playback/settings`); const playbackSettings = await playbackRes.json(); gaplessEnabled = playbackSettings.gaplessEnabled !== false; crossfadeDuration = playbackSettings.crossfadeDuration || 0; console.log('✅ Playback settings loaded:', { gaplessEnabled, crossfadeDuration }); } catch (err) { console.log('Could not load playback settings, using defaults'); }
         setupEventListeners();
@@ -3551,13 +3435,12 @@ window.addEventListener('DOMContentLoaded', async () => {
         updateBodyClasses();
         switchSection('home');
         detectPerformanceMode();
-        loadPluginUIInjections();
         if (typeof setAIIconOnlyMode === 'function') setAIIconOnlyMode();
         if (typeof updateAITooltips === 'function') updateAITooltips();
         initVersionStatus();
 
         if (window.electronAPI && window.electronAPI.onFilesOpened) {
-            window.electronAPI.onFilesOpened(async (files) => { if (files && files.length > 0) { await importAudioFiles(files); } });
+            window.electronAPI.onFilesOpened(async (files) => { if (files && files.length > 0) { showImportProgress(files.length); try { const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePaths: files }) }); if (res.ok) { const result = await res.json(); updateImportProgress(100, `Imported ${result.imported} track(s)!`); setTimeout(async () => { hideImportProgress(); showNotification(`Successfully imported ${result.imported} track(s)`, 'success'); await loadTracks(); await loadPlaylists(); if (result.imported > 0 && tracks.length > 0) { const newTracks = tracks.slice(-result.imported); const lastTrack = newTracks[0]; if (lastTrack) { setTimeout(() => { playTrack(lastTrack.id, 'file'); }, 300); } } switchSection(currentActiveSection); }, 500); } else { hideImportProgress(); const error = await res.json(); showNotification(`Import failed: ${error.error || 'Unknown error'}`, 'error'); } } catch (err) { console.error('File association import error:', err); hideImportProgress(); showNotification('Error importing files opened from system', 'error'); } } });
         }
 
         setTimeout(async () => {

@@ -5,24 +5,15 @@
  * Provides safe APIs for file dialogs, window controls, mini-player,
  * file association handling, tag editing, playlist export/import,
  * advanced search, CUE sheet support, and update management.
- * 
- * Improved: reliable port retrieval using Promise + event.
  */
 
 const { contextBridge, ipcRenderer } = require('electron');
 
 console.log('🔌 Preload script starting...');
 
-// Create a promise that resolves when server port is received from main process
-let resolvePortPromise = null;
-const portPromise = new Promise((resolve) => {
-    resolvePortPromise = resolve;
-});
-
-// Listen for the port sent by main process after server starts
+// Log server port when received
 ipcRenderer.on('server-port', (event, port) => {
     console.log('📡 Preload received port:', port);
-    if (resolvePortPromise) resolvePortPromise(port);
 });
 
 // Forward global shortcuts
@@ -31,9 +22,9 @@ ipcRenderer.on('global-shortcut', (event, command) => {
     window.dispatchEvent(new CustomEvent('global-shortcut', { detail: command }));
 });
 
-// Get server port - returns a Promise that resolves when port is available
+// Get server port from main process
 const getServerPort = () => {
-    return portPromise;
+    return ipcRenderer.invoke('get-server-port');
 };
 
 // Expose safe APIs to renderer
@@ -41,7 +32,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // =========================================================================
     // SERVER AND FILE OPERATIONS
     // =========================================================================
-    getServerPort: getServerPort,        // returns Promise<number>
+    getServerPort: getServerPort,
     selectAudioFiles: () => ipcRenderer.invoke('select-audio-files'),
     selectAudioFolder: () => ipcRenderer.invoke('select-audio-folder'),
     
@@ -100,8 +91,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // =========================================================================
     // VERSION AND UPDATE MANAGEMENT
     // =========================================================================
+    /**
+     * Listen for initial app version from main process
+     */
     onAppVersion: (callback) => ipcRenderer.on('app-version', (event, data) => callback(data)),
+    
+    /**
+     * Listen for update status changes (update available or not)
+     */
     onUpdateStatus: (callback) => ipcRenderer.on('update-status', (event, data) => callback(data)),
+    
+    /**
+     * Manually check for update status from renderer
+     * Returns: { hasUpdate: boolean, currentVersion: string, latestVersion: string|null, url: string|null, error: string|null }
+     */
     checkUpdateStatus: () => ipcRenderer.invoke('check-update-status'),
 
     // =========================================================================
@@ -147,16 +150,84 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // =========================================================================
     detectRealBPM: (trackId) => ipcRenderer.invoke('detect-real-bpm', trackId),
 
-    // =========================================================================
-    // PLUGINS
-    // =========================================================================
-    getPlugins: () => ipcRenderer.invoke('get-plugins'),
 
     // =========================================================================
-    // PLAYLIST AUTO IMPORT
+    // REAL BPM DETECTION
     // =========================================================================
     importPlaylistAuto: (filePath) => ipcRenderer.invoke('import-playlist-auto', filePath),
     showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
 });
 
 console.log('✅ Preload script loaded');
+
+// ---- Plugin UI Bridge ----
+// Expose a minimal, secure API for renderer to create sandboxed plugin iframes
+contextBridge.exposeInMainWorld('koraiPlugins', {
+    // Create a sandboxed iframe for a plugin inside a container selector.
+    // pluginId: string identifier
+    // containerSelector: CSS selector for the container element in renderer DOM
+    // options: { srcdoc?: string } - HTML string to load inside iframe (optional)
+    createPluginIframe: (pluginId, containerSelector, options = {}) => {
+        const container = document.querySelector(containerSelector);
+        if (!container) throw new Error('container not found: ' + containerSelector);
+        // remove existing iframe for this plugin if present
+        const existing = container.querySelector(`iframe[data-plugin-id="${pluginId}"]`);
+        if (existing) existing.remove();
+
+        const iframe = document.createElement('iframe');
+        iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+        iframe.setAttribute('data-plugin-id', pluginId);
+        iframe.style.width = '100%';
+        iframe.style.border = 'none';
+        iframe.style.minHeight = '120px';
+
+        if (options && options.srcdoc) {
+            // Use srcdoc to avoid loading remote resources
+            iframe.srcdoc = options.srcdoc;
+        } else {
+            // blank isolated iframe
+            iframe.srcdoc = '<!doctype html><meta charset="utf-8"><title>Plugin UI</title><div id="korai-root"></div>';
+        }
+
+        // forward messages from iframe to renderer via window events
+        const msgHandler = (ev) => {
+            if (ev.source !== iframe.contentWindow) return;
+            // re-dispatch a CustomEvent for renderer code to handle
+            window.dispatchEvent(new CustomEvent('korai-plugin-message', { detail: { pluginId, message: ev.data } }));
+        };
+
+        window.addEventListener('message', msgHandler);
+
+        // cleanup when iframe removed
+        const observer = new MutationObserver((records) => {
+            for (const r of records) {
+                for (const n of r.removedNodes) {
+                    if (n === iframe) {
+                        window.removeEventListener('message', msgHandler);
+                        observer.disconnect();
+                    }
+                }
+            }
+        });
+        observer.observe(container, { childList: true });
+
+        container.appendChild(iframe);
+
+        return {
+            send: (msg) => {
+                try {
+                    iframe.contentWindow.postMessage(msg, '*');
+                } catch (e) { console.warn('postMessage failed', e); }
+            },
+            iframe
+        };
+    },
+    // Send a message to all plugin iframes
+    broadcast: (msg) => {
+        const iframes = document.querySelectorAll('iframe[data-plugin-id]');
+        iframes.forEach(f => {
+            try { f.contentWindow.postMessage(msg, '*'); } catch (e) {}
+        });
+    },
+    // Listen for plugin messages (renderer can addEventListener on window for 'korai-plugin-message')
+});

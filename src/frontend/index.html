@@ -166,6 +166,15 @@
                 </div>
             </nav>
 
+            <div class="nav-divider" style="height: 1px; background: rgba(255,255,255,0.1); margin: 15px 0;"></div>
+
+            <nav class="sidebar-nav" style="margin-top: 10px;">
+                <div class="nav-item plugin-item" id="navPlugins" onclick="openPluginsManager()">
+                    <i class="fa-solid fa-plug"></i>
+                    <span>Plugins</span>
+                </div>
+            </nav>
+
             <div class="ai-recommendation-panel">
                 <div class="ai-header-small">
                     <i class="fa-solid fa-wand-magic-sparkles"></i>
@@ -235,7 +244,6 @@
                     <button class="utility-trigger-btn" id="queueBtn"><i class="fa-solid fa-list-ol"></i></button>
                     <button class="utility-trigger-btn" id="miniplayerToggleBtn"><i class="fa-solid fa-compress"></i></button>
                     <button class="utility-trigger-btn" id="dspToggleBtn"><i class="fa-solid fa-sliders"></i></button>
-                    <button class="utility-trigger-btn" id="settingsBtn"><i class="fa-solid fa-gear"></i></button>
                     <div class="quick-counter">
                         <i class="fa-solid fa-music"></i>
                         <span id="quickTotalTracks">0</span>
@@ -516,6 +524,9 @@
 
     <script src="lang.js"></script>
     <script src="additonal.js"></script>
+    <script src="pluginManagerUI.js"></script>
     <script src="app.js"></script>
+    <script src="homePremium.js"></script>
+        <script src="homeEnhancements.js"></script>
 </body>
 </html>

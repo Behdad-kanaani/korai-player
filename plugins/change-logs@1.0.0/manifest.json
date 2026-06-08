@@ -1,0 +1,11 @@
+{
+  "id": "korai/change-logs",
+  "name": "Change Logs",
+  "version": "1.0.0",
+  "entry": "index.js",
+  "description": "Display application change history",
+  "permissions": ["preferences"],
+  "grantedPermissions": ["preferences"],
+  "builtin": true,
+  "enabled": true
+}

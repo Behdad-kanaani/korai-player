@@ -1,0 +1,17 @@
+{
+  "korai/change-logs": {
+    "id": "korai/change-logs",
+    "name": "چنج لاگز",
+    "version": "1.0.0",
+    "entry": "index.js",
+    "enabled": true,
+    "path": "F:\\KORAI MUSIC\\plugins\\change-logs@1.0.0",
+    "permissions": [
+      "preferences"
+    ],
+    "grantedPermissions": [
+      "preferences"
+    ],
+    "builtin": true
+  }
+}

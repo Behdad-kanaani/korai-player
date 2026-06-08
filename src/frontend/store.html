@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plugin Store - KORAI Music Player</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+        }
+
+        .page-wrapper {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            border-right: 1px solid rgba(102, 126, 234, 0.2);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .sidebar-logo {
+            font-size: 24px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        .nav-section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .nav-title {
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .nav-item {
+            padding: 10px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #aaa;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        .nav-item:hover {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+        }
+
+        .nav-item.active {
+            background: rgba(102, 126, 234, 0.2);
+            color: #667eea;
+            font-weight: bold;
+        }
+
+        .main-content {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        #plugin-store {
+            padding: 30px;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid rgba(102, 126, 234, 0.2);
+                padding: 15px;
+            }
+
+            .page-wrapper {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page-wrapper">
+        <div class="sidebar">
+            <div class="sidebar-logo">
+                <i class="fa-solid fa-plug"></i>
+                Plugins
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-title">Store</div>
+                <a class="nav-item active" href="#" onclick="switchTab('store'); return false;">
+                    <i class="fa-solid fa-store"></i>
+                    Browse Store
+                </a>
+                <a class="nav-item" href="#" onclick="switchTab('installed'); return false;">
+                    <i class="fa-solid fa-download"></i>
+                    Installed
+                </a>
+                <a class="nav-item" href="#" onclick="switchTab('updates'); return false;">
+                    <i class="fa-solid fa-arrow-up-circle"></i>
+                    Updates
+                </a>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-title">More</div>
+                <a class="nav-item" href="#" onclick="switchTab('dashboard'); return false;">
+                    <i class="fa-solid fa-chart-line"></i>
+                    Dashboard
+                </a>
+                <a class="nav-item" href="#" onclick="switchTab('settings'); return false;">
+                    <i class="fa-solid fa-sliders"></i>
+                    Settings
+                </a>
+                <a class="nav-item" href="#" onclick="window.history.back(); return false;">
+                    <i class="fa-solid fa-arrow-left"></i>
+                    Back to Player
+                </a>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div id="plugin-store"></div>
+        </div>
+    </div>
+
+    <script src="pluginStoreUI.js"></script>
+    <script>
+        function switchTab(tab) {
+            const items = document.querySelectorAll('.nav-item');
+            items.forEach(item => item.classList.remove('active'));
+            event.target.closest('.nav-item').classList.add('active');
+
+            switch (tab) {
+                case 'store':
+                    location.href = '#store';
+                    break;
+                case 'installed':
+                    location.href = 'plugins.html';
+                    break;
+                case 'dashboard':
+                    alert('📊 Performance Dashboard coming soon!');
+                    break;
+                case 'settings':
+                    alert('⚙️ Plugin Settings coming soon!');
+                    break;
+                case 'updates':
+                    alert('🔄 Updates coming soon!');
+                    break;
+            }
+        }
+    </script>
+</body>
+</html>

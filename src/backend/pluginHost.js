@@ -321,6 +321,15 @@ class PluginHost extends EventEmitter {
           try { plugin.worker.removeAllListeners(); } catch (e) {}
           plugin.worker.terminate();
           this.runningPlugins.delete(id);
+          // Remove any event listeners related to this plugin to avoid leaks
+          try {
+            const evNames = this.eventNames();
+            for (const ev of evNames) {
+              if (typeof ev === 'string' && ev.startsWith(`plugin:${id}:`)) {
+                this.removeAllListeners(ev);
+              }
+            }
+          } catch (e) {}
           resolve();
         }
       }, this.timeout);
@@ -334,7 +343,16 @@ class PluginHost extends EventEmitter {
               if (plugin.watcher) plugin.watcher.close();
             } catch (e) {}
             plugin.worker.terminate();
-            this.runningPlugins.delete(id);
+                this.runningPlugins.delete(id);
+                // Cleanup plugin-related events
+                try {
+                  const evNames = this.eventNames();
+                  for (const ev of evNames) {
+                    if (typeof ev === 'string' && ev.startsWith(`plugin:${id}:`)) {
+                      this.removeAllListeners(ev);
+                    }
+                  }
+                } catch (e) {}
             this.logger.log(`[Plugin] Deactivated: ${id}`);
             resolve();
           }

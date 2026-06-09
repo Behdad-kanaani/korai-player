@@ -1,0 +1,15 @@
+/* Change Logs plugin styles (optional - fallback exists in ui.js) */
+:root{--korai-accent:#00c4a7;--korai-bg:rgba(255,255,255,0.02);--korai-fg:#eaf0ff}
+.korai-change-overlay{position:fixed;inset:0;background:linear-gradient(rgba(2,6,23,0.6), rgba(2,6,23,0.55));backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:99999;padding:24px}
+.korai-change-box{max-width:920px;width:100%;background:var(--korai-bg);border-radius:16px;padding:20px;border:1px solid rgba(255,255,255,0.04);box-shadow:0 20px 60px rgba(0,0,0,0.6)}
+.korai-change-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.korai-change-title{font-size:20px;font-weight:900;color:var(--korai-fg);letter-spacing:0.2px}
+.korai-change-close{background:transparent;border:0;color:#9fb1d6;font-size:24px;cursor:pointer}
+.korai-change-body{max-height:60vh;overflow:auto;padding:8px 2px;color:#cbd5e1;line-height:1.45}
+.korai-change-body strong{display:block;margin-top:8px;color:#eaf0ff}
+.korai-change-body ul{margin:8px 0 12px 20px}
+.korai-change-actions{display:flex;justify-content:flex-end;margin-top:12px}
+.korai-change-ok{background:var(--korai-accent);color:#042;border:0;padding:10px 16px;border-radius:12px;font-weight:800;cursor:pointer}
+.korai-change-ok:hover{filter:brightness(1.03)}
+.korai-change-hide{opacity:0;transform:translateY(8px);transition:all .28s ease}
+@media (max-width:640px){ .korai-change-box{border-radius:12px;padding:12px} .korai-change-title{font-size:16px} }

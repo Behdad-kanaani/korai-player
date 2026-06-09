@@ -272,7 +272,7 @@ Not everyone has a gaming rig. KORAI v1.4 detects low-resource devices automatic
   
 | v1.3 | v1.4 |
 |:----:|:----:|
-| ![v1.3](screenshot/V1.3/demo.png) | ![v1.4](screenshot/V1.4/demo.png) |
+| ![v1.3](screenshot/V1.3/demo.png) | ![v1.4](screenshot/V1.4/demo.webp) |
 
 *KORAI evolution — v1.3 (left) → v1.4 (right)*
 

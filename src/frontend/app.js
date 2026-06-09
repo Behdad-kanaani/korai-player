@@ -51,6 +51,11 @@ let lastPlaySource = {
 };
 let wasVocalSeparatorActive = false;
 let reconnectAudioGraph = null; 
+// Play request counter to avoid play() / load() race conditions
+let playRequestCounter = 0;
+// tokens for ipc listener cleanup
+let stateUpdateTokenMini = null;
+let stateUpdateTokenMain = null;
 
 // Filtering & Sorting Library states
 let librarySortKey = 'createdAt';
@@ -2433,8 +2438,56 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
         if (audioCtx && audioCtx.state === 'suspended') await audioCtx.resume();
         
         const streamUrl = `http://127.0.0.1:${apiPort}/api/tracks/${trackId}/stream`;
+
+        // Increment play request id so simultaneous calls can be distinguished
+        playRequestCounter += 1;
+        const thisRequestId = playRequestCounter;
+
+        // Best-effort pause previous playback before loading new source
+        try { if (!audioElement.paused) audioElement.pause(); } catch (e) { /* ignore */ }
+
+        // Assign source and start loading. Wait for quick canplay event (or short timeout)
         audioElement.src = streamUrl;
-        await audioElement.play();
+        try { audioElement.load(); } catch (e) { /* ignore */ }
+
+        // Wait for 'canplay' or short timeout to avoid starting play() while another load happens
+        await new Promise((resolve, reject) => {
+            let settled = false;
+            const onCan = () => { if (settled) return; settled = true; cleanup(); resolve(); };
+            const onErr = (ev) => { if (settled) return; settled = true; cleanup(); reject(new Error('Media load error')); };
+            const onAbort = () => { if (settled) return; settled = true; cleanup(); reject(new Error('Media load aborted')); };
+            const cleanup = () => {
+                audioElement.removeEventListener('canplay', onCan);
+                audioElement.removeEventListener('error', onErr);
+                audioElement.removeEventListener('abort', onAbort);
+                clearTimeout(timeout);
+            };
+            audioElement.addEventListener('canplay', onCan);
+            audioElement.addEventListener('error', onErr);
+            audioElement.addEventListener('abort', onAbort);
+            const timeout = setTimeout(() => { if (settled) return; settled = true; cleanup(); resolve(); }, 3000);
+        }).catch((e) => {
+            // If loading failed, and request has not been superseded, propagate
+            if (thisRequestId !== playRequestCounter) return; // superseded
+            console.debug('Media load warning:', e.message || e);
+        });
+
+        // If a newer play request started meanwhile, abort this one silently
+        if (thisRequestId !== playRequestCounter) {
+            console.debug('Play request superseded, aborting play for', trackId);
+            return;
+        }
+
+        // Attempt play and handle promise rejection (common in browsers)
+        try {
+            await audioElement.play();
+        } catch (e) {
+            // If a newer request superseded this one, ignore the error
+            if (thisRequestId !== playRequestCounter) return;
+            // Common interruption error - log and surface
+            console.error('Play attempt failed:', e);
+            throw e;
+        }
         
         // If karaoke was active, reapply it after source is ready
         if (wasVocalSeparatorActive && typeof reconnectAudioGraph === 'function') {
@@ -3418,19 +3471,45 @@ async function handleImport() {
 }
 
 async function handleFolderImport() {
-    if (!window.electronAPI || typeof window.electronAPI.selectAudioFolder !== 'function') { showNotification('Electron API not available', 'error'); return; }
+    if (!window.electronAPI || typeof window.electronAPI.selectAudioFolder !== 'function') {
+        showNotification('Electron API not available', 'error');
+        return;
+    }
+    
     try {
+        showNotification('Scanning folder...', 'info');
+        
         const filePaths = await window.electronAPI.selectAudioFolder();
-        if (!filePaths || filePaths.length === 0) return;
-        showNotification(`Scanning and analyzing directory files...`, 'info');
-        const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePaths }) });
-        if (!res.ok) throw new Error();
+        
+        if (!filePaths || filePaths.length === 0) {
+            showNotification('No audio files found in selected folder. Supported formats: MP3, WAV, OGG, M4A, FLAC', 'warning');
+            return;
+        }
+        
+        showNotification(`Found ${filePaths.length} audio files. Importing...`, 'info');
+        
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filePaths })
+        });
+        
+        if (!res.ok) {
+            const error = await res.json();
+            throw new Error(error.error || 'Import failed');
+        }
+        
         const result = await res.json();
-        showNotification(`Successfully loaded ${result.imported} tracks.`, 'success');
+        showNotification(`Successfully imported ${result.imported} tracks.`, 'success');
         await loadTracks();
         switchSection(currentActiveSection);
-    } catch (err) { console.error('Folder import error:', err); showNotification('Folder scan interrupted', 'error'); }
+        
+    } catch (err) {
+        console.error('Folder import error:', err);
+        showNotification(`Import failed: ${err.message}`, 'error');
+    }
 }
+
 
 function promptDownloadFromUrl() {
     const modal = document.getElementById('downloadUrlModal');
@@ -3849,7 +3928,7 @@ function setupEventListeners() {
 
     // --- Mini‑window IPC listeners (if in mini mode) ---
     if (isMiniWindowMode && window.electronAPI) {
-        window.electronAPI.onStateUpdated((state) => {
+        stateUpdateTokenMini = window.electronAPI.onStateUpdated((state) => {
             currentTrack = state.track; isPlaying = state.isPlaying; apiPort = state.apiPort;
             window.isPlaying = isPlaying;
             const miniTitle = document.getElementById('miniTitle');
@@ -3875,7 +3954,7 @@ function setupEventListeners() {
 
     // --- Main window: listen for playback state updates from main process ---
     if (!isMiniWindowMode && window.electronAPI) {
-        window.electronAPI.onStateUpdated((state) => {
+        stateUpdateTokenMain = window.electronAPI.onStateUpdated((state) => {
             try {
                 currentTrack = state.track || null;
                 currentTrackId = currentTrack ? currentTrack.id : null;
@@ -3903,6 +3982,20 @@ function setupEventListeners() {
             } catch (err) { console.error('State update handling error:', err); }
         });
     }
+
+    // Cleanup IPC listeners when renderer unloads to avoid leaking handlers
+    window.addEventListener('beforeunload', () => {
+        try {
+            if (stateUpdateTokenMini && window.electronAPI && window.electronAPI.removeStateUpdatedListener) {
+                window.electronAPI.removeStateUpdatedListener(stateUpdateTokenMini);
+            }
+        } catch (e) {}
+        try {
+            if (stateUpdateTokenMain && window.electronAPI && window.electronAPI.removeStateUpdatedListener) {
+                window.electronAPI.removeStateUpdatedListener(stateUpdateTokenMain);
+            }
+        } catch (e) {}
+    });
 
     if (!isMiniWindowMode && window.electronAPI) {
         window.electronAPI.onExecuteControl((command) => {
@@ -4069,6 +4162,11 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (typeof setAIIconOnlyMode === 'function') setAIIconOnlyMode();
         if (typeof updateAITooltips === 'function') updateAITooltips();
         initVersionStatus();
+        if (window.electronAPI && window.electronAPI.onScanNoFilesFound) {
+            window.electronAPI.onScanNoFilesFound((folderPath) => {
+                showNotification(`No audio files found in: ${folderPath}\nSupported: MP3, WAV, OGG, M4A, FLAC`, 'warning');
+            });
+        }
 
         // Performance: pause heavy animations/visualizers when unfocused
         try { setupWindowFocusOptimization(); } catch (e) {}

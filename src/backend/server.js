@@ -260,83 +260,128 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/tracks/import', async (req, res) => {
-        try {
-            const { filePaths } = req.body;
-            if (!filePaths || !Array.isArray(filePaths) || filePaths.length === 0) {
-                return res.status(400).json({ error: 'No file paths provided' });
-            }
-            // Offload analysis to worker thread in batch to avoid blocking main thread
-            const { Worker } = require('worker_threads');
-            const workerPath = path.join(__dirname, 'worker', 'analyzer.worker.js');
-            const db = getDb();
+app.post('/api/tracks/import', async (req, res) => {
+  try {
+    const { filePaths } = req.body;
+    console.debug('📥 /api/tracks/import received', Array.isArray(filePaths) ? filePaths.length : typeof filePaths, 'items');
 
-            // Filter non-existent files early
-            const existing = filePaths.filter(fp => fs.existsSync(fp));
-            if (existing.length === 0) return res.json({ success: true, imported: 0, total: filePaths.length });
+    if (!filePaths || !Array.isArray(filePaths) || filePaths.length === 0) {
+      return res.status(400).json({ error: 'No file paths provided' });
+    }
 
-            const worker = new Worker(workerPath);
+    const db = getDb();
+    // Filter only existing files
+    const existing = filePaths.filter(fp => fs.existsSync(fp));
+    console.debug(`📂 import: ${existing.length}/${filePaths.length} paths exist on disk`);
 
-            const results = [];
-            let completed = false;
+    if (existing.length === 0) {
+      return res.json({ success: true, imported: 0, total: filePaths.length });
+    }
 
-            const cleanup = () => {
-                try { worker.terminate(); } catch (e) {}
-            };
+    // Send immediate response to prevent frontend timeout,
+    // but we still need to process in background? No, better to process then respond.
+    // However analysis can take time, so we process in a non‑blocking way and respond when done.
+    // We'll use a simple concurrency-limited Promise.map.
 
-            worker.on('message', (msg) => {
-                if (!msg || !msg.type) return;
-                if (msg.type === 'batchProgress') {
-                    // optional: emit progress via websockets or logs
-                    // console.log('Import progress:', msg.data);
-                } else if (msg.type === 'batchComplete') {
-                    completed = true;
-                    for (const r of msg.data) {
-                        try {
-                            const analysis = r.analysis || {};
-                            db.addTrack({
-                                title: analysis.title || path.basename(r.filePath, path.extname(r.filePath)),
-                                artist: analysis.artist || '',
-                                filePath: r.filePath,
-                                duration: analysis.duration,
-                                bpm: analysis.bpm,
-                                energy: analysis.energy,
-                                loudness: analysis.loudness,
-                                genre: analysis.genre,
-                                genreConfidence: analysis.genreConfidence,
-                                album: analysis.album,
-                                coverImage: analysis.coverImage,
-                                lyrics: analysis.lyrics,
-                                sampleRate: analysis.sampleRate,
-                                bitrate: analysis.bitrate,
-                                codec: analysis.codec,
-                                featureVector: analysis.featureVector,
-                                rawFeatures: analysis.rawFeatures
-                            }, false);
-                            results.push(r.filePath);
-                        } catch (err) {
-                            console.error('Failed to save analysis result for', r.filePath, err);
-                        }
-                    }
-                    db.save();
-                    cleanup();
-                    res.json({ success: true, imported: results.length, total: filePaths.length });
-                } else if (msg.type === 'batchError') {
-                    console.warn('Worker batch error:', msg.data);
-                }
-            });
+    const results = [];
+    const CONCURRENCY = 3;
+    let index = 0;
 
-            worker.on('error', (err) => {
-                console.error('Analyzer worker error:', err);
-                cleanup();
-                if (!completed) res.status(500).json({ error: 'Analyzer worker failed' });
-            });
+    async function processOne(filePath) {
+      try {
+        console.debug(`🔍 Analyzing: ${path.basename(filePath)}`);
+        const analysis = await analyzeAudioFile(filePath);
+        const track = db.addTrack({
+          title: analysis.title || path.basename(filePath, path.extname(filePath)),
+          artist: analysis.artist || '',
+          filePath: filePath,
+          duration: analysis.duration,
+          bpm: analysis.bpm,
+          energy: analysis.energy,
+          loudness: analysis.loudness,
+          genre: analysis.genre,
+          genreConfidence: analysis.genreConfidence,
+          album: analysis.album,
+          coverImage: analysis.coverImage,
+          lyrics: analysis.lyrics,
+          sampleRate: analysis.sampleRate,
+          bitrate: analysis.bitrate,
+          codec: analysis.codec,
+          featureVector: analysis.featureVector,
+          rawFeatures: analysis.rawFeatures
+        }, false); // autoSave false, we'll save once at end
+        results.push(track);
+        console.debug(`✅ Imported: ${track.title}`);
+      } catch (err) {
+        console.error(`❌ Failed to import ${filePath}:`, err.message);
+      }
+    }
 
-            worker.postMessage({ type: 'analyzeBatch', data: { filePaths: existing } });
-        } catch (error) {
-            res.status(500).json({ error: error.message });
+    async function run() {
+      const workers = [];
+      for (let i = 0; i < existing.length; i++) {
+        const task = processOne(existing[i]);
+        workers.push(task);
+        if (workers.length >= CONCURRENCY || i === existing.length - 1) {
+          await Promise.all(workers);
+          workers.length = 0;
         }
+      }
+      db.save(); // persist all at once
+      res.json({ success: true, imported: results.length, total: filePaths.length });
+    }
+
+    run().catch(err => {
+      console.error('Import processing error:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: err.message });
+      }
     });
+
+  } catch (error) {
+    console.error('Import endpoint error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+});
+
+    // Helper: fallback direct analysis (synchronous but reliable)
+    async function directAnalyzeAndImport(filePaths, db, res, totalFiles) {
+    const results = [];
+    for (const filePath of filePaths) {
+        try {
+        // Use analyzeAudioFile from analyzer.js (already required at top)
+        const analysis = await analyzeAudioFile(filePath);
+        db.addTrack({
+            title: analysis.title || path.basename(filePath, path.extname(filePath)),
+            artist: analysis.artist || '',
+            filePath: filePath,
+            duration: analysis.duration,
+            bpm: analysis.bpm,
+            energy: analysis.energy,
+            loudness: analysis.loudness,
+            genre: analysis.genre,
+            genreConfidence: analysis.genreConfidence,
+            album: analysis.album,
+            coverImage: analysis.coverImage,
+            lyrics: analysis.lyrics,
+            sampleRate: analysis.sampleRate,
+            bitrate: analysis.bitrate,
+            codec: analysis.codec,
+            featureVector: analysis.featureVector,
+            rawFeatures: analysis.rawFeatures
+        }, false);
+        results.push(filePath);
+        } catch (err) {
+        console.error(`Failed to analyze ${filePath} directly:`, err);
+        }
+    }
+    db.save();
+    if (!res.headersSent) {
+        res.json({ success: true, imported: results.length, total: totalFiles });
+    }
+    }
 
     app.post('/api/tracks/download', async (req, res) => {
         try {
@@ -850,7 +895,28 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
             for (const imported of importedTracks) {
                 let existing = db.getAllTracks().find(t => t.filePath === imported.filePath);
                 if (!existing) {
-                    const analysis = await analyzeAudioFile(imported.filePath);
+                    let analysis;
+                    try {
+                        analysis = await analyzeAudioFile(imported.filePath);
+                    } catch (analysisErr) {
+                        console.warn('⚠️ Audio analysis failed for imported file, using fallback:', imported.filePath, analysisErr.message);
+                        analysis = {
+                            duration: 0,
+                            bpm: 120,
+                            energy: 0.5,
+                            loudness: -12,
+                            sampleRate: 44100,
+                            bitrate: 0,
+                            codec: path.extname(imported.filePath).replace('.', '') || 'unknown',
+                            genre: imported.genre || 'Imported',
+                            title: imported.title || path.basename(imported.filePath),
+                            artist: null,
+                            album: null,
+                            featureVector: null,
+                            rawFeatures: null,
+                            coverImage: null
+                        };
+                    }
                     existing = db.addTrack({
                         title: imported.title || analysis.title,
                         artist: analysis.artist,
@@ -930,7 +996,28 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
             for (const imported of importedTracks) {
                 let existing = db.getAllTracks().find(t => t.filePath === imported.filePath);
                 if (!existing) {
-                    const analysis = await analyzeAudioFile(imported.filePath);
+                    let analysis;
+                    try {
+                        analysis = await analyzeAudioFile(imported.filePath);
+                    } catch (analysisErr) {
+                        console.warn('⚠️ Audio analysis failed for imported file, using fallback:', imported.filePath, analysisErr.message);
+                        analysis = {
+                            duration: 0,
+                            bpm: 120,
+                            energy: 0.5,
+                            loudness: -12,
+                            sampleRate: 44100,
+                            bitrate: 0,
+                            codec: path.extname(imported.filePath).replace('.', '') || 'unknown',
+                            genre: imported.genre || 'Imported',
+                            title: imported.title || path.basename(imported.filePath),
+                            artist: null,
+                            album: null,
+                            featureVector: null,
+                            rawFeatures: null,
+                            coverImage: null
+                        };
+                    }
                     existing = db.addTrack({
                         title: imported.title || analysis.title,
                         artist: analysis.artist,
@@ -1085,17 +1172,25 @@ async function startServer(port, userDataPath) {
     });
         console.debug(`🔌 Plugin system initialized: ${pluginManager.listInstalled().length} plugins available`);
 
-        // Auto-activate any enabled plugins on startup (manual opt-in required via permissions)
+        // Auto-activate only critical plugins on startup to avoid blocking startup
         (async () => {
+            const criticalPlugins = [
+                // Add plugin IDs that must be active at startup (e.g., core UX integrations)
+                'korai/change-logs'
+            ];
+
             const installed = pluginManager.listInstalled();
             for (const p of installed) {
-                if (p.enabled) {
+                if (p.enabled && criticalPlugins.includes(p.id)) {
                     try {
                         await pluginHost.activatePlugin(p.id);
-                            console.debug(`🔁 Auto-activated plugin: ${p.id}`);
+                        console.debug(`🔁 Auto-activated critical plugin: ${p.id}`);
                     } catch (e) {
-                        console.warn(`Could not auto-activate plugin ${p.id}:`, e.message || e);
+                        console.warn(`Could not auto-activate critical plugin ${p.id}:`, e.message || e);
                     }
+                } else if (p.enabled) {
+                    // Defer non-critical plugin activation until requested by the UI or routes
+                    console.debug(`⏸️ Deferring plugin activation for: ${p.id}`);
                 }
             }
         })();

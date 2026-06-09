@@ -27,6 +27,10 @@ const getServerPort = () => {
     return ipcRenderer.invoke('get-server-port');
 };
 
+// Internal maps to allow removal of renderer listeners by token
+const _stateUpdatedHandlers = new Map();
+const _executeControlHandlers = new Map();
+
 // Expose safe APIs to renderer
 contextBridge.exposeInMainWorld('electronAPI', {
     // =========================================================================
@@ -41,6 +45,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // =========================================================================
     onFilesOpened: (callback) => {
         ipcRenderer.on('files-opened', (event, files) => callback(files));
+    },
+    // Receive folder scan results (array of file paths)
+    onFolderScanResults: (callback) => {
+        ipcRenderer.on('scan-results', (event, files) => callback(files));
     },
     
     // =========================================================================
@@ -80,8 +88,36 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // =========================================================================
     // STATE SYNCHRONIZATION
     // =========================================================================
-    onStateUpdated: (callback) => ipcRenderer.on('state-updated', (event, data) => callback(data)),
-    onExecuteControl: (callback) => ipcRenderer.on('execute-control', (event, command) => callback(command)),
+    // Register for 'state-updated' and return a token that can be used to remove the listener.
+    onStateUpdated: (callback) => {
+        const token = Math.random().toString(36).slice(2);
+        const wrapper = (event, data) => callback(data);
+        _stateUpdatedHandlers.set(token, wrapper);
+        ipcRenderer.on('state-updated', wrapper);
+        return token;
+    },
+    removeStateUpdatedListener: (token) => {
+        const wrapper = _stateUpdatedHandlers.get(token);
+        if (wrapper) {
+            ipcRenderer.removeListener('state-updated', wrapper);
+            _stateUpdatedHandlers.delete(token);
+        }
+    },
+    // Register for 'execute-control' (returns token) and allow removal
+    onExecuteControl: (callback) => {
+        const token = Math.random().toString(36).slice(2);
+        const wrapper = (event, command) => callback(command);
+        _executeControlHandlers.set(token, wrapper);
+        ipcRenderer.on('execute-control', wrapper);
+        return token;
+    },
+    removeExecuteControlListener: (token) => {
+        const wrapper = _executeControlHandlers.get(token);
+        if (wrapper) {
+            ipcRenderer.removeListener('execute-control', wrapper);
+            _executeControlHandlers.delete(token);
+        }
+    },
     
     // =========================================================================
     // EXTERNAL LINKS
@@ -96,6 +132,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
      */
     onAppVersion: (callback) => ipcRenderer.on('app-version', (event, data) => callback(data)),
     
+    onScanNoFilesFound: (callback) => {
+        ipcRenderer.on('scan-no-files-found', (event, folderPath) => callback(folderPath));
+    },
     /**
      * Listen for update status changes (update available or not)
      */

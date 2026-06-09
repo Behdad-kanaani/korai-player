@@ -141,8 +141,12 @@ function getDb() {
         },
         
         addTrack: (track, autoSave = true) => {
+            console.debug('📥 DB.addTrack called for', track.filePath);
             const existing = dbData.tracks.find(t => t.filePath === track.filePath);
-            if (existing) return existing;
+            if (existing) {
+                console.debug('ℹ️ DB.addTrack: already exists, returning existing track id', existing.id);
+                return existing;
+            }
 
             let coverPath = null;
             let coverFilename = null;
@@ -184,6 +188,7 @@ function getDb() {
             };
             
             dbData.tracks.push(newTrack);
+            console.debug('✅ DB.addTrack: new track added id=', newTrack.id, 'title=', newTrack.title);
             if (autoSave) {
                 saveDatabase();
             }

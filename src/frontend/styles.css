@@ -212,8 +212,8 @@ body.theme-liquid-glass .fullscreen-immersive-player {
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.01) 50%, rgba(13, 14, 25, 0.70) 51%, rgba(10, 11, 20, 0.80) 100%) !important;
     border: 1px solid rgba(255, 255, 255, 0.15) !important;
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4) !important;
-    backdrop-filter: blur(18px) saturate(150%) !important; /* Reduced blur */
-    -webkit-backdrop-filter: blur(18px) saturate(150%) !important;
+    backdrop-filter: blur(8px) saturate(120%) !important; /* Reduced intensity to improve performance */
+    -webkit-backdrop-filter: blur(8px) saturate(120%) !important;
     will-change: transform; /* Performance hint */
     transition: transform 0.2s ease, opacity 0.2s ease;
 }

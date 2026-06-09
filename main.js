@@ -28,6 +28,11 @@ try {
     app.commandLine.appendSwitch('enable-gpu-rasterization');
     app.commandLine.appendSwitch('enable-zero-copy');
     app.commandLine.appendSwitch('ignore-gpu-blocklist');
+    // Additional GPU / renderer flags to improve rendering performance where available
+    app.commandLine.appendSwitch('enable-features', 'Vulkan,UseSkiaRenderer');
+    app.commandLine.appendSwitch('enable-accelerated-video-decode');
+    // Increase V8 memory cap for large libraries / analysis tasks
+    app.commandLine.appendSwitch('max_old_space_size', '4096');
 } catch (e) {
     // app may not be ready yet in some contexts; ignore if not available
 }
@@ -889,35 +894,57 @@ ipcMain.handle('select-audio-files', async () => {
 async function scanDirAsync(dir, audioExtensions, files) {
     try {
         const list = await fs.promises.readdir(dir);
-        await Promise.all(list.map(async (file) => {
+        
+        for (const file of list) {
             const fullPath = path.join(dir, file);
-            const stat = await fs.promises.stat(fullPath);
+            let stat;
+            try {
+                stat = await fs.promises.stat(fullPath);
+            } catch (err) {
+                console.warn(`Cannot access: ${fullPath}`, err.message);
+                continue; // Skip unreadable files
+            }
+            
             if (stat.isDirectory()) {
                 await scanDirAsync(fullPath, audioExtensions, files);
             } else {
                 const ext = path.extname(file).toLowerCase();
                 if (audioExtensions.includes(ext)) {
                     files.push(fullPath);
+                    console.debug(`Found audio file: ${fullPath}`);
                 }
             }
-        }));
+        }
     } catch (err) {
-        console.error('Error scanning directory asynchronously:', err);
+        console.error(`Error scanning directory ${dir}:`, err.message);
+        // Don't re-throw - continue with files found so far
     }
 }
 
 ipcMain.handle('select-audio-folder', async () => {
     if (!mainWindow) return [];
+    
     const result = await dialog.showOpenDialog(mainWindow, {
         properties: ['openDirectory']
     });
+    
     if (result.canceled || result.filePaths.length === 0) return [];
     
     const folderPath = result.filePaths[0];
     const audioExtensions = ['.mp3', '.wav', '.ogg', '.m4a', '.flac'];
     const files = [];
     
+    console.debug(`Scanning folder: ${folderPath}`);
+    
     await scanDirAsync(folderPath, audioExtensions, files);
+    
+    console.debug(`Found ${files.length} audio files in ${folderPath}`);
+    
+    // Show warning if no files found
+    if (files.length === 0 && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('scan-no-files-found', folderPath);
+    }
+    
     return files;
 });
 

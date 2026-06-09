@@ -10,10 +10,27 @@
 // #                                                                              #
 // ################################################################################
 
-const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, shell, screen, powerMonitor, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const findFreePort = require('find-free-port');
+
+// Optional: electron-optimize helpers (safe require)
+let cleanupTempFiles, clearCacheOnUpdate, validateWindowBounds, createStartupTimer, managePowerState;
+try {
+    ({ cleanupTempFiles, clearCacheOnUpdate, validateWindowBounds, createStartupTimer, managePowerState } = require('@yawlabs/electron-optimize'));
+} catch (e) {
+    console.warn('⚠️ @yawlabs/electron-optimize not installed; run `npm install @yawlabs/electron-optimize` to enable additional optimizations');
+}
+
+// Performance: prefer GPU rasterization and relax GPU blocklist where safe
+try {
+    app.commandLine.appendSwitch('enable-gpu-rasterization');
+    app.commandLine.appendSwitch('enable-zero-copy');
+    app.commandLine.appendSwitch('ignore-gpu-blocklist');
+} catch (e) {
+    // app may not be ready yet in some contexts; ignore if not available
+}
 
 // =============================================================================
 // AUTO-UPDATER
@@ -38,7 +55,7 @@ process.on('uncaughtException', (error) => {
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
-    console.log('Another instance is already running. Exiting...');
+    console.debug('Another instance is already running. Exiting...');
     app.quit();
     process.exit(0);
 }
@@ -55,6 +72,9 @@ let isQuitting = false;
 let pendingFiles = [];
 let lastTrackState = null;
 let healthCheckInterval = null;
+let startupTimer = null;
+let updatePollingTimer = null;
+let powerCleanup = null;
 
 const { startServer } = require('./src/backend/server');
 
@@ -76,7 +96,7 @@ async function processPendingFiles() {
         
         setTimeout(async () => {
             try {
-                console.log('📁 Processing pending files:', files);
+                console.debug('📁 Processing pending files:', files);
                 mainWindow.webContents.send('files-opened', files);
             } catch (err) {
                 console.error('Error processing opened files:', err);
@@ -97,14 +117,14 @@ function handleFileOpen() {
     });
     
     if (files.length > 0) {
-        console.log('📁 Files opened via command line:', files);
+        console.debug('📁 Files opened via command line:', files);
         pendingFiles = files;
     }
 }
 
 app.on('open-file', (event, filePath) => {
     event.preventDefault();
-    console.log('📁 File opened on macOS:', filePath);
+    console.debug('📁 File opened on macOS:', filePath);
     pendingFiles.push(filePath);
     if (mainWindow && !mainWindow.isDestroyed()) {
         processPendingFiles();
@@ -112,7 +132,7 @@ app.on('open-file', (event, filePath) => {
 });
 
 app.on('second-instance', (event, commandLine, workingDirectory) => {
-    console.log('🔄 Second instance detected, focusing main window...');
+    console.debug('🔄 Second instance detected, focusing main window...');
     
     if (mainWindow) {
         if (mainWindow.isMinimized()) mainWindow.restore();
@@ -130,7 +150,7 @@ app.on('second-instance', (event, commandLine, workingDirectory) => {
         });
         
         if (files.length > 0) {
-            console.log('📁 Files from second instance:', files);
+            console.debug('📁 Files from second instance:', files);
             pendingFiles = files;
             processPendingFiles();
         }
@@ -155,12 +175,12 @@ function getTrayIconPath() {
     
     for (const p of possiblePaths) {
         if (fs.existsSync(p)) {
-            console.log('✅ Tray icon found at:', p);
+            console.debug('✅ Tray icon found at:', p);
             return p;
         }
     }
     
-    console.log('⚠️ No tray icon found');
+    console.warn('⚠️ No tray icon found');
     return null;
 }
 
@@ -179,7 +199,7 @@ async function loadTrayLanguage() {
             }
         }
     } catch (err) {
-        console.log('Could not load language setting:', err);
+        console.error('Could not load language setting:', err);
     }
 }
 
@@ -195,7 +215,7 @@ async function saveTrayLanguage(lang) {
         }
         currentLanguage = lang;
     } catch (err) {
-        console.log('Could not save language setting:', err);
+        console.error('Could not save language setting:', err);
     }
 }
 
@@ -386,7 +406,7 @@ async function createSystemTray() {
         const img = nativeImage.createFromPath(iconPath);
         trayIcon = img.resize({ width: 16, height: 16 });
     } else {
-        console.log('⚠️ No tray icon found, creating fallback');
+    console.warn('⚠️ No tray icon found, creating fallback');
         const size = 16;
         const svg = Buffer.from(`
             <svg width="${size}" height="${size}" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
@@ -426,7 +446,7 @@ async function createSystemTray() {
         });
         
     } catch (e) {
-        console.log('⚠️ Could not initialize tray icon:', e.message);
+        console.warn('⚠️ Could not initialize tray icon:', e.message);
     }
 }
 
@@ -527,16 +547,17 @@ async function seedBundledPlugins(appPath, userDataPath) {
 
 async function createWindow() {
     try {
-        console.log('🚀 Creating Electron window...');
+        console.debug('🚀 Creating Electron window...');
+        if (startupTimer && typeof startupTimer.mark === 'function') startupTimer.mark('creating-window');
         
         const [port] = await findFreePort(3000, 3100);
         serverPort = port;
-        console.log(`✅ Port found: ${serverPort}`);
+        console.debug(`✅ Port found: ${serverPort}`);
 
         const userDataPath = app.getPath('userData');
         await seedBundledPlugins(app.getAppPath(), userDataPath);
         httpServer = await startServer(serverPort, userDataPath);
-        console.log('✅ HTTP Server started');
+        console.debug('✅ HTTP Server started');
         
         // Start health check after server is running
         startHealthCheck();
@@ -545,21 +566,41 @@ async function createWindow() {
             return serverPort;
         });
 
-        mainWindow = new BrowserWindow({
+        // Base window options
+        const windowOptions = {
             width: 1300,
             height: 850,
             minWidth: 1000,
             minHeight: 700,
             frame: false,
-            show: true,
+            show: false,
             titleBarStyle: 'default',
             webPreferences: {
                 nodeIntegration: false,
                 contextIsolation: true,
                 preload: path.join(__dirname, 'preload.js'),
-                zoomFactor: 0.4
+                zoomFactor: 0.4,
+                // Allow Electron to throttle when backgrounded to save resources
+                backgroundThrottling: true,
+                // Enable V8 bytecode caching for faster subsequent launches
+                v8CacheOptions: 'code',
+                // Minor renderer hints
+                enableBlinkFeatures: 'OverlayScrollbars',
+                enablePreferredSizeMode: true
             }
-        });
+        };
+
+        // Platform-specific visual improvements (safe defaults)
+        if (process.platform === 'darwin') {
+            windowOptions.transparent = true;
+            windowOptions.vibrancy = 'under-window';
+        } else if (process.platform === 'win32') {
+            // Windows 11 background material (falls back harmlessly on older Windows)
+            windowOptions.transparent = true;
+            windowOptions.backgroundMaterial = 'mica';
+        }
+
+        mainWindow = new BrowserWindow(windowOptions);
 
         const setZoom = () => {
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -618,6 +659,14 @@ async function createWindow() {
             }
         });
 
+        // Show window only when ready to avoid multiple repaints
+        mainWindow.once('ready-to-show', () => {
+            try {
+                if (startupTimer && typeof startupTimer.flush === 'function') startupTimer.flush();
+                if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
+            } catch(e){}
+        });
+
         mainWindow.on('close', (event) => {
             if (!isQuitting) {
                 event.preventDefault();
@@ -635,7 +684,7 @@ async function createWindow() {
         try {
             startUpdateChecker(24);
         } catch (err) {
-            console.log('Updater not available:', err.message);
+            console.warn('Updater not available:', err.message);
         }
 
     } catch (err) {
@@ -694,21 +743,24 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
         width: 380,
         height: 68,
         frame: false,
-        transparent: true,
-        backgroundColor: '#00000000',
+        transparent: false,
+        backgroundColor: '#0a0a0a',
         roundedCorners: true,
-        hasShadow: true,
+        // Use no native shadow so the rounded inner card shadow is visible
+        hasShadow: false,
         alwaysOnTop: true,
         resizable: false,
-        skipTaskbar: false,
+        skipTaskbar: true,
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
             preload: path.join(__dirname, 'preload.js'),
+            backgroundThrottling: true,
+            v8CacheOptions: 'code'
         }
     });
 
-    miniPlayerWindow.setBackgroundColor('#00000000');
+    miniPlayerWindow.setBackgroundColor('#0a0a0a');
     
     if (process.platform === 'win32') {
         miniPlayerWindow.setVisibleOnAllWorkspaces(true);
@@ -742,18 +794,29 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
                 height: 100%;
                 overflow: hidden;
                 border-radius: 32px;
-                background: #0f2b1d;
+                background: #0a0a0a !important;
             }
             body { -webkit-app-region: drag; }
             button { -webkit-app-region: no-drag; }
+            /* Remove green decorative elements and use a neutral dark background for mini window */
+            .hero-ambient-glow, .hero-particle, .hero-particle-field { display: none !important; }
             .miniplayer-floating-card {
                 width: 100%;
                 height: 100%;
                 border-radius: 32px;
                 overflow: hidden;
-                background: linear-gradient(135deg, #0f2b1d 0%, #0a1c24 100%);
+                background: rgba(6,8,10,0.88) !important;
+                background-image: none !important;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.6), 0 2px 10px rgba(0,0,0,0.35) inset;
+                border: 1px solid rgba(255,255,255,0.04);
             }
+            /* Ensure any accent glow inside the mini window is muted */
+            .cover-glow-effect, .mini-timeline-progress, .mini-timeline-fill { box-shadow: none !important; background: rgba(255,255,255,0.04) !important; }
         `);
+    });
+
+    miniPlayerWindow.once('ready-to-show', ()=>{
+        try{ if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) miniPlayerWindow.show(); }catch(e){}
     });
 
     miniPlayerWindow.on('closed', () => {
@@ -1099,7 +1162,69 @@ ipcMain.handle('show-open-dialog', async (event, options) => {
 
 handleFileOpen();
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+    try {
+        // Startup telemetry
+        if (createStartupTimer) {
+            try { startupTimer = createStartupTimer(); startupTimer.mark && startupTimer.mark('main-process-init'); } catch(e){}
+        }
+
+        // Power state management (safe guard if function available)
+        if (managePowerState) {
+            try {
+                powerCleanup = managePowerState(powerMonitor, {
+                    resumeDelayMs: 4000,
+                    onSuspend() {
+                        console.debug('🔄 System suspend detected - pausing timers');
+                        if (updatePollingTimer) {
+                            clearInterval(updatePollingTimer);
+                            updatePollingTimer = null;
+                        }
+                    },
+                    onResume() {
+                        console.debug('⚡ System resume detected - restarting timers after network stabilizes');
+                        if (!updatePollingTimer) {
+                            updatePollingTimer = setInterval(() => {
+                                // user-specific periodic checks could be placed here
+                            }, 60000);
+                        }
+                    }
+                });
+            } catch (e) { console.warn('managePowerState failed:', e && e.message); }
+        }
+
+        // Cleanup Chromium temp files (if helper present)
+        if (cleanupTempFiles) {
+            try {
+                const userDataPath = app.getPath('userData');
+                const removedCount = cleanupTempFiles(userDataPath, {
+                    subdirs: ['Network', 'Session Storage'],
+                    extensions: ['.tmp']
+                });
+                if (removedCount > 0) console.debug(`🧹 Removed ${removedCount} stale temp files`);
+            } catch (e) { console.warn('cleanupTempFiles failed:', e && e.message); }
+        }
+
+        // Smart cache clearing on version change
+        if (clearCacheOnUpdate) {
+            try {
+                const cacheResult = await clearCacheOnUpdate(
+                    app.getPath('userData'),
+                    app.getVersion(),
+                    session && session.defaultSession,
+                    { clearCacheStorage: true, clearHttpCache: true, versionFilename: '.last-version' }
+                );
+                if (cacheResult && cacheResult.versionChanged) {
+                    console.debug(`📈 Version changed ${cacheResult.previousVersion} -> ${cacheResult.currentVersion}, cleared browser cache.`);
+                }
+            } catch (e) {
+                console.warn('clearCacheOnUpdate failed:', e && e.message);
+            }
+        }
+    } catch (err) {
+        console.warn('Startup optimizations failed:', err && err.message);
+    }
+
     createWindow();
 });
 
@@ -1111,6 +1236,7 @@ app.on('activate', () => {
 
 app.on('will-quit', () => {
     stopHealthCheck();
+    try { if (powerCleanup) powerCleanup(); } catch (e) {}
 });
 
 app.on('window-all-closed', () => {
@@ -1118,7 +1244,7 @@ app.on('window-all-closed', () => {
         stopHealthCheck();
         if (httpServer) {
             httpServer.close(() => {
-                console.log('🛑 Server closed');
+                console.debug('🛑 Server closed');
             });
         }
         app.quit();

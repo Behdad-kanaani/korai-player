@@ -40,10 +40,24 @@ function setupPluginRoutes(app, pluginManager, pluginHost) {
       const running = pluginHost ? pluginHost.getRunning() : [];
       const running_ids = new Set(running.map(p => p.id));
 
-      const result = plugins.map(p => ({
-        ...p,
-        running: running_ids.has(p.id)
-      }));
+      const result = plugins.map(p => {
+        const entry = { ...p, running: running_ids.has(p.id) };
+        try {
+          if (entry.path && fs.existsSync(entry.path)) {
+            const cssPath = path.join(entry.path, 'ui.css');
+            const jsPath = path.join(entry.path, 'ui.js');
+            entry.assets = {
+              uiCss: fs.existsSync(cssPath),
+              uiJs: fs.existsSync(jsPath)
+            };
+          } else {
+            entry.assets = { uiCss: false, uiJs: false };
+          }
+        } catch (e) {
+          entry.assets = { uiCss: false, uiJs: false };
+        }
+        return entry;
+      });
 
       // Development/packaging fallback: also include plugins placed in the project's
       // workspace `plugins/` directory (useful when running from source). Do not

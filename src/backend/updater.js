@@ -44,13 +44,13 @@ function getCurrentVersion() {
                 packagePath = path.join(process.cwd(), 'package.json');
             }
         } catch (err) {
-            console.log('Error resolving package.json path:', err.message);
+            console.error('Error resolving package.json path:', err.message);
         }
         
         if (fs.existsSync(packagePath)) {
             const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
             CURRENT_VERSION = pkg.version || null;
-            console.log(`📦 Current version from local package.json: ${CURRENT_VERSION}`);
+            console.debug(`📦 Current version from local package.json: ${CURRENT_VERSION}`);
         } else {
             console.error('❌ Could not find local package.json anywhere!');
             CURRENT_VERSION = null;
@@ -76,7 +76,7 @@ async function fetchLatestVersion(silent = true) {
     }
     
     return new Promise((resolve) => {
-        console.log(`🔍 Checking latest version from: ${GITHUB_PACKAGE_JSON_URL}`);
+        console.debug(`🔍 Checking latest version from: ${GITHUB_PACKAGE_JSON_URL}`);
         
         const options = {
             method: 'GET',
@@ -96,7 +96,7 @@ async function fetchLatestVersion(silent = true) {
                     const pkg = JSON.parse(data);
                     
                     if (!pkg.version) {
-                        console.log('No version field found in remote package.json');
+                        console.warn('No version field found in remote package.json');
                         const result = { hasUpdate: false, version: null, url: null, currentVersion: currentVersion };
                         latestVersionCache = result;
                         updateCheckListeners.forEach(listener => listener(result));
@@ -112,8 +112,8 @@ async function fetchLatestVersion(silent = true) {
                     // Construct download URL based on latest version
                     const downloadUrl = `https://github.com/Behdad-kanaani/korai-player/releases/tag/v${latestVersion}`;
                     
-                    console.log(`📡 Latest version on GitHub: ${latestVersion}`);
-                    console.log(`📊 Has update: ${hasUpdate} (current: ${currentVersion}, latest: ${latestVersion})`);
+                    console.debug(`📡 Latest version on GitHub: ${latestVersion}`);
+                    console.debug(`📊 Has update: ${hasUpdate} (current: ${currentVersion}, latest: ${latestVersion})`);
                     
                     const result = {
                         hasUpdate: hasUpdate,
@@ -204,7 +204,7 @@ function checkForUpdates(silent = false) {
             const result = await fetchLatestVersion(silent);
             
             if (result.hasUpdate && result.version) {
-                console.log(`✨ Update available: ${currentVersion} -> ${result.version}`);
+                console.info(`✨ Update available: ${currentVersion} -> ${result.version}`);
                 
                 if (!silent) {
                     const dialogResult = await dialog.showMessageBox({
@@ -223,7 +223,7 @@ function checkForUpdates(silent = false) {
                 }
                 resolve(result);
             } else if (result.error) {
-                console.log(`⚠️ Update check error: ${result.error}`);
+                console.warn(`⚠️ Update check error: ${result.error}`);
                 if (!silent) {
                     dialog.showMessageBox({
                         type: 'warning',
@@ -234,7 +234,7 @@ function checkForUpdates(silent = false) {
                 }
                 resolve(result);
             } else {
-                console.log(`✅ No updates available. Current: ${currentVersion}`);
+                console.debug(`✅ No updates available. Current: ${currentVersion}`);
                 if (!silent) {
                     dialog.showMessageBox({
                         type: 'info',
@@ -271,18 +271,18 @@ function startUpdateChecker(intervalHours = 24) {
     // Check on startup (silent - no user dialog)
     setTimeout(() => {
         fetchLatestVersion(true).catch(err => {
-            console.log('Startup update check failed:', err.message);
+            console.warn('Startup update check failed:', err.message);
         });
     }, 5000);
     
     // Periodic checks
     updateCheckInterval = setInterval(() => {
         fetchLatestVersion(true).catch(err => {
-            console.log('Periodic update check failed:', err.message);
+            console.warn('Periodic update check failed:', err.message);
         });
     }, intervalHours * 60 * 60 * 1000);
-    
-    console.log(`✅ Update checker started (every ${intervalHours} hours) - checking raw package.json from GitHub`);
+
+    console.debug(`✅ Update checker started (every ${intervalHours} hours) - checking raw package.json from GitHub`);
 }
 
 /**
@@ -292,7 +292,7 @@ function stopUpdateChecker() {
     if (updateCheckInterval) {
         clearInterval(updateCheckInterval);
         updateCheckInterval = null;
-        console.log('🛑 Update checker stopped');
+        console.debug('🛑 Update checker stopped');
     }
 }
 

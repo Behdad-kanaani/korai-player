@@ -133,6 +133,32 @@ function setupRoutes() {
         res.json({ status: 'ok', timestamp: Date.now() });
     });
 
+    // Lightweight telemetry ingestion for frontend performance metrics
+    app.post('/api/telemetry/perf', express.json(), (req, res) => {
+        try {
+            if (!serverUserDataPath) return res.status(500).json({ error: 'Server not initialized' });
+            const payload = req.body && (req.body.metrics || req.body);
+            if (!payload) return res.status(400).json({ error: 'No metrics provided' });
+
+            const telemetryDir = path.join(serverUserDataPath, 'telemetry');
+            if (!fs.existsSync(telemetryDir)) fs.mkdirSync(telemetryDir, { recursive: true });
+            const outPath = path.join(telemetryDir, 'perf.jsonl');
+
+            const writeEntries = Array.isArray(payload) ? payload : [payload];
+            const lines = writeEntries.map(e => JSON.stringify(Object.assign({ receivedAt: Date.now() }, e))).join('\n') + '\n';
+            fs.appendFile(outPath, lines, (err) => {
+                if (err) {
+                    console.error('Failed to write telemetry:', err);
+                    return res.status(500).json({ error: 'Failed to persist telemetry' });
+                }
+                res.json({ success: true });
+            });
+        } catch (error) {
+            console.error('Telemetry endpoint error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
     app.get('/api/tracks', (req, res) => {
         try {
             const db = getDb();
@@ -143,6 +169,21 @@ function setupRoutes() {
                 coverUrl: track.hasCover ? `/api/tracks/${track.id}/cover` : null
             }));
             res.json(tracks);
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Batch liked-status endpoint to avoid N+1 requests from clients
+    app.get('/api/tracks/liked-status', (req, res) => {
+        try {
+            const db = getDb();
+            const likedMap = {};
+            const all = db.getAllTracks();
+            all.forEach(t => {
+                if (t.isLiked) likedMap[t.id] = true;
+            });
+            res.json(likedMap);
         } catch (error) {
             res.status(500).json({ error: error.message });
         }
@@ -225,43 +266,73 @@ function setupRoutes() {
             if (!filePaths || !Array.isArray(filePaths) || filePaths.length === 0) {
                 return res.status(400).json({ error: 'No file paths provided' });
             }
-            
+            // Offload analysis to worker thread in batch to avoid blocking main thread
+            const { Worker } = require('worker_threads');
+            const workerPath = path.join(__dirname, 'worker', 'analyzer.worker.js');
             const db = getDb();
-            let imported = 0;
-            
-            for (const filePath of filePaths) {
-                try {
-                    if (!fs.existsSync(filePath)) continue;
-                    
-                    const analysis = await analyzeAudioFile(filePath);
-                    
-                    db.addTrack({
-                        title: analysis.title || path.basename(filePath, path.extname(filePath)),
-                        artist: analysis.artist || '',
-                        filePath: filePath,
-                        duration: analysis.duration,
-                        bpm: analysis.bpm,
-                        energy: analysis.energy,
-                        loudness: analysis.loudness,
-                        genre: analysis.genre,
-                        genreConfidence: analysis.genreConfidence,
-                        album: analysis.album,
-                        coverImage: analysis.coverImage,
-                        lyrics: analysis.lyrics,
-                        sampleRate: analysis.sampleRate,
-                        bitrate: analysis.bitrate,
-                        codec: analysis.codec,
-                        featureVector: analysis.featureVector,
-                        rawFeatures: analysis.rawFeatures
-                    }, false);
-                    imported++;
-                } catch (err) {
-                    console.error(`Failed to analyze: ${filePath}`, err);
+
+            // Filter non-existent files early
+            const existing = filePaths.filter(fp => fs.existsSync(fp));
+            if (existing.length === 0) return res.json({ success: true, imported: 0, total: filePaths.length });
+
+            const worker = new Worker(workerPath);
+
+            const results = [];
+            let completed = false;
+
+            const cleanup = () => {
+                try { worker.terminate(); } catch (e) {}
+            };
+
+            worker.on('message', (msg) => {
+                if (!msg || !msg.type) return;
+                if (msg.type === 'batchProgress') {
+                    // optional: emit progress via websockets or logs
+                    // console.log('Import progress:', msg.data);
+                } else if (msg.type === 'batchComplete') {
+                    completed = true;
+                    for (const r of msg.data) {
+                        try {
+                            const analysis = r.analysis || {};
+                            db.addTrack({
+                                title: analysis.title || path.basename(r.filePath, path.extname(r.filePath)),
+                                artist: analysis.artist || '',
+                                filePath: r.filePath,
+                                duration: analysis.duration,
+                                bpm: analysis.bpm,
+                                energy: analysis.energy,
+                                loudness: analysis.loudness,
+                                genre: analysis.genre,
+                                genreConfidence: analysis.genreConfidence,
+                                album: analysis.album,
+                                coverImage: analysis.coverImage,
+                                lyrics: analysis.lyrics,
+                                sampleRate: analysis.sampleRate,
+                                bitrate: analysis.bitrate,
+                                codec: analysis.codec,
+                                featureVector: analysis.featureVector,
+                                rawFeatures: analysis.rawFeatures
+                            }, false);
+                            results.push(r.filePath);
+                        } catch (err) {
+                            console.error('Failed to save analysis result for', r.filePath, err);
+                        }
+                    }
+                    db.save();
+                    cleanup();
+                    res.json({ success: true, imported: results.length, total: filePaths.length });
+                } else if (msg.type === 'batchError') {
+                    console.warn('Worker batch error:', msg.data);
                 }
-            }
-            
-            db.save();
-            res.json({ success: true, imported, total: filePaths.length });
+            });
+
+            worker.on('error', (err) => {
+                console.error('Analyzer worker error:', err);
+                cleanup();
+                if (!completed) res.status(500).json({ error: 'Analyzer worker failed' });
+            });
+
+            worker.postMessage({ type: 'analyzeBatch', data: { filePaths: existing } });
         } catch (error) {
             res.status(500).json({ error: error.message });
         }
@@ -282,23 +353,42 @@ function setupRoutes() {
             const tempFilePath = path.join(downloadsDir, tempFileName);
             
             await downloadFile(url, tempFilePath);
-            const analysis = await analyzeAudioFile(tempFilePath);
-            
+
+            // Use worker for single-file analysis to avoid blocking
+            const { Worker } = require('worker_threads');
+            const workerPath = path.join(__dirname, 'worker', 'analyzer.worker.js');
+            const worker = new Worker(workerPath);
+
+            const analysisResult = await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error('Worker timeout')), 60000);
+                worker.on('message', (msg) => {
+                    if (msg && msg.type === 'result' && msg.data && msg.data.analysis) {
+                        clearTimeout(timeout);
+                        resolve(msg.data.analysis);
+                    } else if (msg && msg.type === 'error') {
+                        clearTimeout(timeout);
+                        reject(new Error(msg.data && msg.data.error ? msg.data.error : 'Worker error'));
+                    }
+                });
+                worker.on('error', (err) => { clearTimeout(timeout); reject(err); });
+                worker.postMessage({ type: 'analyze', data: { filePath: tempFilePath, fileIndex: 0, totalFiles: 1 } });
+            }).finally(() => { try { worker.terminate(); } catch {} });
+
             const db = getDb();
             const newTrack = db.addTrack({
-                title: analysis.title || path.basename(tempFileName, '.mp3'),
-                artist: analysis.artist || '',
+                title: analysisResult.title || path.basename(tempFileName, '.mp3'),
+                artist: analysisResult.artist || '',
                 filePath: tempFilePath,
-                duration: analysis.duration,
-                bpm: analysis.bpm,
-                energy: analysis.energy,
-                loudness: analysis.loudness,
-                genre: analysis.genre,
-                album: analysis.album,
-                coverImage: analysis.coverImage,
-                featureVector: analysis.featureVector
+                duration: analysisResult.duration,
+                bpm: analysisResult.bpm,
+                energy: analysisResult.energy,
+                loudness: analysisResult.loudness,
+                genre: analysisResult.genre,
+                album: analysisResult.album,
+                coverImage: analysisResult.coverImage,
+                featureVector: analysisResult.featureVector
             });
-            
+
             res.json({ success: true, track: newTrack });
         } catch (error) {
             console.error('Download error:', error);
@@ -442,7 +532,7 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
         const outputFileName = `${baseName}_vocals_${Date.now()}.wav`;
         const outputFilePath = path.join(extractedDir, outputFileName);
 
-        console.log(`🎤 Extracting vocals from: ${track.filePath}`);
+        console.debug(`🎤 Extracting vocals from: ${track.filePath}`);
         await AudioSeparator.extractVocal(track.filePath, outputFilePath);
 
         // تحلیل فایل خروجی با fallback در صورت خطا
@@ -498,7 +588,7 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
             rawFeatures: analysis.rawFeatures
         });
 
-        console.log(`✅ Extracted vocal track added: ${newTrack.title} (ID: ${newTrack.id})`);
+        console.debug(`✅ Extracted vocal track added: ${newTrack.title} (ID: ${newTrack.id})`);
         res.json({ success: true, track: newTrack });
     } catch (error) {
         console.error('Vocal extraction error:', error);
@@ -976,7 +1066,7 @@ async function startServer(port, userDataPath) {
     initDatabase(userDataPath);
     
     userHistory = loadUserHistory(userDataPath);
-    console.log(`🧠 AI user history loaded: ${Object.keys(userHistory).length} tracks with interactions`);
+        console.debug(`🧠 AI user history loaded: ${Object.keys(userHistory).length} tracks with interactions`);
     
     // Initialize Plugin System
     const pluginManager = new PluginManager({
@@ -993,7 +1083,7 @@ async function startServer(port, userDataPath) {
         performanceMonitor: pluginPerf,
         hotReload: false
     });
-    console.log(`🔌 Plugin system initialized: ${pluginManager.listInstalled().length} plugins available`);
+        console.debug(`🔌 Plugin system initialized: ${pluginManager.listInstalled().length} plugins available`);
 
         // Auto-activate any enabled plugins on startup (manual opt-in required via permissions)
         (async () => {
@@ -1002,7 +1092,7 @@ async function startServer(port, userDataPath) {
                 if (p.enabled) {
                     try {
                         await pluginHost.activatePlugin(p.id);
-                        console.log(`🔁 Auto-activated plugin: ${p.id}`);
+                            console.debug(`🔁 Auto-activated plugin: ${p.id}`);
                     } catch (e) {
                         console.warn(`Could not auto-activate plugin ${p.id}:`, e.message || e);
                     }
@@ -1019,9 +1109,9 @@ async function startServer(port, userDataPath) {
     
     return new Promise((resolve) => {
         const server = app.listen(port, '127.0.0.1', () => {
-            console.log(`🚀 Server on port http://127.0.0.1:${port}`);
-            console.log(`🤖 AI recommendation engine active`);
-            console.log(`🔌 Plugin routes ready at /api/plugins`);
+                console.debug(`🚀 Server on port http://127.0.0.1:${port}`);
+                console.debug(`🤖 AI recommendation engine active`);
+                console.debug(`🔌 Plugin routes ready at /api/plugins`);
             resolve(server);
         });
     });

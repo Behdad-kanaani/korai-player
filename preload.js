@@ -9,16 +9,16 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-console.log('🔌 Preload script starting...');
+console.debug('🔌 Preload script starting...');
 
 // Log server port when received
 ipcRenderer.on('server-port', (event, port) => {
-    console.log('📡 Preload received port:', port);
+    console.debug('📡 Preload received port:', port);
 });
 
 // Forward global shortcuts
 ipcRenderer.on('global-shortcut', (event, command) => {
-    console.log('🎹 Global shortcut received:', command);
+    console.debug('🎹 Global shortcut received:', command);
     window.dispatchEvent(new CustomEvent('global-shortcut', { detail: command }));
 });
 
@@ -158,7 +158,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
 });
 
-console.log('✅ Preload script loaded');
+console.debug('✅ Preload script loaded');
 
 // ---- Plugin UI Bridge ----
 // Expose a minimal, secure API for renderer to create sandboxed plugin iframes

@@ -71,14 +71,69 @@
         });
     }
 
+    /* Ensure common card elements get a unified class for styling */
+    function applyMusicCardClass(){
+        try{
+            const selectors = ['.library-card', '.album-card', '.featured-card', '.spotify-music-card', '.ai-suggestion-card', '.recent-item-premium', '.library-minimal .library-card'];
+            selectors.forEach(sel => {
+                document.querySelectorAll(sel).forEach(el => el.classList.add('music-card'));
+            });
+        }catch(e){ /* silent */ }
+    }
+
     document.addEventListener('DOMContentLoaded', ()=>{
         try{
             staggerReveal();
             initMoodChips();
             initPlayOverlays();
+            applyMusicCardClass();
             initTilt();
+            observeLibrarySection();
+            // remove any previously injected toggles (user requested removal)
+            document.querySelectorAll('.library-view-toggle').forEach(el => el.remove());
         }catch(err){
             console.warn('homeEnhancements init failed', err);
         }
     });
+
+    /* ------------------------------------------------------------------
+       Library enhancements: inject toggle and render dreamy cards
+       ------------------------------------------------------------------ */
+    function createLibraryToggle(headerPanel){
+        // intentionally left empty — toggle removed per user request
+        return;
+    }
+
+    // Delegate to the optimized renderer when available
+    function renderLibraryCards(){
+        if (typeof window.renderLibraryCards === 'function') return window.renderLibraryCards();
+        // fallback: minimal rendering to avoid breaking
+        const container = document.getElementById('dynamicSectionContainer');
+        if (!container || !window.tracks) return;
+        container.innerHTML = '<div class="library-cards-grid">' + (window.tracks.slice(0,20).map(t=>`<div class="library-card">${escapeHtml(t.title||'Untitled')}</div>`).join('') ) + '</div>';
+    }
+
+    function observeLibrarySection(){
+        const root = document.getElementById('dynamicSectionContainer');
+        if (!root) return;
+        const mo = new MutationObserver((mutations)=>{
+            for (const m of mutations) {
+                if (m.type === 'childList' && m.addedNodes.length) {
+                    // check for library header panel
+                    const header = root.querySelector('.library-header-panel');
+                    if (header) createLibraryToggle(header);
+                    // apply dreamy class to wrapper
+                    const wrapper = root.querySelector('.library-table-wrapper');
+                    if (wrapper) wrapper.classList.add('library-dreamy');
+                    // ensure newly added cards get unified styling
+                    applyMusicCardClass();
+                    // if albums or artists or featured-grid added, kick off micro-interactions
+                    if (root.querySelector('.featured-card') || root.querySelector('.featured-grid') || root.querySelector('.album-detail-view') || root.querySelector('.artist-detail-view')){
+                        try{ staggerReveal(); if (!prefersReduced) initTilt(); }catch(e){}
+                    }
+                }
+            }
+        });
+        mo.observe(root, { childList: true, subtree: true });
+    }
 })();

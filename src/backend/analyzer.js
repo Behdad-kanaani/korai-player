@@ -192,7 +192,7 @@ async function analyzeAudioFile(filePath) {
         coverImage = metadata.common.picture[0].data;
     }
     
-    console.log(`✅ Analyzed: ${title} | ${bpm}BPM | ${Math.round(energy*100)}% | ${finalGenre}`);
+    console.debug(`✅ Analyzed: ${title} | ${bpm}BPM | ${Math.round(energy*100)}% | ${finalGenre}`);
     
     return {
         duration,

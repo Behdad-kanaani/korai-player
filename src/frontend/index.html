@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Content Security Policy: allow local http APIs (127.0.0.1) for Electron dev server and local media streams -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data:; connect-src 'self' http: https: data:; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: http: https:; font-src 'self' https: data:; media-src 'self' http: https: data: blob:;">
     <title>KORAI Music Player</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="styles.css">
@@ -13,8 +15,6 @@
     <div class="glass-bg-blobs-container">
         <div class="glass-blob glass-blob-1"></div>
         <div class="glass-blob glass-blob-2"></div>
-        <div class="glass-blob glass-blob-3"></div>
-        <div class="glass-blob glass-blob-4"></div>
     </div>
 
     <div class="splash-screen-overlay" id="koraiSplashScreen">
@@ -180,22 +180,22 @@
                     <i class="fa-solid fa-wand-magic-sparkles"></i>
                     <span data-translate="aiPanelTitle">KORAI AI</span>
                 </div>
-                <p class="ai-desc" data-translate="aiPanelDesc">Find similar tracks based on rhythm and frequency patterns</p>
+                <!-- <p class="ai-desc" data-translate="aiPanelDesc">Find similar tracks based on rhythm and frequency patterns</p> -->
                 <button id="aiRecommendBtn" class="ai-action-btn" data-tooltip="Analyze Waveform">
                     <i class="fa-solid fa-chart-line"></i>
-                    <span data-translate="aiBtnText">Analyze Pattern</span>
+                    <!-- <span data-translate="aiBtnText">Analyze Pattern</span> -->
                 </button>
                 <button id="createSimilarPlaylistBtn" class="ai-action-btn" data-tooltip="Create Similar Playlist">
                     <i class="fa-solid fa-music"></i>
-                    <span data-translate="similarPlaylist">Similar Playlist</span>
+                    <!-- <span data-translate="similarPlaylist">Similar Playlist</span> -->
                 </button>
                 <button id="exportLibraryBtn" class="ai-action-btn" data-tooltip="Export Library">
                     <i class="fa-solid fa-download"></i>
-                    <span data-translate="exportLibrary">Export Library</span>
+                    <!-- <span data-translate="exportLibrary">Export Library</span> -->
                 </button>
                 <button id="importCueBtn" class="ai-action-btn" data-tooltip="Import CUE Sheet">
                     <i class="fa-solid fa-file-lines"></i>
-                    <span data-translate="importCue">CUE Sheet</span>
+                    <!-- <span data-translate="importCue">CUE Sheet</span> -->
                 </button>
             </div>
 
@@ -523,10 +523,11 @@
     </svg>
 
     <script src="lang.js"></script>
-    <script src="additonal.js"></script>
+    <script src="additional.js"></script>
     <script src="pluginManagerUI.js"></script>
     <script src="app.js"></script>
     <script src="homePremium.js"></script>
         <script src="homeEnhancements.js"></script>
+        <script src="libraryMasonry.js"></script>
 </body>
 </html>

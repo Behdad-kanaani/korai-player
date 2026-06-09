@@ -9,14 +9,18 @@
  * - Application settings
  * 
  * Uses atomic file writes to prevent corruption.
+ * Implements write debouncing to prevent I/O blocking.
  */
 
 const fs = require('fs');
+const fsPromises = fs.promises;
 const path = require('path');
 
 let dbData = null;
 let dbPath = null;
 let coversDir = null;
+let saveDebounceTimer = null;
+let isSaving = false;
 
 // Default database structure
 const defaultData = {
@@ -58,15 +62,53 @@ function initDatabase(userDataPath) {
         }
     } else {
         dbData = JSON.parse(JSON.stringify(defaultData));
-        saveDatabase();
+        saveDatabaseSync();
     }
     return dbData;
 }
 
 /**
- * Saves database using atomic write (temp file + rename)
+ * Saves database using atomic write with debouncing
+ * Multiple rapid saves are batched into one I/O operation
+ */
+async function saveDatabaseAsync() {
+    if (!dbPath || !dbData) return;
+    
+    if (isSaving) {
+        // Queue up another save attempt if one is already in progress
+        clearTimeout(saveDebounceTimer);
+        saveDebounceTimer = setTimeout(() => saveDatabaseAsync(), 50);
+        return;
+    }
+    
+    isSaving = true;
+    const tempPath = dbPath + '.tmp';
+    try {
+        const jsonContent = JSON.stringify(dbData, null, 2);
+        await fsPromises.writeFile(tempPath, jsonContent, 'utf8');
+        await fsPromises.rename(tempPath, dbPath);
+    } catch (e) {
+        console.error('❌ Async atomic write failed:', e);
+    } finally {
+        isSaving = false;
+    }
+}
+
+/**
+ * Debounced save - queues saves to batch multiple rapid calls into one
  */
 function saveDatabase() {
+    clearTimeout(saveDebounceTimer);
+    // Batch multiple saves within 100ms into one I/O operation
+    saveDebounceTimer = setTimeout(() => {
+        saveDatabaseAsync().catch(err => console.error('Save error:', err));
+    }, 100);
+}
+
+/**
+ * Force synchronous save (for initialization only)
+ */
+function saveDatabaseSync() {
     if (dbPath && dbData) {
         const tempPath = dbPath + '.tmp';
         try {
@@ -105,19 +147,16 @@ function getDb() {
             let coverPath = null;
             let coverFilename = null;
             
-            // Save cover image to disk if present
+            // Save cover image to disk if present (async, don't block)
             if (track.coverImage && track.coverImage.length > 0) {
                 coverFilename = `${Date.now()}_cover.jpg`;
                 coverPath = path.join(coversDir, coverFilename);
-                try {
-                    const coverBuffer = Buffer.isBuffer(track.coverImage) 
-                        ? track.coverImage 
-                        : Buffer.from(track.coverImage);
-                    fs.writeFileSync(coverPath, coverBuffer);
-                } catch (err) {
-                    coverPath = null;
-                    coverFilename = null;
-                }
+                const coverBuffer = Buffer.isBuffer(track.coverImage) 
+                    ? track.coverImage 
+                    : Buffer.from(track.coverImage);
+                // Fire and forget - don't block the main thread
+                fsPromises.writeFile(coverPath, coverBuffer)
+                    .catch(err => console.error('Failed to save cover:', err));
             }
             
             const newTrack = {

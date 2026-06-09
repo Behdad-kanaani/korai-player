@@ -10,6 +10,29 @@ const { detectRealBPM } = require('../bpmDetector');
 // Track analysis progress
 let currentProgress = 0;
 
+// Cross-environment messaging helpers: support Node worker_threads (parentPort)
+let isNodeWorker = false;
+let parent = null;
+try {
+    const wt = require('worker_threads');
+    if (wt && wt.parentPort) {
+        isNodeWorker = true;
+        parent = wt.parentPort;
+    }
+} catch (e) {
+    // not running under worker_threads
+}
+
+function postMessage(msg) {
+    if (isNodeWorker && parent) parent.postMessage(msg);
+    else if (typeof self !== 'undefined' && self.postMessage) self.postMessage(msg);
+}
+
+function addMessageListener(fn) {
+    if (isNodeWorker && parent) parent.on('message', fn);
+    else if (typeof self !== 'undefined' && self.addEventListener) self.addEventListener('message', (e) => fn(e.data));
+}
+
 /**
  * Analyze a single audio file
  */
@@ -74,7 +97,7 @@ async function analyzeFile(filePath) {
         try {
             results.bpm = await detectRealBPM(filePath);
         } catch (bpmErr) {
-            console.log('Real BPM detection failed, using metadata fallback:', bpmErr.message);
+            console.warn('Real BPM detection failed, using metadata fallback:', bpmErr.message);
             if (metadata.common.bpm) {
                 results.bpm = metadata.common.bpm;
             }
@@ -126,7 +149,7 @@ async function analyzeFile(filePath) {
             results.genreConfidence = 0.7;
         }
         
-        console.log(`📊 Worker analyzed: ${results.title} | ${results.bpm}BPM | ${Math.round(results.energy*100)}% energy`);
+        console.debug(`📊 Worker analyzed: ${results.title} | ${results.bpm}BPM | ${Math.round(results.energy*100)}% energy`);
         
     } catch (error) {
         console.error('❌ Worker analysis error:', error.message);
@@ -135,17 +158,18 @@ async function analyzeFile(filePath) {
     return results;
 }
 
-// Listen for messages from main thread
-self.addEventListener('message', async (event) => {
-    const { type, data } = event.data;
-    
+// Listen for messages from main thread (compatible with node worker_threads or browser worker)
+addMessageListener(async (event) => {
+    const payload = event && event.data ? event.data : event;
+    const { type, data } = payload;
+
     if (type === 'analyze') {
         const { filePath, fileIndex, totalFiles } = data;
-        
+
         try {
             const result = await analyzeFile(filePath);
-            
-            self.postMessage({
+
+            postMessage({
                 type: 'result',
                 data: {
                     filePath,
@@ -153,10 +177,10 @@ self.addEventListener('message', async (event) => {
                     analysis: result
                 }
             });
-            
+
             // Update progress
             currentProgress = ((fileIndex + 1) / totalFiles) * 100;
-            self.postMessage({
+            postMessage({
                 type: 'progress',
                 data: {
                     percent: currentProgress,
@@ -165,9 +189,9 @@ self.addEventListener('message', async (event) => {
                     file: filePath
                 }
             });
-            
+
         } catch (error) {
-            self.postMessage({
+            postMessage({
                 type: 'error',
                 data: {
                     filePath,
@@ -176,17 +200,17 @@ self.addEventListener('message', async (event) => {
             });
         }
     }
-    
+
     if (type === 'analyzeBatch') {
         const { filePaths } = data;
         const results = [];
-        
+
         for (let i = 0; i < filePaths.length; i++) {
             try {
                 const result = await analyzeFile(filePaths[i]);
                 results.push({ filePath: filePaths[i], analysis: result });
-                
-                self.postMessage({
+
+                postMessage({
                     type: 'batchProgress',
                     data: {
                         percent: ((i + 1) / filePaths.length) * 100,
@@ -196,7 +220,7 @@ self.addEventListener('message', async (event) => {
                     }
                 });
             } catch (err) {
-                self.postMessage({
+                postMessage({
                     type: 'batchError',
                     data: {
                         filePath: filePaths[i],
@@ -205,12 +229,12 @@ self.addEventListener('message', async (event) => {
                 });
             }
         }
-        
-        self.postMessage({
+
+        postMessage({
             type: 'batchComplete',
             data: results
         });
     }
 });
 
-console.log('🔧 Analyzer Worker initialized');
+console.debug('🔧 Analyzer Worker initialized');

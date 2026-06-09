@@ -24,11 +24,11 @@ const translations = {
         navAdvSearch: "Advanced Search",
         
         aiPanelTitle: "Acoustic AI",
-        aiPanelDesc: "Analyzes dynamic frequency footprints, tempo, and harmonic energy to discover matching vibes.",
+        aiPanelDesc: "",
         aiBtnText: "Analyze Waveform",
-        similarPlaylist: "Generate Smart Playlist",
+        similarPlaylist: "Smart Playlist",
         exportLibrary: "Export Library",
-        importCue: "Import CUE Sheet",
+        importCue: "Import CUE",
         
         upTextTitle: "Import Audio File",
         upTextSub: "Add single local track",
@@ -146,7 +146,9 @@ const translations = {
         analyzingAudio: "Decrypting audio patterns...",
         
         genreBlues: "Blues / Jazz Acoustic",
+        genreChill: "Chill / LoFi / Relaxing",
         genreClassical: "Classical / Orchestral",
+        genreAcoustic: "Acoustic / Folk",
         genrePop: "Vocal Pop / Indie",
         genreDance: "Electronic Dance / House",
         genreEDM: "Club EDM / Trance",
@@ -154,6 +156,7 @@ const translations = {
         genreHipHop: "Hip Hop / Urban Beat",
         genreMetal: "Rock / Heavy Metal",
         genreElectronic: "Synthwave / Electronic",
+        genreLatin: "Latin / Reggae / Tropical",
 
         similarity: "Similarity",
         recommended: "Recommended",
@@ -214,11 +217,11 @@ const translations = {
         navAdvSearch: "جستجوی پیشرفته",
         
         aiPanelTitle: "هوش مصنوعی صوتی",
-        aiPanelDesc: "تحلیل الگوهای فرکانسی، سرعت ضربان (BPM) و انرژی موج جاری برای کشف نواهای هم‌سو.",
-        aiBtnText: "تحلیل سیگنال صوتی",
-        similarPlaylist: "ساخت پلی‌لیست هم‌سبک",
+        aiPanelDesc: "",
+        aiBtnText: "آنالیز صورت",
+        similarPlaylist: "پلی‌لیست هوشمند",
         exportLibrary: "خروجی کتابخانه",
-        importCue: "وارد کردن CUE Sheet",
+        importCue: "CUE Sheet",
         
         upTextTitle: "افزودن قطعه صوتی",
         upTextSub: "وارد کردن فایل تکی",
@@ -327,7 +330,9 @@ const translations = {
         analyzingAudio: "رمزگشایی از الگوهای صوتی...",
         
         genreBlues: "بلوز / جاز آکوستیک",
+        genreChill: "چیل / لوفای / آرام",
         genreClassical: "کلاسیک / ارکسترال",
+        genreAcoustic: "آکوستیک / فولک",
         genrePop: "پاپ / ایندی",
         genreDance: "الکترونیک دنس / هاوس",
         genreEDM: "کلاب EDM / ترنس",
@@ -335,6 +340,7 @@ const translations = {
         genreHipHop: "هیپ هاپ / اوربان بیت",
         genreMetal: "راک / هوی متال",
         genreElectronic: "سینث‌ویو / الکترونیک",
+        genreLatin: "لاتین / رگه / تروپیکال",
 
         similarity: "شباهت",
         recommended: "توصیه شده",

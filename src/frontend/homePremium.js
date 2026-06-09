@@ -34,7 +34,8 @@ function renderHomePremium() {
         suggestions = typeof getFallbackSuggestions === 'function' ? getFallbackSuggestions(window.tracks || [], 6) : [];
     }
 
-    if ((window.tracks || []).length === 0) {
+    // If library is empty but a track is currently playing, still render the hero with now-playing info
+    if ((window.tracks || []).length === 0 && !currentTrackId) {
         mainSection.innerHTML = getEmptyLibraryHTML ? getEmptyLibraryHTML() : '<div class="empty-state-premium">No tracks</div>';
         return;
     }
@@ -56,8 +57,9 @@ function renderHomePremium() {
                         </div>
                         <h1 class="hero-main-title">${escapeHtml ? escapeHtml(welcomeText) : welcomeText}</h1>
                         <p class="hero-subtitle-premium">${typeof t === 'function' ? (t('smartRecommendations') || 'Your personal audio universe. Discover, play, and immerse yourself in high-quality sound.') : 'Your personal audio universe.'}</p>
+                        <div id="playerConnectionStatus" class="player-connection-status">${currentLanguage === 'fa' ? 'در حال بررسی اتصال...' : 'Checking player...'}</div>
                         <div class="hero-cta-group">
-                            <button class="hero-cta-primary ripple-effect" onclick="playTopSuggestions()">
+                            <button class="hero-cta-primary ripple-effect" id="heroPrimaryBtnPremium" onclick="heroPrimaryAction()">
                                 <i class="fa-solid fa-play"></i>
                                 <span>${typeof t === 'function' ? (t('playPause') || 'Play') : 'Play'}</span>
                             </button>
@@ -200,6 +202,12 @@ function renderHomePremium() {
 
     animateHomeElements && animateHomeElements();
     updateHomeVinylAnimation && updateHomeVinylAnimation();
+    // Start/refresh player connection checks if available
+    try { if (window._playerConnInterval) clearInterval(window._playerConnInterval); } catch(e){}
+    if (typeof window.checkPlayerConnection === 'function') {
+        window.checkPlayerConnection();
+        window._playerConnInterval = setInterval(window.checkPlayerConnection, 10000);
+    }
 }
 
 function generateParticleHTML() {

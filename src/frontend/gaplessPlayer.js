@@ -61,7 +61,7 @@ function scheduleNextTrack(currentTrack, nextTrack, apiPort, currentTime) {
 }
 
 /**
- * Start crossfade between current and next track
+ * Start crossfade between current and next track using Web Audio API scheduling
  */
 async function startCrossfade(currentTrack, nextTrack, apiPort, currentTime) {
     if (!audioContext || audioContext.state === 'closed') {
@@ -96,36 +96,30 @@ async function startCrossfade(currentTrack, nextTrack, apiPort, currentTime) {
     const startTime = audioContext.currentTime;
     nextSource.start(startTime);
     
-    // Crossfade animation
+    // Use Web Audio API's exponentialRampToValueAtTime for smooth, efficient crossfade
+    // This offloads the fade to the audio thread, no main thread blocking
     const fadeDuration = Math.min(crossfadeDuration, 3); // Max 3 seconds for crossfade
-    const steps = 30;
-    const stepDuration = fadeDuration / steps;
+    const rampStartTime = startTime;
+    const rampEndTime = startTime + fadeDuration;
     
-    let step = 0;
-    const fadeInterval = setInterval(() => {
-        step++;
-        const progress = step / steps;
-        
-        // Fade out current
-        if (currentGain) {
-            currentGain.gain.value = Math.max(0, 1 - progress);
+    // Fade out current track (avoid 0 for exponential, use small value)
+    if (currentGain) {
+        currentGain.gain.setValueAtTime(1, rampStartTime);
+        currentGain.gain.exponentialRampToValueAtTime(0.01, rampEndTime);
+    }
+    
+    // Fade in next track
+    if (nextGain) {
+        nextGain.gain.setValueAtTime(0.01, rampStartTime);
+        nextGain.gain.exponentialRampToValueAtTime(1, rampEndTime);
+    }
+    
+    // Stop current source after fade completes
+    setTimeout(() => {
+        if (currentSource) {
+            try { currentSource.stop(); } catch(e) {}
         }
-        
-        // Fade in next
-        if (nextGain) {
-            nextGain.gain.value = Math.min(1, progress);
-        }
-        
-        if (step >= steps) {
-            clearInterval(fadeInterval);
-            // Stop current source after fade
-            setTimeout(() => {
-                if (currentSource) {
-                    try { currentSource.stop(); } catch(e) {}
-                }
-            }, 100);
-        }
-    }, stepDuration * 1000);
+    }, fadeDuration * 1000 + 100);
     
     // Swap sources after crossfade
     setTimeout(() => {

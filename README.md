@@ -12,7 +12,7 @@
 
 [![Version](https://img.shields.io/github/v/release/Behdad-kanaani/korai-player?style=flat-square&logo=git&color=1DB954)](https://github.com/Behdad-kanaani/korai-player/releases)
 [![Downloads](https://img.shields.io/github/downloads/Behdad-kanaani/korai-player/total?style=flat-square&logo=github&color=1DB954)](https://github.com/Behdad-kanaani/korai-player/releases)
-[![Open Source](https://img.shields.io/badge/Open%20Source-❤️-FF6B6B?style=flat-square)](https://github.com/Behdad-kanaani/korai-player)
+[![Open Source](https://img.shields.io/badge/Open%20Source-Love-FF6B6B?style=flat-square)](https://github.com/Behdad-kanaani/korai-player)
 [![License](https://img.shields.io/badge/License-Apache%202.0--Commons--Clause-red?style=flat-square&logo=apache)](LICENSE)
 
 [![Windows](https://img.shields.io/badge/Windows-0078D6?style=flat-square&logo=windows&logoColor=white)](https://github.com/Behdad-kanaani/korai-player/releases)
@@ -34,25 +34,24 @@
 | Local-first (no cloud) | ✅ | ❌ | ❌ | ✅ |
 | Free forever | ✅ | ❌ | ❌ | ✅ |
 | **Audio Quality** | | | | |
-| 5-band graphic EQ | ✅ | ❌ | ❌ | ✅ (10-band) |
+| Graphic EQ | ✅ (5 bands) | ❌ | ❌ | ✅ (10 bands) |
 | Real-time spectrum analyzer | ✅ | ❌ | ❌ | ❌ |
 | Live waveform on timeline | ✅ | ❌ | ❌ | ❌ |
 | Tempo control (0.5x–2.0x) | ✅ | ❌ | ❌ | ✅ |
-| Gapless + Crossfade (0–12s) | ✅ | ✅ | ✅ | ❌ |
+| Gapless + Crossfade | ✅ | ✅ | ✅ | ❌ |
 | **Intelligence** | | | | |
-| Smart recommendations (local) | ✅ | ✅ (cloud) | ✅ (cloud) | ❌ |
-| BPM detection (3 algorithms) | ✅ | ❌ | ❌ | ❌ |
-| Energy detection | ✅ | ❌ | ❌ | ❌ |
-| Genre classification | ✅ | ✅ | ✅ | ❌ |
+| Local smart recommendations | ✅ | ❌ | ❌ | ❌ |
+| BPM detection | ✅ (3 algorithms) | ❌ | ❌ | ❌ |
+| Energy + Genre detection | ✅ | ❌ | ❌ | ❌ |
 | **Extensibility** | | | | |
-| Plugin ecosystem | ✅ | ❌ | ❌ | ✅ |
-| Plugin Marketplace | 🚧 (v1.5) | ❌ | ❌ | ❌ |
-| Audio effects framework | 🚧 (v1.5) | ❌ | ❌ | ❌ |
+| Plugin architecture | ✅ | ❌ | ❌ | ✅ |
+| Plugin Marketplace | 🚧 v1.5 | ❌ | ❌ | ❌ |
+| Audio effects framework | 🚧 v1.5 | ❌ | ❌ | ❌ |
 | **Visual Experience** | | | | |
-| 3D cover art with hover effects | ✅ | ❌ | ❌ | ❌ |
+| 3D cover art + hover | ✅ | ❌ | ❌ | ❌ |
 | Marquee scrolling text | ✅ | ❌ | ❌ | ❌ |
-| Artist section with smart cards | ✅ | ✅ | ✅ | ❌ |
-| Performance mode (low-end devices) | ✅ | ❌ | ❌ | ❌ |
+| Artist section with cards | ✅ | ✅ | ✅ | ❌ |
+| Performance mode | ✅ | ❌ | ❌ | ❌ |
 | **Library Control** | | | | |
 | Built-in tag editor | ✅ | ❌ | ❌ | ❌ |
 | M3U/PLS import/export | ✅ | ❌ | ❌ | ✅ |
@@ -72,17 +71,21 @@
 KORAI is **100% open source**. Every line of code is on GitHub for anyone to audit.
 
 ```
-Proprietary players (Spotify, Apple Music):
-  → You cannot verify what data they collect. Their code is closed source.
-  → Your listening habits become their product.
-
-Open source players (KORAI, VLC):
-  → The code is public. You can check it yourself. No hidden telemetry.
-  → Your data never leaves your computer.
-
-KORAI takes it further:
-  → Not just open source, but beautifully designed open source.
-  → Not just local, but intelligent local recommendations.
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                                                                               ║
+║   Proprietary players (Spotify, Apple Music):                                 ║
+║   → You cannot verify what data they collect. Their code is closed source.   ║
+║   → Your listening habits become their product.                              ║
+║                                                                               ║
+║   Open source players (KORAI, VLC):                                           ║
+║   → The code is public. You can check it yourself. No hidden telemetry.      ║
+║   → Your data never leaves your computer.                                    ║
+║                                                                               ║
+║   KORAI takes it further:                                                     ║
+║   → Not just open source, but beautifully designed open source.              ║
+║   → Not just local, but intelligent local recommendations.                   ║
+║                                                                               ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
 ```
 
 **For privacy-focused users who refuse to compromise on design or intelligence, open source offers verifiable security.**
@@ -94,9 +97,13 @@ KORAI takes it further:
 ### 1. Your data never leaves your computer
 
 ```
-KORAI:     Local JSON storage  →  Your hard drive only
-Spotify:   Cloud database       →  Their servers (and third-party partners)
-Apple:     Cloud + analytics    →  "We care about privacy" (trust us)
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                                                                               ║
+║   KORAI:     Local JSON storage    →  Your hard drive only                   ║
+║   Spotify:   Cloud database         →  Their servers (and third-parties)     ║
+║   Apple:     Cloud + analytics      →  "We care about privacy" (trust us)    ║
+║                                                                               ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
 ```
 
 **No telemetry. No analytics. No "improvement programs." No trust required — verify it yourself.**
@@ -105,12 +112,12 @@ Apple:     Cloud + analytics    →  "We care about privacy" (trust us)
 
 ### 2. Smart recommendations that work offline
 
-Unlike cloud-based recommendation engines that require your listening history to be uploaded, KORAI's similarity engine runs **entirely locally** using a weighted algorithm:
+Unlike cloud-based recommendation engines that require your listening history to be uploaded, KORAI's similarity engine runs **entirely locally**.
 
 | Metric | Weight | Description |
 |--------|--------|-------------|
-| BPM similarity | 30 pts | Tempo matching within estimated ±5 BPM |
 | Genre matching | 35 pts | Same genre family = highest score |
+| BPM similarity | 30 pts | Tempo matching within estimated ±5 BPM |
 | Energy (RMS) | 20 pts | Perceived loudness similarity |
 | Loudness | 10 pts | Volume level matching |
 | Discovery bonus | 8 pts | Prioritizes less-played tracks |
@@ -123,11 +130,13 @@ Unlike cloud-based recommendation engines that require your listening history to
 
 Real DSP features accessible to all users, not hidden behind "Pro" subscriptions:
 
-- **5-band Equalizer** (60Hz, 230Hz, 910Hz, 4kHz, 14kHz)
-- **Real-time spectrum analyzer** — live frequency visualization
-- **Tempo shift** — 0.5x to 2.0x with pitch preservation
-- **Crossfade** — 0–12 seconds, configurable
-- **Gapless playback** — for albums that flow track to track
+| Feature | Specification |
+|---------|---------------|
+| **Equalizer** | 5 bands: 60Hz, 230Hz, 910Hz, 4kHz, 14kHz |
+| **Spectrum analyzer** | Real-time frequency visualization |
+| **Tempo shift** | 0.5x to 2.0x with pitch preservation |
+| **Crossfade** | 0–12 seconds, configurable |
+| **Gapless playback** | For albums that flow track to track |
 
 ---
 
@@ -135,24 +144,55 @@ Real DSP features accessible to all users, not hidden behind "Pro" subscriptions
 
 KORAI now features a **complete plugin architecture** — extend functionality without modifying core code.
 
-| Plugin Feature | Description |
-|----------------|---------------|
-| **Isolated execution** | Each plugin runs in a sandboxed worker thread |
-| **Permissions system** | Plugins must request access (filesystem, network, audio, etc.) |
-| **Plugin Marketplace** | 🚧 Coming in v1.5 |
-| **Performance monitoring** | CPU/memory/error tracking per plugin; auto-disable on failures |
-| **CLI tool** | `korai-plugin create`, `pack`, `validate`, `dev` |
-| **Audio effects framework** | 🚧 Framework ready, UI coming in v1.5 |
+```
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                                                                               ║
+║   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     ║
+║   │ Audio FX     │  │ Visualizer   │  │ Lyrics       │  │ Scrobbler    │     ║
+║   │ Plugin       │  │ Plugin       │  │ Plugin       │  │ Plugin       │     ║
+║   └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘     ║
+║          │                 │                 │                 │             ║
+║          ▼                 ▼                 ▼                 ▼             ║
+║   ┌─────────────────────────────────────────────────────────────────────┐     ║
+║   │                         Plugin Host                                  │     ║
+║   │  • Isolated worker threads  • Granular permissions                  │     ║
+║   │  • VM sandbox              • Auto-disable on crash                  │     ║
+║   │  • Performance monitoring   • Hot reload development                │     ║
+║   └─────────────────────────────────────────────────────────────────────┘     ║
+║                                                                               ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+```
+
+| Plugin Feature | Status |
+|----------------|--------|
+| Isolated execution (VM sandbox) | ✅ Available now |
+| Permissions system | ✅ Available now |
+| Plugin CLI tool | ✅ Available now |
+| Plugin Marketplace UI | 🚧 Coming in v1.5 |
+| Audio effects UI | 🚧 Coming in v1.5 |
 
 **Built-in plugin:** `korai/change-logs@1.0.0` — Display application change history
 
 **Plugin permissions:**
-- `filesystem` — Read/write access to user-selected directories
-- `network` — Outbound network requests (user-approved)
-- `audio` — Register audio effects and process audio
-- `preferences` — Read/write plugin settings
-- `notifications` — Send system notifications
-- `clipboard` — Read/write clipboard
+
+| Permission | What it allows | User Approval |
+|------------|----------------|:-------------:|
+| `filesystem` | Read/write user-selected directories | ✅ Always |
+| `network` | Outbound network requests | ✅ Always |
+| `audio` | Register audio effects and process audio | ✅ Once |
+| `preferences` | Read/write plugin settings | ✅ Once |
+| `notifications` | Send system notifications | ✅ Once |
+| `clipboard` | Read/write clipboard | ✅ Always |
+
+**For developers:**
+
+```bash
+# Create a plugin in 30 seconds
+npm install -g korai-plugin-cli
+korai-plugin create my-plugin
+korai-plugin dev my-plugin
+korai-plugin pack my-plugin
+```
 
 ---
 
@@ -193,22 +233,36 @@ Wrong metadata? Fix it. Need to export your data? Do it. Want to see your listen
 
 ### 7. Repeat One. Smart Shuffle. Finally.
 
-- **Repeat One mode** — Loop a single track.
-- **Smart Shuffle** — History tracking prevents repeats across library, playlists, favorites, and artist views.
+| Mode | Description |
+|------|-------------|
+| **Repeat One** | Loop a single track. Perfect for learning a song or vibing to that one track. |
+| **Smart Shuffle** | History tracking prevents repeats across library, playlists, favorites, and artist views. |
+| **Context-aware** | Shuffle respects where you started (artist page? playlist? favorites?). |
 
 ---
 
 ### 8. Built for everyone (including Persian speakers)
 
-KORAI includes full RTL (Right-to-Left) support with Persian/Farsi translation.
+KORAI includes full RTL (Right-to-Left) support:
+
+- Persian/Farsi translation
+- Interface flips automatically
+- Metadata supports Persian characters
+- Search works with Persian text
+
+**Because great software should speak your language.**
 
 ---
 
 ### 9. Performance mode for older hardware
 
+Not everyone has a gaming rig. KORAI v1.4 detects low-resource devices automatically.
+
 - Automatic detection (RAM < 4GB, CPU cores < 4)
 - Reduces visual effects where it matters
 - Keeps audio playback buttery smooth
+
+**Beautiful on high-end machines. Smooth on old laptops.**
 
 ---
 
@@ -238,20 +292,65 @@ KORAI includes full RTL (Right-to-Left) support with Persian/Farsi translation.
 | **Crossfade** | 0–12 seconds (configurable) |
 | **Tempo Range** | 0.5x – 2.0x (pitch-preserved) |
 | **Plugin System** | Isolated workers + VM sandbox + permission model |
-| **Memory (Electron base)** | ~120MB |
+| **Memory (idle)** | ~120MB (Electron base) |
 | **Memory (playing)** | ~180MB |
-| **Memory (with 50k tracks)** | ~250MB (Electron + JSON cache) |
-| **Storage** | ~200MB + JSON library cache |
+| **Memory (50k+ tracks)** | ~250MB (Electron + JSON cache) |
+| **Storage** | ~200MB + library cache |
+
+---
+
+## 📋 **What's New in v1.4**
+
+### ✨ New Features
+
+| Feature | Description | Status |
+|---------|-------------|--------|
+| **Plugin architecture** | Isolated workers + VM sandbox + permission model | ✅ Available |
+| **Plugin CLI tool** | `korai-plugin create`, `pack`, `validate`, `dev` | ✅ Available |
+| **Home page redesign** | Cinematic hero + stats cards + mood chips | ✅ Available |
+| **Library masonry** | CSS columns + virtual scrolling | ✅ Available |
+| **3D cover art** | Hover effects with scale, glow, and shadow | ✅ Available |
+| **Live waveform timeline** | 45 animated bars that pulse with your music | ✅ Available |
+| **Repeat One mode** | Loop a single track | ✅ Available |
+| **Smart shuffle** | History tracking prevents repeats | ✅ Available |
+| **Performance mode** | Auto-detects low-resource devices | ✅ Available |
+
+### 🚧 Coming in v1.5
+
+| Feature | Description |
+|---------|-------------|
+| **Plugin Marketplace UI** | Browse, search, and install plugins from UI |
+| **Audio effects UI** | Reverb, chorus, delay, compression, distortion |
+| **10-band EQ** | Extended equalizer with more bands |
+| **Vocal extraction** | High-fidelity vocal removal |
+| **macOS + Linux builds** | Cross-platform support |
+
+### 🔧 Improvements
+
+- **Database**: Write debouncing (100ms), async file writes
+- **Crossfade**: `exponentialRampToValueAtTime` (audio thread)
+- **Visualizer**: Reduced to 20 FPS, visibility-based rendering
+- **Image loading**: IntersectionObserver lazy loading
+
+### 📊 Code Changes
+
+| Category | v1.3 → v1.4 |
+|----------|--------------|
+| Files changed | 30+ |
+| Lines added | ~7,500 |
+| Lines removed | ~600 |
+| New backend modules | 12 |
+| New frontend modules | 8 |
 
 ---
 
 ## Known Limitations (honest and realistic)
 
-- **Built with Electron** → ~180-250MB memory usage. This is honest. You won't get a C++ memory footprint, but you get cross-platform compatibility.
+- **Built with Electron** → ~180-250MB memory usage. You won't get a C++ memory footprint, but you get cross-platform compatibility.
 - **Windows only currently** → macOS and Linux builds planned (no ETA).
-- **5-band EQ, not 10-band** → We chose quality over quantity. More bands planned for v1.5.
-- **BPM detection is estimated** → Works great for matching tempos, but ±5 BPM accuracy. Not lab-grade.
-- **Plugin Marketplace & Audio Effects UI** → Framework is ready, UI coming in v1.5.
+- **5-band EQ, not 10-band** → More bands planned for v1.5.
+- **BPM detection is estimated** → ~±5 BPM accuracy. Works great for matching tempos, not lab-grade.
+- **Plugin Marketplace & Audio Effects UI** → Framework ready, UI coming in v1.5.
 
 ---
 
@@ -270,7 +369,7 @@ KORAI includes full RTL (Right-to-Left) support with Persian/Farsi translation.
 | `N` | Next track |
 | `B` | Previous track |
 
-**Media keys** work on all platforms.
+**Media keys** (Play, Pause, Next, Previous) work on all platforms.
 
 ---
 
@@ -295,6 +394,62 @@ q:hello world        → Search title, artist, album, genre
 
 ---
 
+## 📁 **Project Structure**
+
+```
+korai-player/
+│
+├── main.js                      # Electron main process
+├── preload.js                   # Secure context bridge
+├── package.json                 # Dependencies
+│
+├── src/
+│   ├── backend/
+│   │   ├── server.js            # Express API (port 3050)
+│   │   ├── database.js          # JSON storage (debounced writes)
+│   │   ├── analyzer.js          # Metadata extraction
+│   │   ├── recommender.js       # Similarity engine
+│   │   ├── bpmDetector.js       # BPM detection (3 algorithms)
+│   │   ├── cueParser.js         # CUE sheet parser
+│   │   ├── playlistExporter.js  # M3U/PLS/CSV exporter
+│   │   ├── updater.js           # Auto-update notifications
+│   │   ├── pluginManager.js     # Plugin lifecycle
+│   │   ├── pluginHost.js        # Host process for workers
+│   │   ├── pluginWorker.js      # Isolated VM execution
+│   │   ├── pluginRoutes.js      # HTTP API for plugins
+│   │   ├── pluginSettings.js    # Per-plugin config storage
+│   │   ├── pluginPerformanceMonitor.js # CPU/memory tracking
+│   │   ├── pluginHealthMonitor.js # Auto-disable on failures
+│   │   └── worker/
+│   │       └── analyzer.worker.js
+│   │
+│   └── frontend/
+│       ├── index.html
+│       ├── styles.css           # Liquid Glass + RTL
+│       ├── additional.css       # v1.4 visual upgrades
+│       ├── app.js               # Core player logic
+│       ├── lang.js              # i18n (English/Persian)
+│       ├── advancedSearch.js
+│       ├── gaplessPlayer.js
+│       ├── tagEditor.js
+│       ├── homePremium.js       # Premium home page
+│       ├── homeEnhancements.js  # Micro-interactions
+│       ├── libraryMasonry.js    # Virtualized masonry
+│       ├── pluginManagerUI.js   # Plugin management UI
+│       ├── pluginStoreUI.js     # Marketplace UI (coming)
+│       ├── plugins.html         # Plugin manager page
+│       ├── store.html           # Marketplace page (coming)
+│       └── additional.js        # Utility helpers
+│
+├── plugins/                     # Plugin installation directory
+│   └── korai-change-logs@1.0.0/
+│
+├── korai.png
+└── screenshot/
+```
+
+---
+
 ## 🚀 **Installation**
 
 ### Download pre-built binary
@@ -302,6 +457,10 @@ q:hello world        → Search title, artist, album, genre
 👉 [**github.com/Behdad-kanaani/korai-player/releases/latest**](https://github.com/Behdad-kanaani/korai-player/releases/latest)
 
 ### Windows (available now)
+
+| Format | File |
+|--------|------|
+| NSIS installer | `KORAI-Setup-{version}.exe` |
 
 👉 [**Download for Windows**](https://github.com/Behdad-kanaani/korai-player/releases/latest)
 
@@ -331,58 +490,10 @@ npm run dist:win   # build Windows installer
 | Version | Status | Key Features |
 |---------|--------|--------------|
 | **v1.0** | ✅ Released | Core playback · 5-band EQ · Persian RTL · System tray · BPM detection |
-| **v1.2** | ✅ Released | Liquid Glass theme · Real BPM (3 algorithms) · Tag editor · Advanced search · Gapless + Crossfade · M3U/PLS/CUE · Artists view |
-| **v1.3** | ✅ Released | 3D cover art · Live waveform · Marquee text · Repeat One · Smart shuffle · Performance mode |
-| **v1.4** | ✅ Current | Plugin architecture · Plugin CLI · Home page redesign · Library masonry |
+| **v1.2** | ✅ Released | Liquid Glass theme · Tag editor · Gapless + Crossfade · M3U/PLS/CUE |
+| **v1.3** | ✅ Released | 3D cover art · Live waveform · Repeat One · Smart shuffle |
+| **v1.4** | ✅ Current | **Plugin architecture · Home redesign · Library masonry** |
 | **v1.5** | 🔄 Planned | Plugin Marketplace UI · Audio effects UI · 10-band EQ · Vocal extraction · macOS + Linux |
-
----
-
-## 📋 **Changelog v1.4.0**
-
-### ✨ New Features
-
-**Plugin Architecture**
-- Full plugin system with isolated execution environment
-- PluginManager, PluginHost, PluginWorker with VM sandbox
-- PluginPerformanceMonitor (CPU/memory/error tracking)
-- Plugin CLI tool: `korai-plugin create`, `pack`, `validate`, `dev`
-- Permissions system with user approval UI
-
-**Home Page Redesign**
-- Cinematic hero section with particle animation
-- Quick stats cards (track count, play time, favorites, playlists)
-- Mood chips (horizontal scrollable)
-- Featured grid with responsive layout
-
-**Library Masonry**
-- CSS Columns layout for masonry effect
-- Virtual scrolling for large libraries
-- IntersectionObserver for lazy image loading
-
-### 🔧 Improvements
-
-- **Database**: Write debouncing (100ms), async file writes
-- **Crossfade**: `exponentialRampToValueAtTime` instead of JS `setInterval`
-- **Visualizer**: Reduced to 20 FPS, visibility-based rendering
-- **Image loading**: IntersectionObserver with 200px rootMargin
-
-### 🐛 Bug Fixes
-
-- Worker threads compatibility
-- Miniplayer full-window mode fixes
-- Z-index stacking improvements
-- Missing genre translations
-
-### 📊 Code Changes
-
-| Category | Changes |
-|----------|---------|
-| Files changed | 30+ |
-| Lines added | ~7,500 |
-| Lines removed | ~600 |
-| New backend modules | 12 |
-| New frontend modules | 8 |
 
 ---
 
@@ -395,14 +506,17 @@ git push origin feature/your-idea
 ```
 
 **Commit convention:**
-```
-feat:     new feature
-fix:      bug fix
-docs:     documentation
-refactor: code restructuring
-perf:     performance improvement
-chore:    maintenance
-```
+
+| Prefix | Purpose |
+|--------|---------|
+| `feat:` | New feature |
+| `fix:` | Bug fix |
+| `docs:` | Documentation |
+| `refactor:` | Code restructuring |
+| `perf:` | Performance improvement |
+| `chore:` | Maintenance |
+
+**Plugin development:** Use `korai-plugin create` to scaffold new plugins.
 
 ---
 
@@ -461,10 +575,10 @@ You may NOT:
 
 | Purpose | Link |
 |---------|------|
-| Report bug | [GitHub Issues](https://github.com/Behdad-kanaani/korai-player/issues) |
-| Request feature | [GitHub Issues](https://github.com/Behdad-kanaani/korai-player/issues) |
-| Discussion | [GitHub Discussions](https://github.com/Behdad-kanaani/korai-player/discussions) |
-| Download | [Releases](https://github.com/Behdad-kanaani/korai-player/releases) |
+| 🐛 Report bug | [GitHub Issues](https://github.com/Behdad-kanaani/korai-player/issues) |
+| 💡 Request feature | [GitHub Issues](https://github.com/Behdad-kanaani/korai-player/issues) |
+| 💬 Discussion | [GitHub Discussions](https://github.com/Behdad-kanaani/korai-player/discussions) |
+| ⬇️ Download | [Releases](https://github.com/Behdad-kanaani/korai-player/releases) |
 
 ---
 

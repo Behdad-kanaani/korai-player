@@ -3329,7 +3329,7 @@ body.theme-liquid-glass .mood-chip-premium {
 }
 
 .album-card:hover .album-cover img {
-    transform: scale(1.08); /* بزرگنمایی تدریجی کاور هنگام هاور */
+    transform: scale(1.08); 
 }
 
 /* Icon for albums without cover */
@@ -3387,7 +3387,7 @@ body.theme-liquid-glass .mood-chip-premium {
     margin: 0;
     display: flex;
     flex-direction: column;
-    gap: 6px; /* ایجاد فاصله منظم بین ردیف‌ها */
+    gap: 6px;
 }
 
 /* Style for each track row */
@@ -3409,11 +3409,11 @@ body.theme-liquid-glass .mood-chip-premium {
 .album-track-item:hover {
     background-color: var(--spotify-light-grey, #24242e);
     border-color: rgba(0, 255, 213, 0.15);
-    transform: translateX(-4px); /* افکت لغزش ملایم به چپ در حالت انگلیسی */
+    transform: translateX(-4px); 
 }
 
 body.rtl .album-track-item:hover {
-    transform: translateX(4px); /* افکت لغزش ملایم به راست در حالت فارسی */
+    transform: translateX(4px);
 }
 
 /* Active (playing) track style */
@@ -3458,20 +3458,20 @@ body.rtl .album-track-item:hover {
     padding: 0 12px;
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis; /* بریدن متن طولانی با سه نقطه */
+    text-overflow: ellipsis;
 }
 
 /* Track duration on the right of row */
 .track-duration {
     font-size: 0.8rem;
-    font-family: monospace; /* فونت تک‌فاصله برای تراز دقیق ارقام زمان */
+    font-family: monospace; 
     color: var(--spotify-text-muted, #9ba0a8);
     min-width: 50px;
     text-align: right;
 }
 
 body.rtl .track-duration {
-    text-align: left; /* هم‌ترازی متناسب با حالت فارسی */
+    text-align: left;
 }
 
 /* ==========================================================================
@@ -3501,20 +3501,17 @@ body.theme-liquid-glass .album-track-item.active {
    LIBRARY - MINIMAL & HARMONIZED WITH APP
    ============================================ */
 
-/* فاصله‌گذاری کلی */
 .library-table-wrapper {
     overflow-x: auto;
     margin-top: 8px;
 }
 
-/* جدول */
 .library-tracks-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.85rem;
 }
 
-/* هدر جدول (مثل بقیه جای برنامه) */
 .library-tracks-table th {
     text-align: right;
     padding: 12px 16px;
@@ -3526,14 +3523,12 @@ body.theme-liquid-glass .album-track-item.active {
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* ردیف‌های جدول */
 .library-tracks-table td {
     padding: 12px 16px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     transition: background 0.2s ease;
 }
 
-/* رفع padding خراب قبلی */
 .track-info-cell {
     padding: 6px 16px !important;
     display: flex;
@@ -3541,7 +3536,6 @@ body.theme-liquid-glass .album-track-item.active {
     gap: 14px;
 }
 
-/* کاور کوچک */
 .table-song-cover {
     width: 42px;
     height: 42px;
@@ -3563,7 +3557,6 @@ body.theme-liquid-glass .album-track-item.active {
     font-size: 1rem;
 }
 
-/* عنوان و خواننده */
 .table-song-meta {
     display: flex;
     flex-direction: column;
@@ -3579,7 +3572,6 @@ body.theme-liquid-glass .album-track-item.active {
     color: #9ba0a8;
 }
 
-/* BPM (با رنگ سبز ملایم) */
 .track-bpm-cell {
     font-family: monospace;
     color: #1db954;
@@ -3587,14 +3579,12 @@ body.theme-liquid-glass .album-track-item.active {
     font-weight: 500;
 }
 
-/* مدت زمان */
 .track-time-cell {
     font-family: monospace;
     color: #9ba0a8;
     font-size: 0.8rem;
 }
 
-/* دکمه‌های عملیات */
 .track-actions-cell {
     text-align: center;
 }
@@ -3617,7 +3607,6 @@ body.theme-liquid-glass .album-track-item.active {
     color: #ff6b6b;
 }
 
-/* هدر بالای جدول (فیلتر و مرتب‌سازی) */
 .library-header-panel {
     display: flex;
     justify-content: space-between;
@@ -3629,7 +3618,6 @@ body.theme-liquid-glass .album-track-item.active {
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* چیپ‌های فیلتر */
 .genre-filter-wrapper-bar {
     display: flex;
     gap: 8px;
@@ -3737,4 +3725,239 @@ body.theme-liquid-glass .library-tracks-table td {
 body.theme-liquid-glass .library-card {
     background: rgba(255, 255, 255, 0.03);
     backdrop-filter: blur(4px);
+}
+
+/* ==========================================================================
+   EMPTY HOME STATE - PREMIUM DESIGN
+   ========================================================================== */
+
+.empty-home-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    min-height: 60vh;
+    padding: 60px 24px;
+    background: linear-gradient(135deg, 
+        rgba(26, 26, 36, 0.4) 0%,
+        rgba(18, 18, 26, 0.2) 100%);
+    border-radius: 32px;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(4px);
+    margin: 20px 0;
+    animation: emptyHomeFadeIn 0.6s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+}
+
+@keyframes emptyHomeFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.empty-home-illustration {
+    position: relative;
+    width: 180px;
+    height: 180px;
+    margin-bottom: 32px;
+}
+
+.empty-home-disc {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: linear-gradient(135deg, 
+        var(--spotify-grey) 0%,
+        var(--bg-black) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4),
+                inset 0 0 0 2px rgba(0, 255, 213, 0.1);
+    animation: emptyDiscPulse 3s ease-in-out infinite;
+}
+
+@keyframes emptyDiscPulse {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4),
+                    inset 0 0 0 2px rgba(0, 255, 213, 0.1);
+    }
+    50% {
+        transform: scale(1.02);
+        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5),
+                    inset 0 0 0 4px rgba(0, 255, 213, 0.2);
+    }
+}
+
+.empty-home-disc i {
+    font-size: 4rem;
+    color: var(--accent-cyan);
+    filter: drop-shadow(0 0 15px var(--accent-glow));
+}
+
+.empty-home-illustration::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    background: radial-gradient(circle, 
+        rgba(0, 255, 213, 0.15) 0%,
+        transparent 70%);
+    z-index: -1;
+    animation: emptyGlowPulse 2s ease-in-out infinite;
+}
+
+@keyframes emptyGlowPulse {
+    0%, 100% {
+        opacity: 0.5;
+        transform: scale(0.95);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.05);
+    }
+}
+
+.empty-home-title {
+    font-size: 2rem;
+    font-weight: 800;
+    margin-bottom: 12px;
+    background: linear-gradient(135deg, #ffffff 0%, var(--accent-cyan) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.empty-home-subtitle {
+    font-size: 0.95rem;
+    color: var(--spotify-text-muted);
+    max-width: 450px;
+    margin: 0 auto 28px;
+    line-height: 1.6;
+}
+
+.empty-home-features {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 24px;
+    margin: 32px 0 28px;
+}
+
+.empty-home-feature {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 24px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 20px;
+    min-width: 120px;
+    transition: all 0.3s ease;
+}
+
+.empty-home-feature:hover {
+    transform: translateY(-5px);
+    border-color: rgba(0, 255, 213, 0.2);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.empty-home-feature i {
+    font-size: 1.8rem;
+    color: var(--accent-cyan);
+}
+
+.empty-home-feature span {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--spotify-text-muted);
+}
+
+.empty-home-btn {
+    background: linear-gradient(135deg, var(--accent-cyan), #00a884);
+    border: none;
+    padding: 14px 32px;
+    border-radius: 44px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #000;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.35s cubic-bezier(0.2, 0.9, 0.4, 1.2);
+    box-shadow: 0 8px 24px rgba(0, 255, 213, 0.25);
+}
+
+.empty-home-btn:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 12px 32px rgba(0, 255, 213, 0.4);
+}
+
+.empty-home-btn i {
+    font-size: 1rem;
+}
+
+/* Liquid Glass theme support */
+body.theme-liquid-glass .empty-home-state {
+    background: linear-gradient(135deg, 
+        rgba(255, 255, 255, 0.03) 0%,
+        rgba(255, 255, 255, 0.01) 100%);
+    backdrop-filter: blur(12px);
+}
+
+body.theme-liquid-glass .empty-home-feature {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(4px);
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+    .empty-home-title {
+        font-size: 1.4rem;
+    }
+    
+    .empty-home-subtitle {
+        font-size: 0.85rem;
+        padding: 0 16px;
+    }
+    
+    .empty-home-illustration {
+        width: 140px;
+        height: 140px;
+    }
+    
+    .empty-home-disc i {
+        font-size: 3rem;
+    }
+    
+    .empty-home-features {
+        gap: 12px;
+    }
+    
+    .empty-home-feature {
+        padding: 12px 16px;
+        min-width: 90px;
+    }
+    
+    .empty-home-feature i {
+        font-size: 1.3rem;
+    }
+    
+    .empty-home-feature span {
+        font-size: 0.65rem;
+    }
+    
+    .empty-home-btn {
+        padding: 10px 24px;
+        font-size: 0.8rem;
+    }
 }

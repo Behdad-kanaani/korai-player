@@ -731,15 +731,22 @@ function updateRepeatUI() {
 
 function seekTo(percent) {
     if (isMiniWindowMode) return;
-    if (!audioElement || !audioElement.duration) return;
-    audioElement.currentTime = (percent / 100) * audioElement.duration;
+    if (!audioElement || !audioElement.duration || isNaN(audioElement.duration)) return;
+    
+    percent = Math.min(100, Math.max(0, percent));
+    const newTime = (percent / 100) * audioElement.duration;
+    audioElement.currentTime = Math.min(audioElement.duration, Math.max(0, newTime));
+    
+    // Force visualizer update
+    updateTimelineVisualizer();
 }
 
 function handleMirrorSeek(event) {
     const bar = document.getElementById('fsMirrorProgressContainer');
     if (!bar) return;
     const rect = bar.getBoundingClientRect();
-    const clickX = event.clientX - rect.left;
+    let clickX = event.clientX - rect.left;
+    clickX = Math.max(0, Math.min(rect.width, clickX));
     const percent = (clickX / rect.width) * 100;
     seekTo(percent);
 }
@@ -1341,82 +1348,144 @@ function initTimelineVisualizer() {
     const timelineBg = document.getElementById('progressBarK');
     if (!timelineBg) return;
     
-    // Check if visualizer already exists
+    // Remove existing visualizer if any to prevent duplication
     let visualizerContainer = timelineBg.querySelector('.timeline-visualizer');
-    if (!visualizerContainer) {
-        visualizerContainer = document.createElement('div');
-        visualizerContainer.className = 'timeline-visualizer';
-        timelineBg.appendChild(visualizerContainer);
+    if (visualizerContainer) {
+        visualizerContainer.remove();
     }
     
-    // Create bars if not exist
-    const totalBars = 45;
-    if (visualizerContainer.children.length === 0) {
-        for (let i = 0; i < totalBars; i++) {
-            const bar = document.createElement('div');
-            bar.className = 'timeline-v-bar';
-            visualizerContainer.appendChild(bar);
-        }
+    // Create new visualizer container
+    visualizerContainer = document.createElement('div');
+    visualizerContainer.className = 'timeline-visualizer';
+    timelineBg.appendChild(visualizerContainer);
+    
+    // Calculate number of bars based on container width (1 bar per ~8px)
+    let containerWidth = timelineBg.clientWidth;
+    if (containerWidth === 0) {
+        // Fallback if element is not visible yet
+        containerWidth = window.innerWidth - 400;
+    }
+    const totalBars = Math.min(80, Math.max(30, Math.floor(containerWidth / 8)));
+    
+    // Create bars
+    for (let i = 0; i < totalBars; i++) {
+        const bar = document.createElement('div');
+        bar.className = 'timeline-v-bar';
+        bar.style.height = '2px';
+        visualizerContainer.appendChild(bar);
     }
     
+    // Update global reference
     visualizerBars = Array.from(visualizerContainer.querySelectorAll('.timeline-v-bar'));
 }
 
 function updateTimelineVisualizer() {
-    if (!visualizerBars.length) {
+    // Make sure visualizer bars exist, if not re-initialize
+    if (!visualizerBars || visualizerBars.length === 0) {
         initTimelineVisualizer();
-        if (!visualizerBars.length) return;
+        if (!visualizerBars || visualizerBars.length === 0) return;
     }
     
     const now = Date.now();
-    if (now - lastVisualizerUpdate < 50) return;
+    if (now - lastVisualizerUpdate < 60) return;
     lastVisualizerUpdate = now;
     
-    // Get playback percentage
+    // Get playback percentage safely
     let pct = 0;
-    if (audioElement && audioElement.duration && audioElement.duration > 0) {
+    if (audioElement && audioElement.duration && audioElement.duration > 0 && !isNaN(audioElement.duration) && isFinite(audioElement.duration)) {
         pct = (audioElement.currentTime / audioElement.duration) * 100;
+    } else {
+        // If duration is not ready yet, just update idle animation
+        for (let i = 0; i < visualizerBars.length; i++) {
+            const bar = visualizerBars[i];
+            if (bar) {
+                let height = 3 + Math.sin(Date.now() * 0.005 + i * 0.2) * 2;
+                height = Math.max(2, Math.min(28, height));
+                bar.style.height = `${height}px`;
+            }
+        }
+        return;
     }
     
-    // Get frequency data if analyser exists and playing
-    let dataArray = null;
-    if (window.analyser && isPlaying) {
-        const bufferLength = window.analyser.frequencyBinCount;
-        dataArray = new Uint8Array(bufferLength);
-        window.analyser.getByteFrequencyData(dataArray);
-    }
+    // Clamp percentage
+    pct = Math.min(100, Math.max(0, pct));
     
     const totalBars = visualizerBars.length;
+    const playedBarIndex = Math.floor((pct / 100) * totalBars);
     
+    // Get frequency data for active visualization if playing and analyser exists
+    let dataArray = null;
+    if (window.analyser && isPlaying) {
+        try {
+            const bufferLength = window.analyser.frequencyBinCount;
+            dataArray = new Uint8Array(bufferLength);
+            window.analyser.getByteFrequencyData(dataArray);
+        } catch (e) {
+            // Silently fail - analyser might not be ready
+        }
+    }
+    
+    // Update each bar
     for (let i = 0; i < totalBars; i++) {
         const bar = visualizerBars[i];
+        if (!bar) continue;
+        
         let height = 3;
         
-        if (dataArray && isPlaying && dataArray.length > 0) {
-            // Map bar index to frequency bin
+        if (dataArray && dataArray.length > 0 && isPlaying) {
+            // Map bar index to frequency bin for dynamic visualization
             const binIndex = Math.min(dataArray.length - 1, Math.floor((i / totalBars) * dataArray.length * 0.65));
             const value = dataArray[binIndex] || 0;
-            // Scale height: 3 to 28px
             height = 3 + (value / 255) * 25;
         } else {
-            // Idle animation
-            height = 3 + Math.sin(Date.now() * 0.003 + i * 0.15) * 2;
+            // Idle animation when paused or no analyser data
+            height = 3 + Math.sin(Date.now() * 0.005 + i * 0.2) * 2;
         }
         
-        bar.style.height = `${Math.max(2, height)}px`;
+        // Clamp height
+        height = Math.max(2, Math.min(28, height));
+        bar.style.height = `${height}px`;
         
         // Mark played portion
-        const barPercent = (i / totalBars) * 100;
-        if (barPercent <= pct) {
+        if (i < playedBarIndex) {
             bar.classList.add('played');
         } else {
             bar.classList.remove('played');
         }
     }
+    
+    // Also update the progress fill bar for redundancy
+    const fill = document.getElementById('progressFillK');
+    if (fill && audioElement && audioElement.duration > 0) {
+        fill.style.width = `${pct}%`;
+    }
+    
+    const fsFill = document.getElementById('fsMirrorProgressFill');
+    if (fsFill && audioElement && audioElement.duration > 0) {
+        fsFill.style.width = `${pct}%`;
+    }
+}
+
+
+function handleTimelineSeek(event) {
+    if (!audioElement || !audioElement.duration || isNaN(audioElement.duration)) return;
+    
+    const timelineBg = document.getElementById('progressBarK');
+    if (!timelineBg) return;
+    
+    const rect = timelineBg.getBoundingClientRect();
+    let clickX = event.clientX - rect.left;
+    
+    // Clamp to bounds
+    clickX = Math.max(0, Math.min(rect.width, clickX));
+    const percent = (clickX / rect.width) * 100;
+    const newTime = (percent / 100) * audioElement.duration;
+    
+    audioElement.currentTime = Math.min(audioElement.duration, Math.max(0, newTime));
 }
 
 function startTimelineVisualizerLoop() {
-    // Use a throttled interval instead of a continuous RAF loop (20 FPS)
+    // Clear any existing intervals
     if (visualizerIntervalId) {
         clearInterval(visualizerIntervalId);
         visualizerIntervalId = null;
@@ -1425,10 +1494,26 @@ function startTimelineVisualizerLoop() {
         cancelAnimationFrame(visualizerFrameId);
         visualizerFrameId = null;
     }
+    
+    // Initialize visualizer bars
+    initTimelineVisualizer();
+    
+    // Use interval instead of RAF for better performance and stability
     visualizerIntervalId = setInterval(() => {
+        // Always try to update, even if visualizerBars is empty
+        if (!visualizerBars || visualizerBars.length === 0) {
+            initTimelineVisualizer();
+        }
         updateTimelineVisualizer();
-    }, 50);
+    }, 60); // ~16 FPS, smooth enough
 }
+
+// Make sure to call init on window resize as well
+window.addEventListener('resize', () => {
+    if (currentActiveSection && visualizerIntervalId) {
+        initTimelineVisualizer();
+    }
+});
 
 // =============================================================================
 // MEDIA SESSION INTEGRATION
@@ -2444,11 +2529,9 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
         currentTrackId = trackId;
         currentTrack = null;
         if (hasLibrary) currentTrack = tracks.find(t => t.id === trackId) || null;
-        // If not found in library, try to use external state provided by main process
         if (!currentTrack && window.currentTrack && window.currentTrack.id === trackId) {
             currentTrack = window.currentTrack;
         }
-        // As a last resort, if no library entry exists but we have an external id, synthesize minimal track object
         if (!currentTrack && !hasLibrary && (window.currentTrackId === trackId || window.currentTrack)) {
             currentTrack = window.currentTrack || { id: trackId, title: 'Unknown', artist: 'Unknown Artist', hasCover: false };
         }
@@ -2480,7 +2563,6 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
             queueIndex = queue.findIndex(t => t.id === trackId);
             if (queueIndex === -1) { queue.unshift(currentTrack); queueIndex = 0; }
         } else {
-            // In shuffle mode, ensure current track is in queue with correct index
             const existingIndex = queue.findIndex(t => t.id === trackId);
             if (existingIndex !== -1) {
                 queueIndex = existingIndex;
@@ -2491,25 +2573,53 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
         }
         
         initAudio();
+        
+        // ========== FIX: Properly cleanup previous audio source ==========
+        // 1. Pause the current audio element
+        if (audioElement && !audioElement.paused) {
+            audioElement.pause();
+        }
+        
+        // 2. Close and recreate AudioContext to ensure a clean slate (fixes frozen timeline)
+        // This is the key step that prevents the timeline from freezing after import
+        if (window.audioCtx && window.audioCtx.state !== 'closed') {
+            try {
+                await window.audioCtx.close();
+            } catch (e) {
+                console.debug('Error closing AudioContext:', e);
+            }
+        }
+        
+        // Reset all audio node references
+        window.audioCtx = null;
+        window.audioSource = null;
+        window.gainNode = null;
+        window.analyser = null;
+        window.eqFilters = [];
+        
+        // 3. Create fresh AudioContext
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        window.audioCtx = new AudioContextClass();
+        
+        // 4. Re-setup audio nodes with the new context
         setupAudioNodes();
         
-        // If karaoke mode was active, we need to reconnect the graph after source creation        
-        if (audioCtx && audioCtx.state === 'suspended') await audioCtx.resume();
+        // 5. Resume AudioContext if it was suspended
+        if (window.audioCtx && window.audioCtx.state === 'suspended') {
+            await window.audioCtx.resume();
+        }
         
-        const streamUrl = `http://127.0.0.1:${apiPort}/api/tracks/${trackId}/stream`;
-
-        // Increment play request id so simultaneous calls can be distinguished
+        // Increment play request id to handle race conditions
         playRequestCounter += 1;
         const thisRequestId = playRequestCounter;
-
-        // Best-effort pause previous playback before loading new source
-        try { if (!audioElement.paused) audioElement.pause(); } catch (e) { /* ignore */ }
-
-        // Assign source and start loading. Wait for quick canplay event (or short timeout)
+        
+        const streamUrl = `http://127.0.0.1:${apiPort}/api/tracks/${trackId}/stream`;
+        
+        // Set source and load
         audioElement.src = streamUrl;
-        try { audioElement.load(); } catch (e) { /* ignore */ }
-
-        // Wait for 'canplay' or short timeout to avoid starting play() while another load happens
+        audioElement.load();
+        
+        // Wait for 'canplay' or timeout
         await new Promise((resolve, reject) => {
             let settled = false;
             const onCan = () => { if (settled) return; settled = true; cleanup(); resolve(); };
@@ -2526,29 +2636,26 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
             audioElement.addEventListener('abort', onAbort);
             const timeout = setTimeout(() => { if (settled) return; settled = true; cleanup(); resolve(); }, 3000);
         }).catch((e) => {
-            // If loading failed, and request has not been superseded, propagate
-            if (thisRequestId !== playRequestCounter) return; // superseded
+            if (thisRequestId !== playRequestCounter) return;
             console.debug('Media load warning:', e.message || e);
         });
-
-        // If a newer play request started meanwhile, abort this one silently
+        
+        // Check if superseded
         if (thisRequestId !== playRequestCounter) {
             console.debug('Play request superseded, aborting play for', trackId);
             return;
         }
-
-        // Attempt play and handle promise rejection (common in browsers)
+        
+        // Attempt to play
         try {
             await audioElement.play();
         } catch (e) {
-            // If a newer request superseded this one, ignore the error
             if (thisRequestId !== playRequestCounter) return;
-            // Common interruption error - log and surface
             console.error('Play attempt failed:', e);
             throw e;
         }
         
-        // If karaoke was active, reapply it after source is ready
+        // Re-apply vocal separator if it was active
         if (wasVocalSeparatorActive && typeof reconnectAudioGraph === 'function') {
             setTimeout(async () => {
                 await reconnectAudioGraph(true);
@@ -2559,14 +2666,17 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
         updatePlayerUI();
         syncWithWindowsMediaSystem();
         
+        // Send play history to backend (fire and forget)
         fetch(`http://127.0.0.1:${apiPort}/api/tracks/${trackId}/play`, { method: 'POST' }).catch(e => console.error(e));
         renderQueue();
+        
     } catch (err) {
         console.error('Play error:', err);
         showNotification('Error playing audio file: ' + err.message, 'error');
         setPlayState(false);
     }
 }
+
 
 // =============================================================================
 // PLAYER UI UPDATE
@@ -3036,6 +3146,54 @@ function getDailySuggestions(limit = 8) {
     return unique.slice(0, limit);
 }
 
+/**
+ * Render empty home dashboard with premium design
+ */
+function renderEmptyHomeDashboard() {
+    const mainSection = document.getElementById('dynamicSectionContainer');
+    if (!mainSection) return;
+    
+    mainSection.innerHTML = `
+        <div class="empty-home-state">
+            <div class="empty-home-illustration">
+                <div class="empty-home-disc">
+                    <i class="fa-solid fa-compact-disc"></i>
+                </div>
+            </div>
+            
+            <h2 class="empty-home-title">Your Musical Journey Starts Here</h2>
+            <p class="empty-home-subtitle">
+                Import your favorite tracks to build your personal music library.<br>
+                KORAI will analyze and organize them for you.
+            </p>
+            
+            <div class="empty-home-features">
+                <div class="empty-home-feature">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>AI Analysis</span>
+                </div>
+                <div class="empty-home-feature">
+                    <i class="fa-solid fa-waveform"></i>
+                    <span>Smart Playlists</span>
+                </div>
+                <div class="empty-home-feature">
+                    <i class="fa-solid fa-microphone"></i>
+                    <span>Vocal Separator</span>
+                </div>
+                <div class="empty-home-feature">
+                    <i class="fa-solid fa-equalizer"></i>
+                    <span>Studio EQ</span>
+                </div>
+            </div>
+            
+            <button class="empty-home-btn" onclick="handleImport()">
+                <i class="fa-solid fa-plus"></i>
+                <span>Import Your First Track</span>
+            </button>
+        </div>
+    `;
+}
+
 function renderHomeDashboard() {
     const mainSection = document.getElementById('dynamicSectionContainer');
     if (!mainSection) return;
@@ -3062,18 +3220,7 @@ function renderHomeDashboard() {
     // If no tracks are loaded and there is no current track, show empty library.
     // If a track is currently playing (e.g., external state), still render the home hero so now-playing info is visible.
     if (tracks.length === 0 && !currentTrack) {
-        mainSection.innerHTML = `
-            <div class="empty-state-premium">
-                <i class="fa-solid fa-compact-disc"></i>
-                <h3>${t('emptyLibrary')}</h3>
-                <p>${t('emptyLibraryDesc')}</p>
-                <div style="margin-top: 24px;">
-                    <button class="hero-primary-btn" onclick="handleImport()">
-                        <i class="fa-solid fa-plus"></i> Import Your First Track
-                    </button>
-                </div>
-            </div>
-        `;
+        renderEmptyHomeDashboard();
         return;
     }
 
@@ -3816,21 +3963,31 @@ window.switchSection = function(sectionName) {
 // EVENT LISTENERS SETUP
 // =============================================================================
 
+/**
+ * Set up all event listeners for the application
+ */
 function setupEventListeners() {
-    // --- Window controls ---
+    // =========================================================================
+    // WINDOW CONTROLS
+    // =========================================================================
     const winMinBtn = document.getElementById('winMinimizeBtn');
     const winMaxBtn = document.getElementById('winMaximizeBtn');
     const winCloseBtn = document.getElementById('winCloseBtn');
+    
     if (winMinBtn) winMinBtn.addEventListener('click', () => window.electronAPI.minimizeWindow());
     if (winMaxBtn) winMaxBtn.addEventListener('click', () => window.electronAPI.maximizeWindow());
     if (winCloseBtn) winCloseBtn.addEventListener('click', () => window.electronAPI.closeWindow());
 
-    // --- Language & Skin ---
+    // =========================================================================
+    // LANGUAGE & SKIN
+    // =========================================================================
     const langToggleBtn = document.getElementById('langToggleBtn');
-    if (langToggleBtn) langToggleBtn.addEventListener('click', () => {
-        const newLang = currentLanguage === 'fa' ? 'en' : 'fa';
-        changeClientLanguage(newLang);
-    });
+    if (langToggleBtn) {
+        langToggleBtn.addEventListener('click', () => {
+            const newLang = currentLanguage === 'fa' ? 'en' : 'fa';
+            changeClientLanguage(newLang);
+        });
+    }
 
     const skinBtns = document.querySelectorAll('.skin-btn');
     if (skinBtns.length) {
@@ -3845,6 +4002,7 @@ function setupEventListeners() {
                 applyGlobalSkin(newSkin);
             });
         });
+        
         const activeSkinBtn = document.querySelector(`.skin-btn[data-skin="${currentSkin}"]`);
         if (activeSkinBtn) {
             skinBtns.forEach(b => b.classList.remove('active'));
@@ -3852,11 +4010,15 @@ function setupEventListeners() {
         }
     }
 
-    // --- AI / Playlist Actions ---
+    // =========================================================================
+    // AI / PLAYLIST ACTIONS
+    // =========================================================================
     const createSimilarBtn = document.getElementById('createSimilarPlaylistBtn');
     if (createSimilarBtn) createSimilarBtn.addEventListener('click', createSimilarPlaylistFromCurrent);
 
-    // --- Search Input ---
+    // =========================================================================
+    // SEARCH INPUT
+    // =========================================================================
     const searchInput = document.getElementById('searchInput');
     if (searchInput) {
         searchInput.addEventListener('input', (e) => {
@@ -3874,8 +4036,11 @@ function setupEventListeners() {
         });
     }
 
-    // --- Keyboard Shortcuts ---
+    // =========================================================================
+    // KEYBOARD SHORTCUTS
+    // =========================================================================
     window.addEventListener('keydown', (e) => {
+        // Don't trigger shortcuts when typing in input fields
         if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.isContentEditable)) {
             if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
                 e.preventDefault();
@@ -3884,162 +4049,283 @@ function setupEventListeners() {
             }
             return;
         }
+        
         switch (e.key) {
-            case ' ': case 'Spacebar': e.preventDefault(); togglePlay(); break;
-            case 'ArrowRight': e.preventDefault(); if (e.ctrlKey) nextTrackEnhanced(); else if (audioElement) audioElement.currentTime = Math.min(audioElement.duration || 0, audioElement.currentTime + 10); break;
-            case 'ArrowLeft': e.preventDefault(); if (e.ctrlKey) prevTrackEnhanced(); else if (audioElement) audioElement.currentTime = Math.max(0, audioElement.currentTime - 10); break;
-            case 'ArrowUp': e.preventDefault(); setVolume(Math.min(1.0, volume + 0.05)); break;
-            case 'ArrowDown': e.preventDefault(); setVolume(Math.max(0.0, volume - 0.05)); break;
-            case 'm': case 'M': toggleMute(); break;
-            case 'n': case 'N': nextTrackEnhanced(); break;
-            case 'b': case 'B': case 'p': case 'P': prevTrackEnhanced(); break;
-            case 's': case 'S': if (audioElement) { audioElement.pause(); audioElement.currentTime = 0; setPlayState(false); } break;
-            case 'f': case 'F': toggleFullscreen(); break;
-            case 'Escape': if (isFullscreenPlayerOpen) toggleFullscreen(); break;
+            case ' ':
+            case 'Spacebar':
+                e.preventDefault();
+                togglePlay();
+                break;
+            case 'ArrowRight':
+                e.preventDefault();
+                if (e.ctrlKey) {
+                    nextTrackEnhanced();
+                } else if (audioElement) {
+                    audioElement.currentTime = Math.min(audioElement.duration || 0, audioElement.currentTime + 10);
+                }
+                break;
+            case 'ArrowLeft':
+                e.preventDefault();
+                if (e.ctrlKey) {
+                    prevTrackEnhanced();
+                } else if (audioElement) {
+                    audioElement.currentTime = Math.max(0, audioElement.currentTime - 10);
+                }
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                setVolume(Math.min(1.0, volume + 0.05));
+                break;
+            case 'ArrowDown':
+                e.preventDefault();
+                setVolume(Math.max(0.0, volume - 0.05));
+                break;
+            case 'm':
+            case 'M':
+                toggleMute();
+                break;
+            case 'n':
+            case 'N':
+                nextTrackEnhanced();
+                break;
+            case 'b':
+            case 'B':
+            case 'p':
+            case 'P':
+                prevTrackEnhanced();
+                break;
+            case 's':
+            case 'S':
+                if (audioElement) {
+                    audioElement.pause();
+                    audioElement.currentTime = 0;
+                    setPlayState(false);
+                }
+                break;
+            case 'f':
+            case 'F':
+                toggleFullscreen();
+                break;
+            case 'Escape':
+                if (isFullscreenPlayerOpen) toggleFullscreen();
+                break;
         }
     });
 
-    // --- Timeline Scrub ---
+    // =========================================================================
+    // TIMELINE SCRUB & SEEK (FIXED)
+    // =========================================================================
     const progressBar = document.getElementById('progressBarK');
     const scrubTooltip = document.getElementById('scrubTooltip');
+    
     if (progressBar && scrubTooltip) {
+        // Update tooltip position on mousemove
         progressBar.addEventListener('mousemove', (e) => {
-            if (!audioElement || !audioElement.duration) return;
+            if (!audioElement || !audioElement.duration || isNaN(audioElement.duration)) return;
+            
             const rect = progressBar.getBoundingClientRect();
-            const posX = e.clientX - rect.left;
+            let posX = e.clientX - rect.left;
+            posX = Math.max(0, Math.min(rect.width, posX));
             const percent = posX / rect.width;
             const calculatedTime = percent * audioElement.duration;
+            
             scrubTooltip.innerText = formatTime(calculatedTime);
             scrubTooltip.style.left = `${posX}px`;
+            scrubTooltip.style.display = 'block';
         });
+        
+        // Hide tooltip on mouse leave
+        progressBar.addEventListener('mouseleave', () => {
+            scrubTooltip.style.display = 'none';
+        });
+        
+        // Handle click for seeking
         progressBar.addEventListener('click', (e) => {
-            const rect = progressBar.getBoundingClientRect();
-            const clickX = e.clientX - rect.left;
-            const percent = (clickX / rect.width) * 100;
-            seekTo(percent);
+            e.stopPropagation();
+            handleTimelineSeek(e);
         });
     }
-
+    
+    // Fullscreen mirror timeline seek
     const fsMirrorProgress = document.getElementById('fsMirrorProgressContainer');
     if (fsMirrorProgress) fsMirrorProgress.addEventListener('click', handleMirrorSeek);
 
-    // --- Playback Controls ---
+    // =========================================================================
+    // PLAYBACK CONTROLS
+    // =========================================================================
     const mainPlayBtn = document.getElementById('mainPlayBtn');
     if (mainPlayBtn) mainPlayBtn.addEventListener('click', togglePlay);
+    
     const miniPlayBtn = document.getElementById('miniPlayBtn');
     if (miniPlayBtn) miniPlayBtn.addEventListener('click', togglePlay);
+    
     const nextBtn = document.getElementById('nextBtnK');
     if (nextBtn) nextBtn.addEventListener('click', nextTrackEnhanced);
+    
     const prevBtn = document.getElementById('prevBtnK');
     if (prevBtn) prevBtn.addEventListener('click', prevTrackEnhanced);
+    
     const shuffleBtn = document.getElementById('shuffleBtnK');
     if (shuffleBtn) shuffleBtn.addEventListener('click', toggleShuffleEnhanced);
+    
     const repeatBtn = document.getElementById('repeatBtnK');
-    if (repeatBtn) repeatBtn.addEventListener('click', () => { repeatMode = !repeatMode; updateRepeatUI(); });
+    if (repeatBtn) {
+        repeatBtn.addEventListener('click', () => {
+            if (repeatOneMode) {
+                repeatOneMode = false;
+                repeatMode = false;
+                showNotification('Repeat disabled', 'info');
+            } else if (repeatMode) {
+                repeatOneMode = true;
+                repeatMode = true;
+                showNotification('Repeat One (single track)', 'info');
+            } else {
+                repeatMode = true;
+                repeatOneMode = false;
+                showNotification('Repeat All (playlist)', 'info');
+            }
+            updateRepeatUI();
+        });
+    }
+    
     const fsPlayBtn = document.getElementById('fsPlayBtn');
     if (fsPlayBtn) fsPlayBtn.addEventListener('click', togglePlay);
+    
     const fsNextBtn = document.getElementById('fsNextBtn');
     if (fsNextBtn) fsNextBtn.addEventListener('click', nextTrackEnhanced);
+    
     const fsPrevBtn = document.getElementById('fsPrevBtn');
     if (fsPrevBtn) fsPrevBtn.addEventListener('click', prevTrackEnhanced);
+    
     const fsShuffleBtn = document.getElementById('fsShuffleBtn');
     if (fsShuffleBtn) fsShuffleBtn.addEventListener('click', toggleShuffleEnhanced);
+    
     const fsRepeatBtn = document.getElementById('fsRepeatBtn');
-    if (fsRepeatBtn) fsRepeatBtn.addEventListener('click', () => { repeatMode = !repeatMode; updateRepeatUI(); });
+    if (fsRepeatBtn) {
+        fsRepeatBtn.addEventListener('click', () => {
+            if (repeatOneMode) {
+                repeatOneMode = false;
+                repeatMode = false;
+                showNotification('Repeat disabled', 'info');
+            } else if (repeatMode) {
+                repeatOneMode = true;
+                repeatMode = true;
+                showNotification('Repeat One (single track)', 'info');
+            } else {
+                repeatMode = true;
+                repeatOneMode = false;
+                showNotification('Repeat All (playlist)', 'info');
+            }
+            updateRepeatUI();
+        });
+    }
+    
     const likeBtn = document.getElementById('likeBtnK');
     if (likeBtn) likeBtn.addEventListener('click', toggleLikeWithAI);
+    
     const queueBtn = document.getElementById('queueBtn');
     if (queueBtn) queueBtn.addEventListener('click', toggleQueue);
+    
     const closeQueueBtn = document.getElementById('closeQueueBtn');
     if (closeQueueBtn) closeQueueBtn.addEventListener('click', toggleQueue);
+    
     const fullscreenBtn = document.getElementById('fullscreenBtn');
     if (fullscreenBtn) fullscreenBtn.addEventListener('click', toggleFullscreen);
+    
     const fsCloseBtn = document.getElementById('fsCloseBtn');
     if (fsCloseBtn) fsCloseBtn.addEventListener('click', toggleFullscreen);
+    
     const aiRecommendBtn = document.getElementById('aiRecommendBtn');
     if (aiRecommendBtn) aiRecommendBtn.addEventListener('click', handleAiRecommendationsEnhanced);
+    
     const uploadArea = document.getElementById('uploadArea');
     if (uploadArea) uploadArea.addEventListener('click', handleImport);
+    
     const uploadFolderArea = document.getElementById('uploadFolderArea');
     if (uploadFolderArea) uploadFolderArea.addEventListener('click', handleFolderImport);
+    
     const miniplayerToggleBtn = document.getElementById('miniplayerToggleBtn');
     if (miniplayerToggleBtn) miniplayerToggleBtn.addEventListener('click', toggleMiniPlayer);
+    
     const exitMiniBtn = document.getElementById('exitMiniBtn');
-    if (exitMiniBtn) exitMiniBtn.addEventListener('click', () => {
-        if (isMiniWindowMode) window.electronAPI.closeMiniPlayer();
-        else toggleMiniPlayer();
-    });
+    if (exitMiniBtn) {
+        exitMiniBtn.addEventListener('click', () => {
+            if (isMiniWindowMode) window.electronAPI.closeMiniPlayer();
+            else toggleMiniPlayer();
+        });
+    }
+    
     const miniNextBtn = document.getElementById('miniNextBtn');
-    if (miniNextBtn) miniNextBtn.addEventListener('click', () => {
-        if (isMiniWindowMode) window.electronAPI.controlFromMini('next');
-        else nextTrackEnhanced();
-    });
+    if (miniNextBtn) {
+        miniNextBtn.addEventListener('click', () => {
+            if (isMiniWindowMode) window.electronAPI.controlFromMini('next');
+            else nextTrackEnhanced();
+        });
+    }
+    
     const miniPrevBtn = document.getElementById('miniPrevBtn');
-    if (miniPrevBtn) miniPrevBtn.addEventListener('click', () => {
-        if (isMiniWindowMode) window.electronAPI.controlFromMini('prev');
-        else prevTrackEnhanced();
-    });
+    if (miniPrevBtn) {
+        miniPrevBtn.addEventListener('click', () => {
+            if (isMiniWindowMode) window.electronAPI.controlFromMini('prev');
+            else prevTrackEnhanced();
+        });
+    }
+    
     const volSlider = document.getElementById('volumeSlider');
     if (volSlider) volSlider.addEventListener('input', (e) => { setVolume(e.target.value); });
+    
     const volIcon = document.getElementById('volumeIcon');
     if (volIcon) volIcon.addEventListener('click', toggleMute);
 
-    // --- DSP Panel ---
+    // =========================================================================
+    // DSP PANEL (EQ, TEMPO, PITCH)
+    // =========================================================================
     const dspToggleBtn = document.getElementById('dspToggleBtn');
     const closeDspBtn = document.getElementById('closeDspBtn');
     const dspPanel = document.getElementById('dspPanel');
-    if (dspToggleBtn && dspPanel) dspToggleBtn.addEventListener('click', () => { dspPanel.classList.toggle('open'); });
-    if (closeDspBtn && dspPanel) closeDspBtn.addEventListener('click', () => { dspPanel.classList.remove('open'); });
+    
+    if (dspToggleBtn && dspPanel) {
+        dspToggleBtn.addEventListener('click', () => { dspPanel.classList.toggle('open'); });
+    }
+    if (closeDspBtn && dspPanel) {
+        closeDspBtn.addEventListener('click', () => { dspPanel.classList.remove('open'); });
+    }
+    
+    // EQ Sliders
     for (let i = 0; i < 5; i++) {
         const slider = document.getElementById(`eqSlider${i}`);
-        if (slider) slider.addEventListener('input', (e) => { updateEqualizerBand(i, e.target.value); });
+        if (slider) {
+            slider.addEventListener('input', (e) => { updateEqualizerBand(i, e.target.value); });
+        }
     }
+    
     const tempoSlider = document.getElementById('tempoSlider');
     if (tempoSlider) tempoSlider.addEventListener('input', (e) => { updatePlaybackSpeed(e.target.value); });
+    
     const pitchToggle = document.getElementById('pitchToggle');
     if (pitchToggle) pitchToggle.addEventListener('change', (e) => { togglePitchPreservation(e.target.checked); });
 
-    // --- Song Info Modal ---
+    // =========================================================================
+    // SONG INFO MODAL
+    // =========================================================================
     const songInfoBtn = document.getElementById('songInfoBtn');
-    if (songInfoBtn) songInfoBtn.addEventListener('click', (e) => { if (typeof window.showSongInfo === 'function') window.showSongInfo(e); else console.warn('showSongInfo not available'); });
+    if (songInfoBtn) songInfoBtn.addEventListener('click', (e) => {
+        if (typeof window.showSongInfo === 'function') window.showSongInfo(e);
+        else console.warn('showSongInfo not available');
+    });
+    
     const extractVocalBtn = document.getElementById('extractVocalBtn');
-    if (extractVocalBtn) extractVocalBtn.addEventListener('click', (e) => { if (typeof window.extractVocalFromCurrentTrack === 'function') window.extractVocalFromCurrentTrack(e); else console.warn('extractVocalFromCurrentTrack not available'); });
+    if (extractVocalBtn) extractVocalBtn.addEventListener('click', (e) => {
+        if (typeof window.extractVocalFromCurrentTrack === 'function') window.extractVocalFromCurrentTrack(e);
+        else console.warn('extractVocalFromCurrentTrack not available');
+    });
 
-    // Ensure modal helper functions exist to avoid init errors
-    if (typeof window.showSongInfo !== 'function') {
-        window.showSongInfo = function() {
-            try {
-                const modal = document.getElementById('songInfoModal');
-                if (modal) modal.classList.add('open');
-                // populate basic content if empty
-                const content = document.getElementById('songInfoContent');
-                if (content && !content.innerHTML.trim()) content.innerHTML = '<div style="padding:8px;color:#c7ced3;">No additional song info available.</div>';
-            } catch (e) { console.warn('showSongInfo error', e); }
-        };
-    }
-    if (typeof window.closeSongInfoModal !== 'function') {
-        window.closeSongInfoModal = function() {
-            const modal = document.getElementById('songInfoModal');
-            if (modal) modal.classList.remove('open');
-        };
-    }
-
-    // Provide a safe stub for vocal extraction to avoid init errors if feature missing
-    if (typeof window.extractVocalFromCurrentTrack !== 'function') {
-        window.extractVocalFromCurrentTrack = async function() {
-            try {
-                console.warn('extractVocalFromCurrentTrack: feature not implemented in this build.');
-                // Optionally show a notification to the user if showNotification exists
-                if (typeof showNotification === 'function') showNotification('Vocal extraction not available', 'info');
-            } catch (e) { console.warn('extractVocalFromCurrentTrack stub error', e); }
-        };
-    }
-
-    // ===================== NEW: Import Playlist (auto-detect) =====================
+    // =========================================================================
+    // IMPORT PLAYLIST BUTTON
+    // =========================================================================
     const importPlaylistBtn = document.getElementById('importPlaylistBtn');
     if (importPlaylistBtn) {
         importPlaylistBtn.addEventListener('click', () => {
-            // Use native file input (works without extra IPC)
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = '.m3u,.m3u8,.pls,.xspf,.asx,.wpl,.json';
@@ -4070,34 +4356,37 @@ function setupEventListeners() {
         });
     }
 
-    // === Global event delegation for dynamic content to reduce listeners and memory ===
+    // =========================================================================
+    // GLOBAL EVENT DELEGATION FOR DYNAMIC CONTENT
+    // =========================================================================
     const dynamicContainer = document.getElementById('dynamicSectionContainer');
     if (dynamicContainer) {
+        // Click delegation
         dynamicContainer.addEventListener('click', (e) => {
             const target = e.target;
-
-            // 1. Album card click
+            
+            // Album card click
             const albumCard = target.closest('.album-card');
             if (albumCard && !target.closest('.card-actions')) {
                 const albumName = albumCard.dataset.albumName;
-                if (albumName) { showAlbumDetail(albumName); }
+                if (albumName) showAlbumDetail(albumName);
                 return;
             }
-
-            // 2. Artist card click
+            
+            // Artist card click
             const artistCard = target.closest('.artist-card');
             if (artistCard && !target.closest('.card-actions')) {
                 const artistName = artistCard.dataset.artistName;
-                if (artistName) { showArtistDetail(artistName); }
+                if (artistName) showArtistDetail(artistName);
                 return;
             }
-
-            // 3. Track row or album/artist list item
+            
+            // Track row or album/artist list item
             const trackRow = target.closest('.track-row, .album-track-item, .artist-track-item');
             if (trackRow) {
                 const trackId = parseInt(trackRow.dataset.trackId);
-
-                // delete button
+                
+                // Delete button
                 const deleteBtn = target.closest('.table-action-btn.delete');
                 if (deleteBtn) {
                     e.stopPropagation();
@@ -4108,17 +4397,17 @@ function setupEventListeners() {
                     }
                     return;
                 }
-
-                // add/like/menu button
+                
+                // Add to playlist button
                 const addBtn = target.closest('.table-action-btn.like');
                 if (addBtn) {
                     e.stopPropagation();
                     showPlaylistContextMenu(trackId, e.clientX, e.clientY);
                     return;
                 }
-
-                // normal click => play
-                if (trackId) {
+                
+                // Normal click => play
+                if (trackId && !isNaN(trackId)) {
                     if (currentActiveSection === 'playlist' && currentActivePlaylistId) {
                         playTrackFromPlaylist(currentActivePlaylistId, trackId);
                     } else {
@@ -4127,8 +4416,8 @@ function setupEventListeners() {
                 }
                 return;
             }
-
-            // 4. Music cards on home/recommendations
+            
+            // Music cards on home/recommendations
             const musicCard = target.closest('.featured-card, .spotify-music-card, .recent-item-premium, .recent-track-item');
             if (musicCard) {
                 const tId = parseInt(musicCard.dataset.trackId);
@@ -4138,13 +4427,13 @@ function setupEventListeners() {
                 return;
             }
         });
-
-        // centralized contextmenu handling
+        
+        // Context menu delegation
         dynamicContainer.addEventListener('contextmenu', (e) => {
             const row = e.target.closest('.track-row, .album-track-item, .artist-track-item, .featured-card, .spotify-music-card');
             if (row) {
                 const trackId = parseInt(row.dataset.trackId);
-                if (trackId) {
+                if (trackId && !isNaN(trackId)) {
                     e.preventDefault();
                     showPlaylistContextMenu(trackId, e.clientX, e.clientY);
                 }
@@ -4152,19 +4441,27 @@ function setupEventListeners() {
         });
     }
 
-    // --- Drag & Drop ---
+    // =========================================================================
+    // DRAG & DROP
+    // =========================================================================
     setupDragAndDrop();
 
-    // --- Mini‑window IPC listeners (if in mini mode) ---
+    // =========================================================================
+    // MINI-WINDOW IPC LISTENERS
+    // =========================================================================
     if (isMiniWindowMode && window.electronAPI) {
         stateUpdateTokenMini = window.electronAPI.onStateUpdated((state) => {
-            currentTrack = state.track; isPlaying = state.isPlaying; apiPort = state.apiPort;
+            currentTrack = state.track;
+            isPlaying = state.isPlaying;
+            apiPort = state.apiPort;
             window.isPlaying = isPlaying;
+            
             const miniTitle = document.getElementById('miniTitle');
             const miniArtist = document.getElementById('miniArtist');
             const miniArt = document.getElementById('miniArt');
             const mPlayIcon = document.getElementById('miniPlayIcon');
             const mTimelineFill = document.getElementById('miniTimelineFill');
+            
             if (currentTrack) {
                 if (miniTitle) miniTitle.innerText = currentTrack.title || 'Untitled';
                 if (miniArtist) miniArtist.innerText = currentTrack.artist || 'Unknown Artist';
@@ -4181,7 +4478,9 @@ function setupEventListeners() {
         });
     }
 
-    // --- Main window: listen for playback state updates from main process ---
+    // =========================================================================
+    // MAIN WINDOW STATE UPDATE LISTENER
+    // =========================================================================
     if (!isMiniWindowMode && window.electronAPI) {
         stateUpdateTokenMain = window.electronAPI.onStateUpdated((state) => {
             try {
@@ -4192,27 +4491,28 @@ function setupEventListeners() {
                 isPlaying = !!state.isPlaying;
                 apiPort = state.apiPort || apiPort;
                 window.isPlaying = isPlaying;
-
-                // Update player UI controls (play/pause buttons, vinyl, timeline, track rows)
+                
                 if (typeof updatePlayerUI === 'function') updatePlayerUI();
                 if (typeof setPlayState === 'function') setPlayState(isPlaying);
-
-                // Refresh hero/home section if currently visible so now-playing shows correct info
+                
                 if (currentActiveSection === 'home') {
                     try {
-                        if (typeof renderHome === 'function') renderHome();
-                        else if (typeof renderHomeDashboard === 'function') renderHomeDashboard();
-                        else if (typeof renderHomePremium === 'function') renderHomePremium();
+                        if (typeof renderHomeDashboard === 'function') renderHomeDashboard();
                     } catch (e) { console.warn('Failed to re-render home after state update', e); }
                 }
-
-                // Update connection status to connected when state arrives
-                try { if (typeof window.updatePlayerConnectionUI === 'function') window.updatePlayerConnectionUI(true); } catch (e) {}
-            } catch (err) { console.error('State update handling error:', err); }
+                
+                try {
+                    if (typeof window.updatePlayerConnectionUI === 'function') window.updatePlayerConnectionUI(true);
+                } catch (e) {}
+            } catch (err) {
+                console.error('State update handling error:', err);
+            }
         });
     }
 
-    // Cleanup IPC listeners when renderer unloads to avoid leaking handlers
+    // =========================================================================
+    // CLEANUP IPC LISTENERS ON UNLOAD
+    // =========================================================================
     window.addEventListener('beforeunload', () => {
         try {
             if (stateUpdateTokenMini && window.electronAPI && window.electronAPI.removeStateUpdatedListener) {
@@ -4224,8 +4524,21 @@ function setupEventListeners() {
                 window.electronAPI.removeStateUpdatedListener(stateUpdateTokenMain);
             }
         } catch (e) {}
+        
+        // Clean up intervals
+        if (visualizerIntervalId) {
+            clearInterval(visualizerIntervalId);
+            visualizerIntervalId = null;
+        }
+        if (spectrumIntervalId) {
+            clearInterval(spectrumIntervalId);
+            spectrumIntervalId = null;
+        }
     });
 
+    // =========================================================================
+    // EXECUTE CONTROL FROM MINI-PLAYER
+    // =========================================================================
     if (!isMiniWindowMode && window.electronAPI) {
         window.electronAPI.onExecuteControl((command) => {
             if (command === 'play-pause') togglePlay();
@@ -4238,7 +4551,9 @@ function setupEventListeners() {
         });
     }
 
-    // --- Tag Editor & Crossfade from main process ---
+    // =========================================================================
+    // TAG EDITOR FROM MAIN PROCESS
+    // =========================================================================
     if (window.electronAPI && window.electronAPI.onOpenTagEditor) {
         window.electronAPI.onOpenTagEditor((trackId) => {
             const track = tracks.find(t => t.id === trackId);
@@ -4249,12 +4564,20 @@ function setupEventListeners() {
             }
         });
     }
+
+    // =========================================================================
+    // CROSSFADE CHANGED LISTENER
+    // =========================================================================
     if (window.electronAPI && window.electronAPI.onCrossfadeChanged) {
         window.electronAPI.onCrossfadeChanged((duration) => {
             crossfadeDuration = duration;
             console.debug('Crossfade changed to:', duration);
         });
     }
+
+    // =========================================================================
+    // GLOBAL SHORTCUT LISTENER
+    // =========================================================================
     if (window.electronAPI && window.electronAPI.onGlobalShortcut) {
         window.electronAPI.onGlobalShortcut((command) => {
             if (command === 'play-pause') togglePlay();
@@ -4263,9 +4586,18 @@ function setupEventListeners() {
         });
     }
 
-    // --- Initialize timeline visualizer ---
+    // =========================================================================
+    // TIMELINE VISUALIZER INIT
+    // =========================================================================
     initTimelineVisualizer();
     startTimelineVisualizerLoop();
+    
+    // Re-initialize visualizer on window resize
+    window.addEventListener('resize', () => {
+        if (visualizerIntervalId) {
+            initTimelineVisualizer();
+        }
+    });
 }
 
 // =============================================================================

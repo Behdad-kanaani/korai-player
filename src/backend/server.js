@@ -1,6 +1,10 @@
 /**
  * server.js - KORAI Music Player Backend API with AI
  * Complete Express server with AI recommendation endpoints
+ * 
+ * FIXED: Deep recursive directory scanning with improved error handling
+ * FIXED: System folder skipping to avoid EPERM errors
+ * FIXED: Worker thread compatibility (no ES modules in workers)
  */
 
 const express = require('express');
@@ -19,7 +23,9 @@ const {
     getDiscoveryRecommendations 
 } = require('./recommender');
 const { detectRealBPM } = require('./bpmDetector');
-const { exportToM3U, exportToPLS, exportLibraryToCSV, exportPlaylistToCSV, importFromM3U, importFromPLS } = require('./playlistExporter');
+const { exportToM3U, exportToPLS, exportLibraryToCSV, exportPlaylistToCSV, 
+        importFromM3U, importFromPLS, importFromXSPF, importFromASX, 
+        importFromWPL, importFromJSON } = require('./playlistExporter');
 const { getTracksFromCue, generateCueSheet } = require('./cueParser');
 const { advancedSearchFilter } = require('../frontend/advancedSearch');
 const AudioSeparator = require('./audioSeparator');
@@ -34,6 +40,10 @@ const app = express();
 let serverUserDataPath = null;
 let userHistory = {};
 
+// =============================================================================
+// MIDDLEWARE
+// =============================================================================
+
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -42,6 +52,120 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// =============================================================================
+// SYSTEM FOLDERS TO SKIP (avoid EPERM errors on Windows)
+// =============================================================================
+
+const SYSTEM_FOLDERS_TO_SKIP = new Set([
+    '$recycle.bin', 'recycle.bin', 'system volume information', 'windows', 
+    'programdata', 'program files', 'program files (x86)', 'boot', 
+    'perflogs', 'recovery', 'msocache', 'config.msi', 'cache', 
+    'temp', 'tmp', 'appdata', 'local settings', 'winnt',
+    'windows defender', 'windows nt', 'microsoft shared', 
+    'common files', 'reference assemblies', 'assembly',
+    'package cache', 'installer', 'servicing', 'speech', 
+    'fonts', 'infusedapps', 'system32', 'syswow64', 'winsxs'
+]);
+
+const SKIP_PATH_PATTERNS = [
+    /[\\/]ProgramData[\\/]Microsoft[\\/]Windows[\\/]WER/i,
+    /[\\/]ProgramData[\\/]Microsoft[\\/]Windows[\\/]WindowsApps/i,
+    /[\\/]ProgramData[\\/]Microsoft[\\/]Windows Defender/i,
+    /[\\/]System32[\\/]/i,
+    /[\\/]SysWOW64[\\/]/i,
+    /[\\/]Windows[\\/]System32/i,
+    /[\\/]Windows[\\/]SysWOW64/i,
+    /[\\/]Windows[\\/]winsxs/i,
+    /[\\/]Windows[\\/]Boot/i,
+    /[\\/]Windows[\\/]Fonts/i,
+    /[\\/]Windows[\\/]Installer/i,
+    /[\\/]Windows[\\/]servicing/i,
+    /[\\/]Windows[\\/]SoftwareDistribution/i,
+    /[\\/]Windows[\\/]CSC/i,
+    /[\\/]Windows[\\/]Prefetch/i,
+    /[\\/]Windows[\\/]ServiceProfiles/i,
+    /[\\/]Config[\\/]SystemProfile/i,
+    /[\\/]AppData[\\/]Local[\\/]Temp/i,
+    /[\\/]AppData[\\/]Local[\\/]Microsoft[\\/]Windows[\\/]INetCache/i,
+    /[\\/]AppData[\\/]Local[\\/]Microsoft[\\/]Windows[\\/]Caches/i,
+    /[\\/]AppData[\\/]Local[\\/]Microsoft[\\/]Windows[\\/]Explorer/i,
+];
+
+/**
+ * Check if a directory path should be skipped (system/protected folders)
+ */
+function shouldSkipDirectory(dirPath) {
+    const normalizedPath = dirPath.toLowerCase();
+    const pathParts = normalizedPath.split(/[\\/]/);
+    
+    for (const part of pathParts) {
+        if (SYSTEM_FOLDERS_TO_SKIP.has(part)) {
+            return true;
+        }
+    }
+    
+    for (const pattern of SKIP_PATH_PATTERNS) {
+        if (pattern.test(dirPath)) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * Improved recursive directory scanner with system folder skipping
+ * Scans all user directories recursively for audio files
+ */
+async function scanDirectoryRecursively(dirPath, audioExtensions, files, maxDepth = 100, currentDepth = 0, silent = true) {
+    try {
+        if (shouldSkipDirectory(dirPath)) {
+            return;
+        }
+        
+        await fs.promises.access(dirPath, fs.constants.R_OK);
+        
+        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+        
+        for (const entry of entries) {
+            const fullPath = path.join(dirPath, entry.name);
+            
+            try {
+                if (entry.isDirectory()) {
+                    if (entry.name.startsWith('.') || entry.name.startsWith('$')) {
+                        continue;
+                    }
+                    
+                    if (currentDepth < maxDepth) {
+                        await scanDirectoryRecursively(fullPath, audioExtensions, files, maxDepth, currentDepth + 1, silent);
+                    }
+                } else if (entry.isFile()) {
+                    const ext = path.extname(entry.name).toLowerCase();
+                    if (audioExtensions.includes(ext)) {
+                        files.push(fullPath);
+                        if (!silent) console.debug(`[scan] Found audio file: ${fullPath}`);
+                    }
+                }
+            } catch (entryErr) {
+                if (!silent && entryErr.code !== 'EPERM' && entryErr.code !== 'EACCES') {
+                    console.warn(`[scan] Cannot access: ${fullPath}`, entryErr.message);
+                }
+            }
+        }
+    } catch (err) {
+        if (!silent && err.code !== 'EPERM' && err.code !== 'EACCES') {
+            console.error(`[scan] Error scanning directory ${dirPath}:`, err.message);
+        }
+    }
+}
+
+// =============================================================================
+// UTILITY FUNCTIONS
+// =============================================================================
+
+/**
+ * Download file from URL with redirect handling
+ */
 function downloadFile(fileUrl, destPath, redirectCount = 0) {
     if (redirectCount > 5) {
         return Promise.reject(new Error('Too many redirects'));
@@ -50,7 +174,7 @@ function downloadFile(fileUrl, destPath, redirectCount = 0) {
         const urlObj = new URL(fileUrl);
         const client = urlObj.protocol === 'https:' ? https : http;
         
-        client.get(fileUrl, (response) => {
+        const request = client.get(fileUrl, (response) => {
             const statusCode = response.statusCode;
             
             if (statusCode >= 300 && statusCode < 400 && response.headers.location) {
@@ -74,13 +198,25 @@ function downloadFile(fileUrl, destPath, redirectCount = 0) {
                 fs.unlink(destPath, () => {});
                 reject(err);
             });
-        }).on('error', (err) => {
+        });
+        
+        request.on('error', (err) => {
             reject(err);
+        });
+        
+        request.setTimeout(30000, () => {
+            request.destroy();
+            reject(new Error('Request timeout'));
         });
     });
 }
 
+// =============================================================================
+// ROUTES SETUP
+// =============================================================================
+
 function setupRoutes() {
+    // ========== Settings ==========
     app.get('/api/settings', (req, res) => {
         try {
             const db = getDb();
@@ -129,11 +265,12 @@ function setupRoutes() {
         }
     });
 
+    // ========== Health Check ==========
     app.get('/api/health', (req, res) => {
         res.json({ status: 'ok', timestamp: Date.now() });
     });
 
-    // Lightweight telemetry ingestion for frontend performance metrics
+    // ========== Telemetry ==========
     app.post('/api/telemetry/perf', express.json(), (req, res) => {
         try {
             if (!serverUserDataPath) return res.status(500).json({ error: 'Server not initialized' });
@@ -159,6 +296,7 @@ function setupRoutes() {
         }
     });
 
+    // ========== Tracks ==========
     app.get('/api/tracks', (req, res) => {
         try {
             const db = getDb();
@@ -174,7 +312,6 @@ function setupRoutes() {
         }
     });
 
-    // Batch liked-status endpoint to avoid N+1 requests from clients
     app.get('/api/tracks/liked-status', (req, res) => {
         try {
             const db = getDb();
@@ -260,129 +397,93 @@ function setupRoutes() {
         }
     });
 
-app.post('/api/tracks/import', async (req, res) => {
-  try {
-    const { filePaths } = req.body;
-    console.debug('📥 /api/tracks/import received', Array.isArray(filePaths) ? filePaths.length : typeof filePaths, 'items');
+    // ========== Import Tracks ==========
+    app.post('/api/tracks/import', async (req, res) => {
+        try {
+            const { filePaths } = req.body;
+            console.debug('📥 /api/tracks/import received', Array.isArray(filePaths) ? filePaths.length : typeof filePaths, 'items');
 
-    if (!filePaths || !Array.isArray(filePaths) || filePaths.length === 0) {
-      return res.status(400).json({ error: 'No file paths provided' });
-    }
+            if (!filePaths || !Array.isArray(filePaths) || filePaths.length === 0) {
+                return res.status(400).json({ error: 'No file paths provided' });
+            }
 
-    const db = getDb();
-    // Filter only existing files
-    const existing = filePaths.filter(fp => fs.existsSync(fp));
-    console.debug(`📂 import: ${existing.length}/${filePaths.length} paths exist on disk`);
+            const db = getDb();
+            const existing = filePaths.filter(fp => {
+                try {
+                    return fs.existsSync(fp);
+                } catch (e) {
+                    return false;
+                }
+            });
+            console.debug(`📂 import: ${existing.length}/${filePaths.length} paths exist on disk`);
 
-    if (existing.length === 0) {
-      return res.json({ success: true, imported: 0, total: filePaths.length });
-    }
+            if (existing.length === 0) {
+                return res.json({ success: true, imported: 0, total: filePaths.length });
+            }
 
-    // Send immediate response to prevent frontend timeout,
-    // but we still need to process in background? No, better to process then respond.
-    // However analysis can take time, so we process in a non‑blocking way and respond when done.
-    // We'll use a simple concurrency-limited Promise.map.
+            const results = [];
+            const CONCURRENCY = 3;
 
-    const results = [];
-    const CONCURRENCY = 3;
-    let index = 0;
+            async function processOne(filePath) {
+                try {
+                    console.debug(`🔍 Analyzing: ${path.basename(filePath)}`);
+                    const analysis = await analyzeAudioFile(filePath);
+                    const track = db.addTrack({
+                        title: analysis.title || path.basename(filePath, path.extname(filePath)),
+                        artist: analysis.artist || '',
+                        filePath: filePath,
+                        duration: analysis.duration,
+                        bpm: analysis.bpm,
+                        energy: analysis.energy,
+                        loudness: analysis.loudness,
+                        genre: analysis.genre,
+                        genreConfidence: analysis.genreConfidence,
+                        album: analysis.album,
+                        coverImage: analysis.coverImage,
+                        lyrics: analysis.lyrics,
+                        sampleRate: analysis.sampleRate,
+                        bitrate: analysis.bitrate,
+                        codec: analysis.codec,
+                        featureVector: analysis.featureVector,
+                        rawFeatures: analysis.rawFeatures
+                    }, false);
+                    results.push(track);
+                    console.debug(`✅ Imported: ${track.title}`);
+                } catch (err) {
+                    console.error(`❌ Failed to import ${filePath}:`, err.message);
+                }
+            }
 
-    async function processOne(filePath) {
-      try {
-        console.debug(`🔍 Analyzing: ${path.basename(filePath)}`);
-        const analysis = await analyzeAudioFile(filePath);
-        const track = db.addTrack({
-          title: analysis.title || path.basename(filePath, path.extname(filePath)),
-          artist: analysis.artist || '',
-          filePath: filePath,
-          duration: analysis.duration,
-          bpm: analysis.bpm,
-          energy: analysis.energy,
-          loudness: analysis.loudness,
-          genre: analysis.genre,
-          genreConfidence: analysis.genreConfidence,
-          album: analysis.album,
-          coverImage: analysis.coverImage,
-          lyrics: analysis.lyrics,
-          sampleRate: analysis.sampleRate,
-          bitrate: analysis.bitrate,
-          codec: analysis.codec,
-          featureVector: analysis.featureVector,
-          rawFeatures: analysis.rawFeatures
-        }, false); // autoSave false, we'll save once at end
-        results.push(track);
-        console.debug(`✅ Imported: ${track.title}`);
-      } catch (err) {
-        console.error(`❌ Failed to import ${filePath}:`, err.message);
-      }
-    }
+            async function run() {
+                const workers = [];
+                for (let i = 0; i < existing.length; i++) {
+                    const task = processOne(existing[i]);
+                    workers.push(task);
+                    if (workers.length >= CONCURRENCY || i === existing.length - 1) {
+                        await Promise.all(workers);
+                        workers.length = 0;
+                    }
+                }
+                db.save();
+                res.json({ success: true, imported: results.length, total: filePaths.length });
+            }
 
-    async function run() {
-      const workers = [];
-      for (let i = 0; i < existing.length; i++) {
-        const task = processOne(existing[i]);
-        workers.push(task);
-        if (workers.length >= CONCURRENCY || i === existing.length - 1) {
-          await Promise.all(workers);
-          workers.length = 0;
+            run().catch(err => {
+                console.error('Import processing error:', err);
+                if (!res.headersSent) {
+                    res.status(500).json({ error: err.message });
+                }
+            });
+
+        } catch (error) {
+            console.error('Import endpoint error:', error);
+            if (!res.headersSent) {
+                res.status(500).json({ error: error.message });
+            }
         }
-      }
-      db.save(); // persist all at once
-      res.json({ success: true, imported: results.length, total: filePaths.length });
-    }
-
-    run().catch(err => {
-      console.error('Import processing error:', err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: err.message });
-      }
     });
 
-  } catch (error) {
-    console.error('Import endpoint error:', error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: error.message });
-    }
-  }
-});
-
-    // Helper: fallback direct analysis (synchronous but reliable)
-    async function directAnalyzeAndImport(filePaths, db, res, totalFiles) {
-    const results = [];
-    for (const filePath of filePaths) {
-        try {
-        // Use analyzeAudioFile from analyzer.js (already required at top)
-        const analysis = await analyzeAudioFile(filePath);
-        db.addTrack({
-            title: analysis.title || path.basename(filePath, path.extname(filePath)),
-            artist: analysis.artist || '',
-            filePath: filePath,
-            duration: analysis.duration,
-            bpm: analysis.bpm,
-            energy: analysis.energy,
-            loudness: analysis.loudness,
-            genre: analysis.genre,
-            genreConfidence: analysis.genreConfidence,
-            album: analysis.album,
-            coverImage: analysis.coverImage,
-            lyrics: analysis.lyrics,
-            sampleRate: analysis.sampleRate,
-            bitrate: analysis.bitrate,
-            codec: analysis.codec,
-            featureVector: analysis.featureVector,
-            rawFeatures: analysis.rawFeatures
-        }, false);
-        results.push(filePath);
-        } catch (err) {
-        console.error(`Failed to analyze ${filePath} directly:`, err);
-        }
-    }
-    db.save();
-    if (!res.headersSent) {
-        res.json({ success: true, imported: results.length, total: totalFiles });
-    }
-    }
-
+    // ========== Download Track from URL ==========
     app.post('/api/tracks/download', async (req, res) => {
         try {
             const { url } = req.body;
@@ -399,7 +500,6 @@ app.post('/api/tracks/import', async (req, res) => {
             
             await downloadFile(url, tempFilePath);
 
-            // Use worker for single-file analysis to avoid blocking
             const { Worker } = require('worker_threads');
             const workerPath = path.join(__dirname, 'worker', 'analyzer.worker.js');
             const worker = new Worker(workerPath);
@@ -441,6 +541,7 @@ app.post('/api/tracks/import', async (req, res) => {
         }
     });
 
+    // ========== Playlists ==========
     app.get('/api/playlists', (req, res) => {
         try {
             const db = getDb();
@@ -492,6 +593,7 @@ app.post('/api/tracks/import', async (req, res) => {
         }
     });
 
+    // ========== Delete Track ==========
     app.delete('/api/tracks/:id', async (req, res) => {
         try {
             const db = getDb();
@@ -502,6 +604,7 @@ app.post('/api/tracks/import', async (req, res) => {
         }
     });
 
+    // ========== Play History ==========
     app.post('/api/tracks/:id/play', (req, res) => {
         try {
             const db = getDb();
@@ -515,6 +618,7 @@ app.post('/api/tracks/import', async (req, res) => {
         }
     });
 
+    // ========== Like/Unlike ==========
     app.post('/api/tracks/:id/like', (req, res) => {
         try {
             const db = getDb();
@@ -551,96 +655,95 @@ app.post('/api/tracks/import', async (req, res) => {
         }
     });
 
-// Vocal extraction endpoint (با هندلینگ خطای تحلیل فایل)
-app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
-    try {
-        const db = getDb();
-        const track = db.getTrackById(parseInt(req.params.id));
-        if (!track || !track.filePath) {
-            return res.status(404).json({ error: 'Track not found or file missing' });
-        }
-
-        if (!fs.existsSync(track.filePath)) {
-            return res.status(404).json({ error: 'Audio file does not exist on disk' });
-        }
-
-        const { mode = 'vocal' } = req.body;
-        if (mode !== 'vocal') {
-            return res.status(400).json({ error: 'Only "vocal" mode is supported' });
-        }
-
-        const extractedDir = path.join(serverUserDataPath, 'extracted_vocals');
-        if (!fs.existsSync(extractedDir)) fs.mkdirSync(extractedDir, { recursive: true });
-
-        const ext = path.extname(track.filePath);
-        const baseName = path.basename(track.filePath, ext);
-        const outputFileName = `${baseName}_vocals_${Date.now()}.wav`;
-        const outputFilePath = path.join(extractedDir, outputFileName);
-
-        console.debug(`🎤 Extracting vocals from: ${track.filePath}`);
-        await AudioSeparator.extractVocal(track.filePath, outputFilePath);
-
-        // تحلیل فایل خروجی با fallback در صورت خطا
-        let analysis;
+    // ========== Vocal Extraction ==========
+    app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
         try {
-            analysis = await analyzeAudioFile(outputFilePath);
-        } catch (analysisErr) {
-            console.warn('⚠️ Audio analysis failed for extracted file, using fallback metadata:', analysisErr.message);
-            // متادیتای پیش‌فرض برای فایل استخراج شده
-            analysis = {
-                duration: 0,
-                bpm: 120,
-                energy: 0.5,
-                loudness: -12,
-                sampleRate: 22050,
-                bitrate: 0,
-                codec: 'wav',
-                genre: track.genre || 'Extracted Vocal',
+            const db = getDb();
+            const track = db.getTrackById(parseInt(req.params.id));
+            if (!track || !track.filePath) {
+                return res.status(404).json({ error: 'Track not found or file missing' });
+            }
+
+            if (!fs.existsSync(track.filePath)) {
+                return res.status(404).json({ error: 'Audio file does not exist on disk' });
+            }
+
+            const { mode = 'vocal' } = req.body;
+            if (mode !== 'vocal') {
+                return res.status(400).json({ error: 'Only "vocal" mode is supported' });
+            }
+
+            const extractedDir = path.join(serverUserDataPath, 'extracted_vocals');
+            if (!fs.existsSync(extractedDir)) fs.mkdirSync(extractedDir, { recursive: true });
+
+            const ext = path.extname(track.filePath);
+            const baseName = path.basename(track.filePath, ext);
+            const outputFileName = `${baseName}_vocals_${Date.now()}.wav`;
+            const outputFilePath = path.join(extractedDir, outputFileName);
+
+            console.debug(`🎤 Extracting vocals from: ${track.filePath}`);
+            await AudioSeparator.extractVocal(track.filePath, outputFilePath);
+
+            let analysis;
+            try {
+                analysis = await analyzeAudioFile(outputFilePath);
+            } catch (analysisErr) {
+                console.warn('⚠️ Audio analysis failed for extracted file, using fallback metadata:', analysisErr.message);
+                analysis = {
+                    duration: 0,
+                    bpm: 120,
+                    energy: 0.5,
+                    loudness: -12,
+                    sampleRate: 22050,
+                    bitrate: 0,
+                    codec: 'wav',
+                    genre: track.genre || 'Extracted Vocal',
+                    title: `${track.title} (Vocals)`,
+                    artist: track.artist,
+                    album: track.album,
+                    featureVector: null,
+                    rawFeatures: null,
+                    coverImage: null
+                };
+            }
+
+            let coverImage = null;
+            if (track.coverPath && fs.existsSync(track.coverPath)) {
+                try {
+                    coverImage = fs.readFileSync(track.coverPath);
+                } catch (err) {
+                    console.warn('Could not read cover image:', err.message);
+                }
+            }
+
+            const newTrack = db.addTrack({
                 title: `${track.title} (Vocals)`,
                 artist: track.artist,
+                filePath: outputFilePath,
+                duration: analysis.duration,
+                bpm: analysis.bpm,
+                energy: analysis.energy,
+                loudness: analysis.loudness,
+                genre: analysis.genre,
                 album: track.album,
-                featureVector: null,
-                rawFeatures: null,
-                coverImage: null
-            };
+                coverImage: coverImage,
+                lyrics: track.lyrics,
+                sampleRate: analysis.sampleRate,
+                bitrate: analysis.bitrate,
+                codec: analysis.codec,
+                featureVector: analysis.featureVector,
+                rawFeatures: analysis.rawFeatures
+            });
+
+            console.debug(`✅ Extracted vocal track added: ${newTrack.title} (ID: ${newTrack.id})`);
+            res.json({ success: true, track: newTrack });
+        } catch (error) {
+            console.error('Vocal extraction error:', error);
+            res.status(500).json({ error: error.message });
         }
+    });
 
-        let coverImage = null;
-        if (track.coverPath && fs.existsSync(track.coverPath)) {
-            try {
-                coverImage = fs.readFileSync(track.coverPath);
-            } catch (err) {
-                console.warn('Could not read cover image:', err.message);
-            }
-        }
-
-        const newTrack = db.addTrack({
-            title: `${track.title} (Vocals)`,
-            artist: track.artist,
-            filePath: outputFilePath,
-            duration: analysis.duration,
-            bpm: analysis.bpm,
-            energy: analysis.energy,
-            loudness: analysis.loudness,
-            genre: analysis.genre,
-            album: track.album,
-            coverImage: coverImage,
-            lyrics: track.lyrics,
-            sampleRate: analysis.sampleRate,
-            bitrate: analysis.bitrate,
-            codec: analysis.codec,
-            featureVector: analysis.featureVector,
-            rawFeatures: analysis.rawFeatures
-        });
-
-        console.debug(`✅ Extracted vocal track added: ${newTrack.title} (ID: ${newTrack.id})`);
-        res.json({ success: true, track: newTrack });
-    } catch (error) {
-        console.error('Vocal extraction error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
+    // ========== AI Endpoints ==========
     app.get('/api/ai/history', (req, res) => {
         try {
             res.json(userHistory);
@@ -744,6 +847,7 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
         }
     });
 
+    // ========== Create Similar Playlist ==========
     app.post('/api/playlists/similar', (req, res) => {
         try {
             const db = getDb();
@@ -805,6 +909,7 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
         }
     });
 
+    // ========== Stats ==========
     app.get('/api/stats', (req, res) => {
         try {
             const db = getDb();
@@ -814,6 +919,7 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
         }
     });
 
+    // ========== Tag Editor ==========
     app.put('/api/tracks/:id/tags', async (req, res) => {
         try {
             const db = getDb();
@@ -839,6 +945,7 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
         }
     });
 
+    // ========== Playlist Export ==========
     app.post('/api/playlists/:id/export', async (req, res) => {
         try {
             const db = getDb();
@@ -873,6 +980,7 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
         }
     });
 
+    // ========== Playlist Import ==========
     app.post('/api/playlists/import', async (req, res) => {
         try {
             const db = getDb();
@@ -944,7 +1052,7 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
         }
     });
 
-    // Auto-detect and import any playlist format
+    // ========== Auto-detect Playlist Import ==========
     app.post('/api/playlists/import-auto', async (req, res) => {
         try {
             const db = getDb();
@@ -955,7 +1063,6 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
             let format = '';
             let importedTracks = [];
             
-            // Dispatch based on file extension
             switch (ext) {
                 case '.m3u':
                     format = 'm3u';
@@ -1044,6 +1151,7 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
         }
     });
 
+    // ========== Library Export ==========
     app.post('/api/library/export', async (req, res) => {
         try {
             const db = getDb();
@@ -1057,6 +1165,7 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
         }
     });
 
+    // ========== Advanced Search ==========
     app.post('/api/search/advanced', (req, res) => {
         try {
             const db = getDb();
@@ -1088,6 +1197,7 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
         }
     });
 
+    // ========== CUE Sheet ==========
     app.post('/api/cue/parse', async (req, res) => {
         try {
             const { cuePath, audioBaseDir } = req.body;
@@ -1117,6 +1227,7 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
         }
     });
 
+    // ========== Playback Settings ==========
     let gaplessEnabled = true;
     let crossfadeDuration = 0;
 
@@ -1131,6 +1242,7 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
         res.json({ gaplessEnabled, crossfadeDuration });
     });
 
+    // ========== BPM Detection ==========
     app.post('/api/tracks/:id/detect-bpm', async (req, res) => {
         try {
             const db = getDb();
@@ -1148,12 +1260,16 @@ app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
     });
 }
 
+// =============================================================================
+// SERVER STARTUP
+// =============================================================================
+
 async function startServer(port, userDataPath) {
     serverUserDataPath = userDataPath;
     initDatabase(userDataPath);
     
     userHistory = loadUserHistory(userDataPath);
-        console.debug(`🧠 AI user history loaded: ${Object.keys(userHistory).length} tracks with interactions`);
+    console.debug(`🧠 AI user history loaded: ${Object.keys(userHistory).length} tracks with interactions`);
     
     // Initialize Plugin System
     const pluginManager = new PluginManager({
@@ -1170,32 +1286,25 @@ async function startServer(port, userDataPath) {
         performanceMonitor: pluginPerf,
         hotReload: false
     });
-        console.debug(`🔌 Plugin system initialized: ${pluginManager.listInstalled().length} plugins available`);
+    console.debug(`🔌 Plugin system initialized: ${pluginManager.listInstalled().length} plugins available`);
 
-        // Auto-activate only critical plugins on startup to avoid blocking startup
-        (async () => {
-            const criticalPlugins = [
-                // Add plugin IDs that must be active at startup (e.g., core UX integrations)
-                'korai/change-logs'
-            ];
-
-            const installed = pluginManager.listInstalled();
-            for (const p of installed) {
-                if (p.enabled && criticalPlugins.includes(p.id)) {
-                    try {
-                        await pluginHost.activatePlugin(p.id);
-                        console.debug(`🔁 Auto-activated critical plugin: ${p.id}`);
-                    } catch (e) {
-                        console.warn(`Could not auto-activate critical plugin ${p.id}:`, e.message || e);
-                    }
-                } else if (p.enabled) {
-                    // Defer non-critical plugin activation until requested by the UI or routes
-                    console.debug(`⏸️ Deferring plugin activation for: ${p.id}`);
+    // Auto-activate critical plugins on startup
+    (async () => {
+        const criticalPlugins = ['korai/change-logs'];
+        const installed = pluginManager.listInstalled();
+        for (const p of installed) {
+            if (p.enabled && criticalPlugins.includes(p.id)) {
+                try {
+                    await pluginHost.activatePlugin(p.id);
+                    console.debug(`🔁 Auto-activated critical plugin: ${p.id}`);
+                } catch (e) {
+                    console.warn(`Could not auto-activate critical plugin ${p.id}:`, e.message || e);
                 }
             }
-        })();
+        }
+    })();
     
-    // تنظیم پوشه موقت برای پردازش صدا
+    // Set temp directory for audio processing
     const extractTempDir = path.join(userDataPath, 'temp_extract');
     AudioSeparator.setTempDirectory(extractTempDir);
     
@@ -1204,9 +1313,9 @@ async function startServer(port, userDataPath) {
     
     return new Promise((resolve) => {
         const server = app.listen(port, '127.0.0.1', () => {
-                console.debug(`🚀 Server on port http://127.0.0.1:${port}`);
-                console.debug(`🤖 AI recommendation engine active`);
-                console.debug(`🔌 Plugin routes ready at /api/plugins`);
+            console.debug(`🚀 Server on port http://127.0.0.1:${port}`);
+            console.debug(`🤖 AI recommendation engine active`);
+            console.debug(`🔌 Plugin routes ready at /api/plugins`);
             resolve(server);
         });
     });

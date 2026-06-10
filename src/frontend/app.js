@@ -2093,6 +2093,65 @@ async function loadPlaylists() {
     }
 }
 
+/**
+ * Show import loading modal
+ */
+function showImportLoadingModal(totalFiles) {
+    // Remove existing modal if any
+    const existingModal = document.getElementById('importLoadingModal');
+    if (existingModal) existingModal.remove();
+
+    // Create modal container
+    const modal = document.createElement('div');
+    modal.id = 'importLoadingModal';
+    modal.className = 'import-loading-modal';
+    modal.innerHTML = `
+        <div class="import-loading-content">
+            <div class="import-loading-spinner">
+                <i class="fa-solid fa-compact-disc fa-spin"></i>
+            </div>
+            <h3>Importing Audio Files</h3>
+            <p id="importLoadingStatus">Scanning and analyzing ${totalFiles} file(s)...</p>
+            <div class="import-loading-progress">
+                <div class="import-loading-progress-fill" id="importLoadingProgressFill"></div>
+            </div>
+            <p class="import-loading-percentage" id="importLoadingPercentage">0%</p>
+            <div class="import-loading-wave">
+                <span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    // Trigger animation
+    setTimeout(() => modal.classList.add('active'), 10);
+}
+
+/**
+ * Update import loading progress
+ */
+function updateImportLoadingProgress(percent, message) {
+    const fill = document.getElementById('importLoadingProgressFill');
+    const percentEl = document.getElementById('importLoadingPercentage');
+    const statusEl = document.getElementById('importLoadingStatus');
+
+    if (fill) fill.style.width = `${Math.min(100, percent)}%`;
+    if (percentEl) percentEl.innerText = `${Math.min(100, Math.floor(percent))}%`;
+    if (statusEl && message) statusEl.innerText = message;
+}
+
+/**
+ * Hide import loading modal
+ */
+function hideImportLoadingModal() {
+    const modal = document.getElementById('importLoadingModal');
+    if (modal) {
+        modal.classList.remove('active');
+        setTimeout(() => modal.remove(), 300);
+    }
+}
+
 // =============================================================================
 // PLAYLIST RENDERING & MANAGEMENT
 // =============================================================================
@@ -2708,11 +2767,112 @@ function renderLibrary(filteredTracks = null) {
         return;
     }
 
-    let genreFilterChipsHtml = `<button class="filter-chip ${libraryGenreFilter === 'all' ? 'active' : ''}" onclick="setLibraryGenreFilter('all')">${t('allGenres')}</button>`;
-    existingGenres.forEach(genre => { genreFilterChipsHtml += `<button class="filter-chip ${libraryGenreFilter === genre ? 'active' : ''}" onclick="setLibraryGenreFilter('${genre}')">${getGenreTranslation(genre) || genre}</button>`; });
-
-    mainSection.innerHTML = `<div class="spotify-row-title library-header-panel"><div class="title-meta-box"><h3>${t('libraryArchive')} (<span id="libCount">${listToRender.length}</span>)</h3><span class="right-click-tip-lbl">${t('rightClickTip')}</span></div><div class="library-filter-controls"><div class="sort-action-group"><label class="sort-select-lbl">${t('sortByLabel')}</label><select id="libSortSelect" class="sort-dropdown-custom" onchange="changeLibrarySorting(this.value)"><option value="createdAt" ${librarySortKey === 'createdAt' ? 'selected' : ''}>${t('sortDateAdded')}</option><option value="title" ${librarySortKey === 'title' ? 'selected' : ''}>${t('sortTitle')}</option><option value="artist" ${librarySortKey === 'artist' ? 'selected' : ''}>${t('sortArtist')}</option><option value="bpm" ${librarySortKey === 'bpm' ? 'selected' : ''}>${t('sortBpm')}</option><option value="duration" ${librarySortKey === 'duration' ? 'selected' : ''}>${t('sortDuration')}</option></select><button class="sort-dir-toggle-btn" onclick="toggleLibrarySortOrder()" title="Toggle Order"><i class="fa-solid ${librarySortOrder === 'asc' ? 'fa-arrow-up-wide-short' : 'fa-arrow-down-wide-short'}"></i></button></div></div></div><div class="genre-filter-wrapper-bar">${genreFilterChipsHtml}</div><div class="library-table-wrapper"><table class="library-tracks-table"><thead><tr><th style="width:50px;">#</th><th>${currentLanguage === 'fa' ? 'عنوان' : 'Title'}</th><th>${currentLanguage === 'fa' ? 'آلبوم' : 'Album'}</th><th style="width:80px;">BPM</th><th style="width:80px;"><i class="fa-regular fa-clock"></i></th><th style="width:100px;">${currentLanguage === 'fa' ? 'عملیات' : 'Actions'}</th></tr></thead><tbody id="libraryTableBody"></tbody><table><div id="loadMoreContainer" style="text-align:center; margin-top:16px; display:none;"><button id="loadMoreBtn" class="oobe-start-btn" style="padding:8px 16px; font-size:0.75rem;">${currentLanguage === 'fa' ? 'بارگذاری بیشتر...' : 'Load more...'}</button></div></div>`;
+    // ========== Build collapsible genre filter HTML ==========
+    let genreFilterHtml = `
+        <div class="genre-filter-collapsible" id="genreFilterCollapsible">
+            <div class="genre-filter-header" id="genreFilterHeader">
+                <div class="genre-filter-title">
+                    <i class="fa-solid fa-filter"></i>
+                    <span>${t('filterByGenre') || 'Filter by Genre'}</span>
+                    <span class="genre-filter-count" id="genreFilterCount">${existingGenres.length}</span>
+                </div>
+                <button class="genre-filter-toggle" id="genreFilterToggleBtn">
+                    <i class="fa-solid fa-chevron-down"></i>
+                </button>
+            </div>
+            <div class="genre-filter-body" id="genreFilterBody">
+                <div class="genre-filter-wrapper-bar" id="genreFilterWrapperBar">
+                    <button class="filter-chip ${libraryGenreFilter === 'all' ? 'active' : ''}" onclick="setLibraryGenreFilter('all')">${t('allGenres')}</button>
+    `;
     
+    // Add genre chips (limit to reasonable number, wrap in scrollable container)
+    existingGenres.forEach(genre => {
+        const displayGenre = getGenreTranslation(genre) || genre;
+        const escapedGenre = genre.replace(/'/g, "\\'");
+        genreFilterHtml += `<button class="filter-chip ${libraryGenreFilter === genre ? 'active' : ''}" onclick="setLibraryGenreFilter('${escapedGenre}')">${escapeHtml(displayGenre)}</button>`;
+    });
+    
+    genreFilterHtml += `
+                </div>
+            </div>
+        </div>
+    `;
+
+    mainSection.innerHTML = `
+        <div class="spotify-row-title library-header-panel">
+            <div class="title-meta-box">
+                <h3>${t('libraryArchive')} (<span id="libCount">${listToRender.length}</span>)</h3>
+                <span class="right-click-tip-lbl">${t('rightClickTip')}</span>
+            </div>
+            <div class="library-filter-controls">
+                <div class="sort-action-group">
+                    <label class="sort-select-lbl">${t('sortByLabel')}</label>
+                    <select id="libSortSelect" class="sort-dropdown-custom" onchange="changeLibrarySorting(this.value)">
+                        <option value="createdAt" ${librarySortKey === 'createdAt' ? 'selected' : ''}>${t('sortDateAdded')}</option>
+                        <option value="title" ${librarySortKey === 'title' ? 'selected' : ''}>${t('sortTitle')}</option>
+                        <option value="artist" ${librarySortKey === 'artist' ? 'selected' : ''}>${t('sortArtist')}</option>
+                        <option value="bpm" ${librarySortKey === 'bpm' ? 'selected' : ''}>${t('sortBpm')}</option>
+                        <option value="duration" ${librarySortKey === 'duration' ? 'selected' : ''}>${t('sortDuration')}</option>
+                    </select>
+                    <button class="sort-dir-toggle-btn" onclick="toggleLibrarySortOrder()" title="Toggle Order">
+                        <i class="fa-solid ${librarySortOrder === 'asc' ? 'fa-arrow-up-wide-short' : 'fa-arrow-down-wide-short'}"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        ${genreFilterHtml}
+        <div class="library-table-wrapper">
+            <table class="library-tracks-table">
+                <thead>
+                    <tr>
+                        <th style="width:50px;">#</th>
+                        <th>${currentLanguage === 'fa' ? 'عنوان' : 'Title'}</th>
+                        <th>${currentLanguage === 'fa' ? 'آلبوم' : 'Album'}</th>
+                        <th style="width:80px;">BPM</th>
+                        <th style="width:80px;"><i class="fa-regular fa-clock"></i></th>
+                        <th style="width:100px;">${currentLanguage === 'fa' ? 'عملیات' : 'Actions'}</th>
+                    </tr>
+                </thead>
+                <tbody id="libraryTableBody"></tbody>
+            </table>
+            <div id="loadMoreContainer" style="text-align:center; margin-top:16px; display:none;">
+                <button id="loadMoreBtn" class="oobe-start-btn" style="padding:8px 16px; font-size:0.75rem;">${currentLanguage === 'fa' ? 'بارگذاری بیشتر...' : 'Load more...'}</button>
+            </div>
+        </div>
+    `;
+    
+    // ========== Setup collapsible event listener ==========
+    const toggleBtn = document.getElementById('genreFilterToggleBtn');
+    const filterBody = document.getElementById('genreFilterBody');
+    const filterHeader = document.getElementById('genreFilterHeader');
+    
+    if (toggleBtn && filterBody) {
+        // Check localStorage for saved state
+        const isCollapsed = localStorage.getItem('korai_genre_filter_collapsed') === 'true';
+        if (isCollapsed) {
+            filterBody.classList.add('collapsed');
+            toggleBtn.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
+        }
+        
+        const toggleCollapse = (e) => {
+            e.stopPropagation();
+            filterBody.classList.toggle('collapsed');
+            const nowCollapsed = filterBody.classList.contains('collapsed');
+            localStorage.setItem('korai_genre_filter_collapsed', nowCollapsed);
+            toggleBtn.innerHTML = nowCollapsed ? '<i class="fa-solid fa-chevron-right"></i>' : '<i class="fa-solid fa-chevron-down"></i>';
+        };
+        
+        toggleBtn.addEventListener('click', toggleCollapse);
+        if (filterHeader) {
+            filterHeader.addEventListener('click', (e) => {
+                // Don't trigger when clicking directly on toggle button
+                if (e.target === toggleBtn || toggleBtn.contains(e.target)) return;
+                toggleCollapse(e);
+            });
+        }
+    }
+    
+    // ========== Render table with pagination ==========
     const tbody = document.getElementById('libraryTableBody');
     const loadMoreContainer = document.getElementById('loadMoreContainer');
     const loadMoreBtn = document.getElementById('loadMoreBtn');
@@ -2729,12 +2889,21 @@ function renderLibrary(filteredTracks = null) {
             const indexText = isActive && isPlaying ? '<i class="fa-solid fa-pause"></i>' : (currentIndex + idx + 1);
             rows += `<tr class="track-row ${isActive ? 'active' : ''}" data-track-id="${track.id}">
                 <td class="track-play-cell">${indexText}</td>
-                <td class="track-info-cell"><div class="table-song-cover">${coverUrl ? `<img src="${coverUrl}" alt="Cover" loading="lazy">` : '<i class="fa-solid fa-music"></i>'}</div><div class="table-song-meta"><span class="table-song-title">${escapeHtml(track.title || 'Untitled')}</span><span class="table-song-artist">${escapeHtml(track.artist || 'Unknown Artist')}</span></div></td>
+                <td class="track-info-cell">
+                    <div class="table-song-cover">${coverUrl ? `<img src="${coverUrl}" alt="Cover" loading="lazy">` : '<i class="fa-solid fa-music"></i>'}</div>
+                    <div class="table-song-meta">
+                        <span class="table-song-title">${escapeHtml(track.title || 'Untitled')}</span>
+                        <span class="table-song-artist">${escapeHtml(track.artist || 'Unknown Artist')}</span>
+                    </div>
+                </td>
                 <td class="track-album-cell">${escapeHtml(track.album || '—')}</td>
                 <td class="track-bpm-cell">${track.bpm || '120'}</td>
                 <td class="track-time-cell">${formatTime(track.duration)}</td>
-                <td class="track-actions-cell"><button class="table-action-btn like" title="${currentLanguage === 'fa' ? 'افزودن به لیست' : 'Add to list'}"><i class="fa-solid fa-plus"></i></button><button class="table-action-btn delete" title="${currentLanguage === 'fa' ? 'حذف' : 'Delete'}"><i class="fa-solid fa-trash"></i></button></td>
-            </tr>`;
+                <td class="track-actions-cell">
+                    <button class="table-action-btn like" title="${currentLanguage === 'fa' ? 'افزودن به لیست' : 'Add to list'}"><i class="fa-solid fa-plus"></i></button>
+                    <button class="table-action-btn delete" title="${currentLanguage === 'fa' ? 'حذف' : 'Delete'}"><i class="fa-solid fa-trash"></i></button>
+                </td>
+            </table>`;
         });
         tbody.insertAdjacentHTML('beforeend', rows);
         currentIndex += chunkSize;
@@ -3456,18 +3625,58 @@ window.handleAiRecommendations = handleAiRecommendationsEnhanced;
 // =============================================================================
 
 async function handleImport() {
-    if (!window.electronAPI || typeof window.electronAPI.selectAudioFiles !== 'function') { showNotification('Electron API not available', 'error'); return; }
+    if (!window.electronAPI || typeof window.electronAPI.selectAudioFiles !== 'function') {
+        showNotification('Electron API not available', 'error');
+        return;
+    }
+
     try {
         const filePaths = await window.electronAPI.selectAudioFiles();
         if (!filePaths || filePaths.length === 0) return;
-        showNotification(`Scanning and analyzing ${filePaths.length} files...`, 'info');
-        const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePaths }) });
+
+        // Show loading modal
+        showImportLoadingModal(filePaths.length);
+        let progressInterval = null;
+        let lastProgress = 0;
+
+        // Simulate progress animation (will be updated by actual server response)
+        progressInterval = setInterval(() => {
+            if (lastProgress < 90) {
+                lastProgress += Math.random() * 8;
+                if (lastProgress > 90) lastProgress = 90;
+                updateImportLoadingProgress(lastProgress, `Importing ${Math.floor(lastProgress)}%...`);
+            }
+        }, 300);
+
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filePaths })
+        });
+
+        // Clear interval
+        if (progressInterval) clearInterval(progressInterval);
+
         if (!res.ok) throw new Error();
+
         const result = await res.json();
-        showNotification(`Successfully added ${result.imported} local tracks.`, 'success');
-        await loadTracks();
-        switchSection(currentActiveSection);
-    } catch (err) { console.error('Import error:', err); showNotification('Load and analysis phase crashed', 'error'); }
+
+        // Update to 100% and show completion
+        updateImportLoadingProgress(100, `Imported ${result.imported} track(s)!`);
+
+        // Delay hiding modal slightly to show completion
+        setTimeout(async () => {
+            hideImportLoadingModal();
+            showNotification(`Successfully added ${result.imported} tracks.`, 'success');
+            await loadTracks();
+            switchSection(currentActiveSection);
+        }, 500);
+
+    } catch (err) {
+        console.error('Import error:', err);
+        hideImportLoadingModal();
+        showNotification('Import failed: ' + err.message, 'error');
+    }
 }
 
 async function handleFolderImport() {
@@ -3475,37 +3684,57 @@ async function handleFolderImport() {
         showNotification('Electron API not available', 'error');
         return;
     }
-    
+
     try {
         showNotification('Scanning folder...', 'info');
-        
+
         const filePaths = await window.electronAPI.selectAudioFolder();
-        
+
         if (!filePaths || filePaths.length === 0) {
             showNotification('No audio files found in selected folder. Supported formats: MP3, WAV, OGG, M4A, FLAC', 'warning');
             return;
         }
-        
-        showNotification(`Found ${filePaths.length} audio files. Importing...`, 'info');
-        
+
+        // Show loading modal
+        showImportLoadingModal(filePaths.length);
+        let progressInterval = null;
+        let lastProgress = 0;
+
+        progressInterval = setInterval(() => {
+            if (lastProgress < 90) {
+                lastProgress += Math.random() * 8;
+                if (lastProgress > 90) lastProgress = 90;
+                updateImportLoadingProgress(lastProgress, `Importing ${Math.floor(lastProgress)}%...`);
+            }
+        }, 300);
+
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filePaths })
         });
-        
+
+        if (progressInterval) clearInterval(progressInterval);
+
         if (!res.ok) {
             const error = await res.json();
             throw new Error(error.error || 'Import failed');
         }
-        
+
         const result = await res.json();
-        showNotification(`Successfully imported ${result.imported} tracks.`, 'success');
-        await loadTracks();
-        switchSection(currentActiveSection);
-        
+
+        updateImportLoadingProgress(100, `Imported ${result.imported} track(s)!`);
+
+        setTimeout(async () => {
+            hideImportLoadingModal();
+            showNotification(`Successfully imported ${result.imported} tracks.`, 'success');
+            await loadTracks();
+            switchSection(currentActiveSection);
+        }, 500);
+
     } catch (err) {
         console.error('Folder import error:', err);
+        hideImportLoadingModal();
         showNotification(`Import failed: ${err.message}`, 'error');
     }
 }

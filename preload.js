@@ -135,6 +135,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onScanNoFilesFound: (callback) => {
         ipcRenderer.on('scan-no-files-found', (event, folderPath) => callback(folderPath));
     },
+    onScanStarted: (callback) => {
+        ipcRenderer.on('scan-started', (event, folderPath) => callback(folderPath));
+    },
+    onScanComplete: (callback) => {
+        ipcRenderer.on('scan-complete', (event, count) => callback(count));
+    },
     /**
      * Listen for update status changes (update available or not)
      */

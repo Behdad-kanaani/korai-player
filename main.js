@@ -1,41 +1,35 @@
-// ################################################################################
-// #                                                                              #
-// #                           WRITTEN BY BEHDAD KANANI                            #
-// ##                         github.com/Behdad-kanaani/korai-player               #
-// #                                                                              #
-// #   Description:                                                               #
-// #       KORAI Music Player - Electron Main Process                             #
-// #       Handles window creation, IPC communication, system tray,              #
-// #       file dialogs, mini-player window management, and file associations.   #
-// #                                                                              #
-// ################################################################################
+/**
+ * main.js - KORAI Music Player - Electron Main Process
+ * 
+ * Handles window creation, IPC communication, system tray,
+ * file dialogs, mini-player window management, and file associations.
+ * 
+ * FIXED: Deep directory scanning with improved recursive traversal
+ * FIXED: File path extraction in second-instance handler
+ */
 
 const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, shell, screen, powerMonitor, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const findFreePort = require('find-free-port');
 
-// Optional: electron-optimize helpers (safe require)
+// Optional: electron-optimize helpers
 let cleanupTempFiles, clearCacheOnUpdate, validateWindowBounds, createStartupTimer, managePowerState;
 try {
     ({ cleanupTempFiles, clearCacheOnUpdate, validateWindowBounds, createStartupTimer, managePowerState } = require('@yawlabs/electron-optimize'));
 } catch (e) {
-    console.warn('⚠️ @yawlabs/electron-optimize not installed; run `npm install @yawlabs/electron-optimize` to enable additional optimizations');
+    console.warn('⚠️ @yawlabs/electron-optimize not installed');
 }
 
-// Performance: prefer GPU rasterization and relax GPU blocklist where safe
+// Performance optimizations
 try {
     app.commandLine.appendSwitch('enable-gpu-rasterization');
     app.commandLine.appendSwitch('enable-zero-copy');
     app.commandLine.appendSwitch('ignore-gpu-blocklist');
-    // Additional GPU / renderer flags to improve rendering performance where available
     app.commandLine.appendSwitch('enable-features', 'Vulkan,UseSkiaRenderer');
     app.commandLine.appendSwitch('enable-accelerated-video-decode');
-    // Increase V8 memory cap for large libraries / analysis tasks
     app.commandLine.appendSwitch('max_old_space_size', '4096');
-} catch (e) {
-    // app may not be ready yet in some contexts; ignore if not available
-}
+} catch (e) {}
 
 // =============================================================================
 // AUTO-UPDATER
@@ -136,6 +130,7 @@ app.on('open-file', (event, filePath) => {
     }
 });
 
+// FIXED: Improved file extraction in second-instance handler
 app.on('second-instance', (event, commandLine, workingDirectory) => {
     console.debug('🔄 Second instance detected, focusing main window...');
     
@@ -144,14 +139,18 @@ app.on('second-instance', (event, commandLine, workingDirectory) => {
         mainWindow.show();
         mainWindow.focus();
         
+        // Improved file extraction - skip Electron/internal args
         const files = commandLine.slice(1).filter(arg => {
-            return arg.match(/\.(mp3|wav|ogg|m4a|flac)$/i) && 
-                   !arg.includes('.exe') && 
-                   !arg.includes('electron') &&
-                   !arg.includes('KORAI') &&
-                   !arg.includes('korai') &&
-                   !arg.includes('Player') &&
-                   !arg.includes('player');
+            // Skip Electron/internal flags
+            if (arg.startsWith('--')) return false;
+            if (arg.includes('electron')) return false;
+            if (arg.includes('KORAI')) return false;
+            // Check if it's an audio file and exists
+            try {
+                return arg.match(/\.(mp3|wav|ogg|m4a|flac)$/i) && fs.existsSync(arg);
+            } catch (e) {
+                return false;
+            }
         });
         
         if (files.length > 0) {
@@ -411,7 +410,7 @@ async function createSystemTray() {
         const img = nativeImage.createFromPath(iconPath);
         trayIcon = img.resize({ width: 16, height: 16 });
     } else {
-    console.warn('⚠️ No tray icon found, creating fallback');
+        console.warn('⚠️ No tray icon found, creating fallback');
         const size = 16;
         const svg = Buffer.from(`
             <svg width="${size}" height="${size}" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
@@ -490,7 +489,6 @@ async function sendUpdateStatusToRenderer() {
     
     const currentVersion = getCurrentVersion();
     
-    // Send current version first
     mainWindow.webContents.send('app-version', { 
         version: currentVersion || 'unknown',
         hasUpdate: false 
@@ -530,7 +528,6 @@ async function seedBundledPlugins(appPath, userDataPath) {
                 try {
                     fs.cpSync(srcDir, destDir, { recursive: true });
                 } catch (e) {
-                    // fallback: copy file-by-file
                     const files = fs.readdirSync(srcDir);
                     fs.mkdirSync(destDir, { recursive: true });
                     for (const f of files) {
@@ -543,6 +540,50 @@ async function seedBundledPlugins(appPath, userDataPath) {
         }
     } catch (e) {
         console.warn('seedBundledPlugins failed:', e && e.message);
+    }
+}
+
+// =============================================================================
+// DEEP DIRECTORY SCANNER FOR FOLDER IMPORT
+// =============================================================================
+
+/**
+ * Improved recursive directory scanner with depth-first search
+ * Scans all subdirectories recursively for audio files
+ */
+async function scanDirectoryRecursively(dirPath, audioExtensions, files, maxDepth = 100, currentDepth = 0) {
+    try {
+        // Check if directory is readable
+        await fs.promises.access(dirPath, fs.constants.R_OK);
+        
+        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+        
+        for (const entry of entries) {
+            const fullPath = path.join(dirPath, entry.name);
+            
+            try {
+                if (entry.isDirectory()) {
+                    // Recursively scan subdirectories (with depth limit to avoid infinite loops)
+                    if (currentDepth < maxDepth) {
+                        await scanDirectoryRecursively(fullPath, audioExtensions, files, maxDepth, currentDepth + 1);
+                    } else {
+                        console.warn(`[scan] Max depth reached, skipping: ${fullPath}`);
+                    }
+                } else if (entry.isFile()) {
+                    const ext = path.extname(entry.name).toLowerCase();
+                    if (audioExtensions.includes(ext)) {
+                        files.push(fullPath);
+                        console.debug(`[scan] Found audio file: ${fullPath}`);
+                    }
+                }
+            } catch (entryErr) {
+                console.warn(`[scan] Cannot access: ${fullPath}`, entryErr.message);
+                // Continue scanning other files/directories
+            }
+        }
+    } catch (err) {
+        console.error(`[scan] Error scanning directory ${dirPath}:`, err.message);
+        // Don't throw - continue with other directories
     }
 }
 
@@ -578,29 +619,25 @@ async function createWindow() {
             minWidth: 1000,
             minHeight: 700,
             frame: false,
-            show: false,
+            show: true,
             titleBarStyle: 'default',
             webPreferences: {
                 nodeIntegration: false,
                 contextIsolation: true,
                 preload: path.join(__dirname, 'preload.js'),
                 zoomFactor: 0.4,
-                // Allow Electron to throttle when backgrounded to save resources
                 backgroundThrottling: true,
-                // Enable V8 bytecode caching for faster subsequent launches
                 v8CacheOptions: 'code',
-                // Minor renderer hints
                 enableBlinkFeatures: 'OverlayScrollbars',
                 enablePreferredSizeMode: true
             }
         };
 
-        // Platform-specific visual improvements (safe defaults)
+        // Platform-specific visual improvements
         if (process.platform === 'darwin') {
             windowOptions.transparent = true;
             windowOptions.vibrancy = 'under-window';
         } else if (process.platform === 'win32') {
-            // Windows 11 background material (falls back harmlessly on older Windows)
             windowOptions.transparent = true;
             windowOptions.backgroundMaterial = 'mica';
         }
@@ -641,10 +678,8 @@ async function createWindow() {
                 mainWindow.webContents.send('server-port', serverPort);
                 setZoom();
                 
-                // Send version and update status to renderer
                 sendUpdateStatusToRenderer();
                 
-                // Register for future update notifications
                 onUpdateCheck((updateInfo) => {
                     if (mainWindow && !mainWindow.isDestroyed()) {
                         const currentVersion = getCurrentVersion();
@@ -664,7 +699,6 @@ async function createWindow() {
             }
         });
 
-        // Show window only when ready to avoid multiple repaints
         mainWindow.once('ready-to-show', () => {
             try {
                 if (startupTimer && typeof startupTimer.flush === 'function') startupTimer.flush();
@@ -685,7 +719,6 @@ async function createWindow() {
 
         createSystemTray();
         
-        // Start auto-updater (silent, non-blocking)
         try {
             startUpdateChecker(24);
         } catch (err) {
@@ -716,7 +749,6 @@ ipcMain.on('open-external', (event, url) => {
     shell.openExternal(url);
 });
 
-// Handler for renderer to check update status on demand
 ipcMain.handle('check-update-status', async () => {
     const currentVersion = getCurrentVersion();
     const updateInfo = await fetchLatestVersion(true);
@@ -751,7 +783,6 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
         transparent: false,
         backgroundColor: '#0a0a0a',
         roundedCorners: true,
-        // Use no native shadow so the rounded inner card shadow is visible
         hasShadow: false,
         alwaysOnTop: true,
         resizable: false,
@@ -803,7 +834,6 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
             }
             body { -webkit-app-region: drag; }
             button { -webkit-app-region: no-drag; }
-            /* Remove green decorative elements and use a neutral dark background for mini window */
             .hero-ambient-glow, .hero-particle, .hero-particle-field { display: none !important; }
             .miniplayer-floating-card {
                 width: 100%;
@@ -812,10 +842,9 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
                 overflow: hidden;
                 background: rgba(6,8,10,0.88) !important;
                 background-image: none !important;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.6), 0 2px 10px rgba(0,0,0,0.35) inset;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.6), 0 2px 10px rgba(0,0,0,0.35 inset);
                 border: 1px solid rgba(255,255,255,0.04);
             }
-            /* Ensure any accent glow inside the mini window is muted */
             .cover-glow-effect, .mini-timeline-progress, .mini-timeline-fill { box-shadow: none !important; background: rgba(255,255,255,0.04) !important; }
         `);
     });
@@ -877,7 +906,7 @@ ipcMain.on('control-from-mini', (event, command) => {
 });
 
 // =============================================================================
-// FILE DIALOG HANDLERS
+// FILE DIALOG HANDLERS (FIXED: Deep recursive directory scanning)
 // =============================================================================
 
 ipcMain.handle('select-audio-files', async () => {
@@ -891,36 +920,7 @@ ipcMain.handle('select-audio-files', async () => {
     return result.filePaths;
 });
 
-async function scanDirAsync(dir, audioExtensions, files) {
-    try {
-        const list = await fs.promises.readdir(dir);
-        
-        for (const file of list) {
-            const fullPath = path.join(dir, file);
-            let stat;
-            try {
-                stat = await fs.promises.stat(fullPath);
-            } catch (err) {
-                console.warn(`Cannot access: ${fullPath}`, err.message);
-                continue; // Skip unreadable files
-            }
-            
-            if (stat.isDirectory()) {
-                await scanDirAsync(fullPath, audioExtensions, files);
-            } else {
-                const ext = path.extname(file).toLowerCase();
-                if (audioExtensions.includes(ext)) {
-                    files.push(fullPath);
-                    console.debug(`Found audio file: ${fullPath}`);
-                }
-            }
-        }
-    } catch (err) {
-        console.error(`Error scanning directory ${dir}:`, err.message);
-        // Don't re-throw - continue with files found so far
-    }
-}
-
+// FIXED: Deep recursive directory scanner with improved error handling
 ipcMain.handle('select-audio-folder', async () => {
     if (!mainWindow) return [];
     
@@ -934,11 +934,12 @@ ipcMain.handle('select-audio-folder', async () => {
     const audioExtensions = ['.mp3', '.wav', '.ogg', '.m4a', '.flac'];
     const files = [];
     
-    console.debug(`Scanning folder: ${folderPath}`);
+    console.debug(`[scan] Starting deep scan of folder: ${folderPath}`);
     
-    await scanDirAsync(folderPath, audioExtensions, files);
+    // Use improved recursive scanner
+    await scanDirectoryRecursively(folderPath, audioExtensions, files);
     
-    console.debug(`Found ${files.length} audio files in ${folderPath}`);
+    console.debug(`[scan] Found ${files.length} audio files in ${folderPath} (including subfolders)`);
     
     // Show warning if no files found
     if (files.length === 0 && mainWindow && !mainWindow.isDestroyed()) {
@@ -1161,7 +1162,6 @@ ipcMain.on('register-global-shortcut', (event, command) => {
     }
 });
 
-
 ipcMain.handle('import-playlist-auto', async (event, filePath) => {
     try {
         const fetchModule = await import('node-fetch');
@@ -1191,12 +1191,10 @@ handleFileOpen();
 
 app.whenReady().then(async () => {
     try {
-        // Startup telemetry
         if (createStartupTimer) {
             try { startupTimer = createStartupTimer(); startupTimer.mark && startupTimer.mark('main-process-init'); } catch(e){}
         }
 
-        // Power state management (safe guard if function available)
         if (managePowerState) {
             try {
                 powerCleanup = managePowerState(powerMonitor, {
@@ -1211,16 +1209,13 @@ app.whenReady().then(async () => {
                     onResume() {
                         console.debug('⚡ System resume detected - restarting timers after network stabilizes');
                         if (!updatePollingTimer) {
-                            updatePollingTimer = setInterval(() => {
-                                // user-specific periodic checks could be placed here
-                            }, 60000);
+                            updatePollingTimer = setInterval(() => {}, 60000);
                         }
                     }
                 });
             } catch (e) { console.warn('managePowerState failed:', e && e.message); }
         }
 
-        // Cleanup Chromium temp files (if helper present)
         if (cleanupTempFiles) {
             try {
                 const userDataPath = app.getPath('userData');
@@ -1232,7 +1227,6 @@ app.whenReady().then(async () => {
             } catch (e) { console.warn('cleanupTempFiles failed:', e && e.message); }
         }
 
-        // Smart cache clearing on version change
         if (clearCacheOnUpdate) {
             try {
                 const cacheResult = await clearCacheOnUpdate(

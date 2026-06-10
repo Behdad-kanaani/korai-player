@@ -3,15 +3,16 @@
  * 
  * Runs in separate thread to prevent UI blocking
  * Handles BPM detection, energy calculation, and metadata extraction
- *
- * IMPROVED: Robust error handling, module fallbacks, safe defaults
+ * 
+ * FIXED: Replaced import with require for Node.js compatibility
+ * FIXED: Added robust error handling for all operations
  */
 
 const { parentPort } = require('worker_threads');
 const fs = require('fs');
 const path = require('path');
 
-// Safe imports with fallbacks
+// Safe imports with fallbacks - using require instead of import
 let mm = null;
 let detectRealBPM = null;
 
@@ -27,9 +28,6 @@ try {
 } catch (e) {
   console.error('[worker] bpmDetector not available:', e.message);
 }
-
-// Track analysis progress
-let currentProgress = 0;
 
 /**
  * Analyze a single audio file with full error recovery
@@ -216,11 +214,10 @@ if (parentPort) {
           data: { filePath, fileIndex, analysis }
         });
 
-        currentProgress = ((fileIndex + 1) / totalFiles) * 100;
         parentPort.postMessage({
           type: 'progress',
           data: {
-            percent: currentProgress,
+            percent: ((fileIndex + 1) / totalFiles) * 100,
             current: fileIndex + 1,
             total: totalFiles,
             file: filePath

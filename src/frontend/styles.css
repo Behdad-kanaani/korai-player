@@ -4645,6 +4645,7 @@ body.theme-liquid-glass .library-table-wrapper {
 
 .track-info-cell{
         padding: 23px 20px !important;
+        height: 89px;
 }
 
 /* ==========================================================================
@@ -5906,4 +5907,269 @@ body.ltr.theme-liquid-glass .spotify-music-card:hover .hover-play-bubble {
 .context-edit-item:hover {
     background-color: var(--spotify-light-grey);
     opacity: 0.5;
+}
+
+/* ==========================================================================
+   IMPORT LOADING MODAL
+   ========================================================================== */
+
+.import-loading-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(12px);
+    z-index: 20001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.import-loading-modal.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.import-loading-content {
+    background: linear-gradient(135deg, var(--spotify-dark) 0%, var(--spotify-grey) 100%);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 40px 32px;
+    text-align: center;
+    min-width: 320px;
+    max-width: 400px;
+    width: 90%;
+    animation: importLoadingPopIn 0.4s cubic-bezier(0.34, 1.2, 0.64, 1);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+@keyframes importLoadingPopIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.import-loading-spinner i {
+    font-size: 3.5rem;
+    color: var(--accent-cyan);
+    animation: spinSlow 2s linear infinite;
+}
+
+.import-loading-content h3 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin: 16px 0 8px;
+    background: linear-gradient(135deg, #fff, var(--accent-cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.import-loading-content p {
+    font-size: 0.8rem;
+    color: var(--spotify-text-muted);
+    margin-bottom: 20px;
+}
+
+.import-loading-progress {
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.import-loading-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-cyan), #00e5ff);
+    border-radius: 10px;
+    transition: width 0.3s ease;
+    width: 0%;
+    box-shadow: 0 0 10px var(--accent-cyan);
+}
+
+.import-loading-percentage {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    font-family: monospace;
+    margin-bottom: 20px;
+}
+
+.import-loading-wave {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    height: 30px;
+}
+
+.import-loading-wave span {
+    width: 4px;
+    height: 15px;
+    background: var(--accent-cyan);
+    border-radius: 2px;
+    animation: waveBounce 0.8s ease-in-out infinite;
+    opacity: 0.6;
+}
+
+.import-loading-wave span:nth-child(1) { animation-delay: 0s; height: 10px; }
+.import-loading-wave span:nth-child(2) { animation-delay: 0.1s; height: 20px; }
+.import-loading-wave span:nth-child(3) { animation-delay: 0.2s; height: 25px; }
+.import-loading-wave span:nth-child(4) { animation-delay: 0.3s; height: 20px; }
+.import-loading-wave span:nth-child(5) { animation-delay: 0.4s; height: 10px; }
+.import-loading-wave span:nth-child(6) { animation-delay: 0.5s; height: 18px; }
+.import-loading-wave span:nth-child(7) { animation-delay: 0.6s; height: 22px; }
+.import-loading-wave span:nth-child(8) { animation-delay: 0.7s; height: 15px; }
+
+@keyframes waveBounce {
+    0%, 100% {
+        transform: scaleY(0.5);
+        opacity: 0.4;
+    }
+    50% {
+        transform: scaleY(1);
+        opacity: 1;
+    }
+}
+
+@keyframes spinSlow {
+    100% { transform: rotate(360deg); }
+}
+
+/* ==========================================================================
+   COLLAPSIBLE GENRE FILTER - Accordion Style
+   ========================================================================== */
+
+.genre-filter-collapsible {
+    margin-bottom: 20px;
+    background: var(--spotify-grey);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.genre-filter-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.02);
+    transition: background 0.2s ease;
+    user-select: none;
+}
+
+.genre-filter-header:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.genre-filter-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--spotify-text-active);
+}
+
+.genre-filter-title i {
+    color: var(--accent-cyan);
+    font-size: 0.9rem;
+}
+
+.genre-filter-count {
+    background: rgba(0, 255, 213, 0.15);
+    color: var(--accent-cyan);
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 20px;
+    margin-left: 8px;
+}
+
+.genre-filter-toggle {
+    background: transparent;
+    border: none;
+    color: var(--spotify-text-muted);
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+
+.genre-filter-toggle:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--accent-cyan);
+}
+
+.genre-filter-body {
+    max-height: 10vh;
+    overflow-y: auto;
+    transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s ease;
+    border-top: 1px solid var(--border-color);
+}
+
+.genre-filter-body.collapsed {
+    max-height: 0;
+    padding: 0;
+    border-top: none;
+}
+
+.genre-filter-wrapper-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--spotify-dark);
+}
+
+/* Custom scrollbar for genre filter body */
+.genre-filter-body::-webkit-scrollbar {
+    width: 4px;
+}
+
+.genre-filter-body::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 10px;
+}
+
+.genre-filter-body::-webkit-scrollbar-thumb {
+    background: var(--accent-cyan);
+    border-radius: 10px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .genre-filter-header {
+        padding: 10px 12px;
+    }
+    
+    .genre-filter-title {
+        font-size: 0.75rem;
+    }
+    
+    .genre-filter-wrapper-bar {
+        padding: 10px 12px;
+        gap: 6px;
+    }
+    
+    .filter-chip {
+        padding: 4px 12px;
+        font-size: 0.7rem;
+    }
 }

@@ -465,7 +465,9 @@ function setupRoutes() {
                     }
                 }
                 db.save();
-                res.json({ success: true, imported: results.length, total: filePaths.length });
+                // Return the imported track objects (id, filePath, title) so clients can authoritativey autoplay
+                const importedTracks = results.map(r => ({ id: r.id, filePath: r.filePath, title: r.title }));
+                res.json({ success: true, imported: results.length, total: filePaths.length, importedTracks });
             }
 
             run().catch(err => {

@@ -3372,8 +3372,9 @@ input:checked + .switch-slider:before { transform: translateX(22px); }
     background: linear-gradient(to top, var(--accent-cyan) 0%, var(--accent-pink) 100%);
     outline: none;
     border-radius: 4px;
-    writing-mode: bt-lr;
-    -webkit-appearance: slider-vertical;
+     writing-mode: bt-lr;
+     /* Removed deprecated '-webkit-appearance: slider-vertical' to avoid deprecation warnings.
+         Modern approach: use vertical writing-mode or rotate the range input as needed. */
     cursor: pointer;
 }
 

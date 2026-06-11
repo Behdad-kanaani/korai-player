@@ -41,6 +41,7 @@ let vinylRotationInterval = null;
 let vinylRotationRAFId = null;
 let lastTimeUpdateTime = 0;
 let lastAudioTimeUpdateTime = 0;
+let lastPlaybackSaveTime = 0;
 let shuffleHistory = [];  
 let shuffleSessionActive = false;
 let remainingUnplayedTracks = [];
@@ -337,8 +338,75 @@ function formatTime(seconds) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+// Find a track in `tracks` array by matching file path (normalize slashes and case)
+function findTrackByFilePath(filePath) {
+    if (!filePath || !Array.isArray(tracks)) return null;
+    const norm = normalizePath(filePath);
+    for (const t of tracks) {
+        if (!t) continue;
+        const tp = normalizePath(t.filePath || '');
+        if (!tp) continue;
+        if (tp === norm) return t;
+        // fallback: compare basenames
+        const tpBase = tp.split('/').pop();
+        const normBase = norm.split('/').pop();
+        if (tpBase === normBase) return t;
+    }
+    return null;
+}
+
+// Normalize file paths for comparison
+function normalizePath(p) {
+    if (!p) return '';
+    return String(p).replace(/\\/g, '/').trim().toLowerCase();
+}
+
 function t(key) {
     return translations[currentLanguage] && translations[currentLanguage][key] ? translations[currentLanguage][key] : key;
+}
+
+// Normalize genre label for grouping (remove urls, bracket tags, extra punctuation)
+function normalizeGenreLabel(s) {
+    if (!s) return '';
+    let v = String(s).toLowerCase();
+    // remove bracketed site tags like [ ... ]
+    v = v.replace(/\[.*?\]/g, '');
+    // remove urls
+    v = v.replace(/https?:\/\/\S+/g, '');
+    v = v.replace(/www\.[^\s]+/g, '');
+    // remove common 'new address' noise
+    v = v.replace(/new address\s*:\s*[^\s]+/g, '');
+    // remove extra punctuation but keep letters, numbers, spaces, &, /, - and Persian/Arabic chars
+    v = v.replace(/[^\w\s&\/-\u0600-\u06FF]/g, '');
+    v = v.replace(/\s+/g, ' ').trim();
+    return v;
+}
+
+// Heuristic to detect junk genres (URLs, site tags, overly long or noisy)
+function isJunkGenre(norm) {
+    if (!norm) return true;
+    if (norm.length > 40) return true;
+    if (/\b(www|http|https|\.com|\.ir|\.in|\.net)\b/.test(norm)) return true;
+    if (/new address/.test(norm)) return true;
+    // if genre contains many digits or is mostly non-letter characters
+    const letters = norm.replace(/[^a-z\u0600-\u06FF]/g, '');
+    if (letters.length < Math.max(2, Math.floor(norm.length / 2))) return true;
+    return false;
+}
+
+// Clean display label: remove urls and site tags, trim and title-case small phrases
+function cleanGenreDisplay(s) {
+    if (!s) return '';
+    let v = String(s);
+    v = v.replace(/\[.*?\]/g, '');
+    v = v.replace(/https?:\/\/\S+/g, '');
+    v = v.replace(/www\.[^\s]+/g, '');
+    v = v.replace(/new address\s*:\s*[^\s]+/gi, '');
+    v = v.replace(/[^\w\s&\/-\u0600-\u06FF]/g, '');
+    v = v.replace(/\s+/g, ' ').trim();
+    // simple title case for latin scripts
+    v = v.split(' ').map(w => (/[\u0600-\u06FF]/.test(w) ? w : (w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()))).join(' ');
+    return v;
 }
 
 function getGenreTranslation(genreName) {
@@ -725,11 +793,19 @@ function setPlayState(playing) {
         if (!vinylRotationRAFId) {
             vinylRotationRAFId = requestAnimationFrame(() => updateVinylRotationRAF());
         }
+        // Ensure timeline visualizer runs while playing
+        try {
+            startTimelineVisualizerLoop();
+        } catch (e) { console.debug('startTimelineVisualizerLoop failed', e); }
     } else {
         if (vinylRotationRAFId) {
             cancelAnimationFrame(vinylRotationRAFId);
             vinylRotationRAFId = null;
         }
+        // Pause visualizer when not playing
+        try {
+            if (visualizerIntervalId) { clearInterval(visualizerIntervalId); visualizerIntervalId = null; }
+        } catch (e) { console.debug('Stopping visualizer failed', e); }
     }
 }
 
@@ -1480,59 +1556,8 @@ function initAudio() {
     window.audioElement = audioElement;
     
     // Set up Web Audio graph once (EQ, analyser, etc.)
+    // Attach listeners and set up audio graph
     setupAudioNodes();
-    
-    // Event listeners
-    audioElement.addEventListener('timeupdate', () => {
-        const now = Date.now();
-        if (now - lastAudioTimeUpdateTime < 60) return;
-        lastAudioTimeUpdateTime = now;
-        
-        const current = audioElement.currentTime;
-        const total = audioElement.duration || 0;
-        const currentText = document.getElementById('currentTimeK');
-        if (currentText) currentText.innerText = formatTime(current);
-        
-        const fill = document.getElementById('progressFillK');
-        if (fill && total > 0) fill.style.width = `${(current / total) * 100}%`;
-        
-        const fsFill = document.getElementById('fsMirrorProgressFill');
-        if (fsFill && total > 0) fsFill.style.width = `${(current / total) * 100}%`;
-        
-        // update sleep timer
-        if (sleepTimeRemaining > 0) {
-            const nowMs = Date.now();
-            if (nowMs - lastSleepUpdateTime >= 1000) {
-                lastSleepUpdateTime = nowMs;
-                sleepTimeRemaining--;
-                const display = document.getElementById('sleepTimerVal');
-                if (display) display.innerText = formatTime(sleepTimeRemaining);
-                if (sleepTimeRemaining <= 60 && sleepTimeRemaining > 0) {
-                    const fadeVolume = (sleepTimeRemaining / 60) * volume;
-                    if (audioElement) audioElement.volume = fadeVolume;
-                }
-                if (sleepTimeRemaining <= 0) cancelSleepTimer();
-            }
-        }
-        
-        if (typeof syncWithMediaSessionPosition === 'function') syncWithMediaSessionPosition();
-        if (typeof syncWithMiniPlayerWidget === 'function') syncWithMiniPlayerWidget();
-    });
-    
-    audioElement.addEventListener('loadedmetadata', () => {
-        const totalText = document.getElementById('durationK');
-        if (totalText) totalText.innerText = formatTime(audioElement.duration);
-    });
-    
-    audioElement.addEventListener('ended', () => {
-        nextTrackEnhanced();
-    });
-    
-    audioElement.addEventListener('error', (e) => {
-        console.error('Audio error:', e);
-        showNotification('Audio file not found or access denied', 'error');
-        setPlayState(false);
-    });
 }
 
 function setupAudioNodes() {
@@ -1541,6 +1566,73 @@ function setupAudioNodes() {
         if (!audioElement) {
             console.debug('No audio element, cannot setup audio nodes');
             return false;
+        }
+
+        // Helper to attach core listeners (so we can re-create audio elements safely)
+        function attachAudioElementListeners(el) {
+            if (!el) return;
+            if (el._koraiListenersAttached) return;
+
+            el.addEventListener('timeupdate', () => {
+                const now = Date.now();
+                if (now - lastAudioTimeUpdateTime < 60) return;
+                lastAudioTimeUpdateTime = now;
+
+                const current = el.currentTime;
+                const total = el.duration || 0;
+                const currentText = document.getElementById('currentTimeK');
+                if (currentText) currentText.innerText = formatTime(current);
+
+                const fill = document.getElementById('progressFillK');
+                if (fill && total > 0) fill.style.width = `${(current / total) * 100}%`;
+
+                const fsFill = document.getElementById('fsMirrorProgressFill');
+                if (fsFill && total > 0) fsFill.style.width = `${(current / total) * 100}%`;
+
+                // update sleep timer
+                if (sleepTimeRemaining > 0) {
+                    const nowMs = Date.now();
+                    if (nowMs - lastSleepUpdateTime >= 1000) {
+                        lastSleepUpdateTime = nowMs;
+                        sleepTimeRemaining--;
+                        const display = document.getElementById('sleepTimerVal');
+                        if (display) display.innerText = formatTime(sleepTimeRemaining);
+                        if (sleepTimeRemaining <= 60 && sleepTimeRemaining > 0) {
+                            const fadeVolume = (sleepTimeRemaining / 60) * volume;
+                            if (el) el.volume = fadeVolume;
+                        }
+                        if (sleepTimeRemaining <= 0) cancelSleepTimer();
+                    }
+                }
+
+                if (typeof syncWithMediaSessionPosition === 'function') syncWithMediaSessionPosition();
+                if (typeof syncWithMiniPlayerWidget === 'function') syncWithMiniPlayerWidget();
+                // Periodically persist playback position to localStorage (every ~5s)
+                try {
+                    const now = Date.now();
+                    if (now - lastPlaybackSaveTime > 5000) {
+                        lastPlaybackSaveTime = now;
+                        savePlaybackState();
+                    }
+                } catch (e) { console.debug('Playback save failed', e); }
+            });
+
+            el.addEventListener('loadedmetadata', () => {
+                const totalText = document.getElementById('durationK');
+                if (totalText) totalText.innerText = formatTime(el.duration);
+            });
+
+            el.addEventListener('ended', () => {
+                nextTrackEnhanced();
+            });
+
+            el.addEventListener('error', (e) => {
+                console.error('Audio error:', e);
+                showNotification('Audio file not found or access denied', 'error');
+                setPlayState(false);
+            });
+
+            el._koraiListenersAttached = true;
         }
         
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -1591,13 +1683,33 @@ function setupAudioNodes() {
             });
             window.eqFilters = [];
         }
-        
+
+        // Attach listeners to audio element (ensures timeupdate/ended/etc are set)
+        try { attachAudioElementListeners(audioElement); } catch (e) { console.debug('attachAudioElementListeners failed', e); }
+
         // Create new source from audio element
         try {
             window.audioSource = window.audioCtx.createMediaElementSource(audioElement);
         } catch (e) {
-            console.error('Failed to create media element source:', e);
-            return false;
+            console.warn('createMediaElementSource failed, attempting to recreate <audio> element:', e);
+            try {
+                const old = audioElement;
+                const newEl = new Audio();
+                newEl.crossOrigin = old.crossOrigin || 'anonymous';
+                newEl.volume = old.volume || volume;
+                newEl.muted = old.muted || false;
+                // preserve src if present
+                try { newEl.src = old.src || ''; } catch (ee) {}
+                    window.audioElement = newEl;
+                    // keep the local lexical reference in sync so other functions use the correct element
+                    audioElement = window.audioElement;
+                    window.audioElement._koraiReplaced = true;
+                    attachAudioElementListeners(window.audioElement);
+                    window.audioSource = window.audioCtx.createMediaElementSource(window.audioElement);
+            } catch (e2) {
+                console.error('Recreate audio element and source failed:', e2);
+                return false;
+            }
         }
         
         // Create gain node and analyser
@@ -1677,13 +1789,17 @@ function initTimelineVisualizer() {
     
     // Update global reference
     visualizerBars = Array.from(visualizerContainer.querySelectorAll('.timeline-v-bar'));
+    console.debug('Timeline visualizer initialized with', visualizerBars.length, 'bars');
 }
 
 function updateTimelineVisualizer() {
     // Make sure visualizer bars exist, if not re-initialize
     if (!visualizerBars || visualizerBars.length === 0) {
         initTimelineVisualizer();
-        if (!visualizerBars || visualizerBars.length === 0) return;
+        if (!visualizerBars || visualizerBars.length === 0) {
+            console.debug('Visualizer bars still empty after init - skipping update');
+            return;
+        }
     }
     
     const now = Date.now();
@@ -1806,6 +1922,7 @@ function startTimelineVisualizerLoop() {
         }
         updateTimelineVisualizer();
     }, 60); // ~16 FPS, smooth enough
+    console.debug('Timeline visualizer loop started (interval id)', visualizerIntervalId);
 }
 
 // Make sure to call init on window resize as well
@@ -2332,6 +2449,39 @@ function setupDragAndDrop() {
             const result = await res.json();
             showNotification(`${result.imported} ${t('dragSuccess')}`, 'success');
             await loadTracks();
+            try {
+                if (result.imported > 0 && tracks.length > 0) {
+                    // Prefer server-provided mapping when available
+                    if (Array.isArray(result.importedTracks) && result.importedTracks.length > 0) {
+                        // attempt to find by returned filePath or id in local tracks
+                        let matched = null;
+                        for (const it of result.importedTracks) {
+                            const ft = tracks.find(tt => tt.id === it.id || (tt.filePath && it.filePath && normalizePath(tt.filePath) === normalizePath(it.filePath)));
+                            if (ft) { matched = ft; break; }
+                        }
+                        if (matched) {
+                            console.debug('Autoplay matched by server mapping (drag):', matched.id, matched.title);
+                            tryAutoPlayTrack(matched.id).catch(e => console.debug('Autoplay failed', e));
+                            return;
+                        }
+                    }
+                    // Try to match by original file path(s)
+                    let matched = null;
+                    for (const fp of filePaths) {
+                        const ft = findTrackByFilePath(fp);
+                        if (ft) { matched = ft; break; }
+                    }
+                    if (matched) {
+                        console.debug('Autoplay matched by file path:', matched.id, matched.title);
+                        tryAutoPlayTrack(matched.id).catch(e => console.debug('Autoplay failed', e));
+                    } else {
+                        const newTracks = tracks.slice(-result.imported);
+                        console.debug('Newly imported tracks (drag fallback):', newTracks.map(t=>({ id: t.id, title: t.title })));
+                        const lastTrack = newTracks[newTracks.length - 1] || newTracks[0];
+                        if (lastTrack) tryAutoPlayTrack(lastTrack.id).catch(e => console.debug('Autoplay failed', e));
+                    }
+                }
+            } catch (e) { console.debug('Autoplay after drag import failed', e); }
             switchSection(currentActiveSection);
         } catch (err) { console.error('Drag Import error:', err); showNotification(t('dragError'), 'error'); }
     });
@@ -2392,12 +2542,21 @@ async function loadTracks() {
             fetch(`http://127.0.0.1:${apiPort}/api/tracks/liked-status`).catch(() => null)
         ]);
 
-        if (tracksRes && tracksRes.ok) {
+            if (tracksRes && tracksRes.ok) {
             const serverTracks = await tracksRes.json();
             let likedMap = {};
             if (likedRes && likedRes.ok) likedMap = await likedRes.json();
 
-            tracks = serverTracks.map(track => ({ ...track, isLiked: !!likedMap[track.id] }));
+            // Normalize numeric string IDs to numbers to avoid mismatches later
+            tracks = serverTracks.map(track => {
+                const isLiked = !!(likedMap[track.id] || likedMap[String(track.id)]);
+                let normalizedId = track.id;
+                if (typeof track.id === 'string' && /^\d+$/.test(track.id)) {
+                    normalizedId = Number(track.id);
+                }
+                return { ...track, id: normalizedId, isLiked };
+            });
+            console.debug('Loaded tracks from server:', tracks.length, 'sample last IDs:', tracks.slice(-5).map(t=>t.id));
 
             // 3) Update cache and UI smoothly
             try { localStorage.setItem('korai_tracks_cache', JSON.stringify(tracks)); } catch (_) {}
@@ -2830,13 +2989,13 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
     
     pendingPlayRequest = (async () => {
         try {
-            console.debug('🎵 Playing track:', trackId, 'Source:', sourceType);
+            console.debug('🎵 playTrack requested for', trackId, '(%s)', typeof trackId, 'Source:', sourceType);
             
             // Small delay to ensure previous operations settle
             await new Promise(resolve => setTimeout(resolve, 50));
             
             currentTrackId = trackId;
-            currentTrack = tracks.find(t => t.id === trackId) || null;
+            currentTrack = tracks.find(t => t.id == trackId) || null;
             if (!currentTrack && window.currentTrack && window.currentTrack.id === trackId) {
                 currentTrack = window.currentTrack;
             }
@@ -2847,6 +3006,7 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
             
             window.currentTrackId = trackId;
             window.currentTrack = currentTrack;
+            console.debug('🎵 playTrack resolved currentTrack id:', currentTrack ? currentTrack.id : null, 'type:', currentTrack ? typeof currentTrack.id : null);
             
             // Update play source and queue
             if (sourceTracksArray) {
@@ -2868,10 +3028,10 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
             }
             
             if (!shuffleMode) {
-                queueIndex = queue.findIndex(t => t.id === trackId);
+                queueIndex = queue.findIndex(t => t.id == trackId);
                 if (queueIndex === -1) { queue.unshift(currentTrack); queueIndex = 0; }
             } else {
-                const existingIndex = queue.findIndex(t => t.id === trackId);
+                const existingIndex = queue.findIndex(t => t.id == trackId);
                 if (existingIndex !== -1) queueIndex = existingIndex;
                 else { queue.unshift(currentTrack); queueIndex = 0; }
             }
@@ -2990,6 +3150,31 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
     })();
     
     await pendingPlayRequest;
+}
+
+// Attempt to autoplay a track with retries and audio init/resume safeguards
+async function tryAutoPlayTrack(trackId, attempts = 5) {
+    console.debug('tryAutoPlayTrack starting for', trackId, 'attempts', attempts);
+    for (let i = 0; i < attempts; i++) {
+        try {
+            initAudio();
+            if (window.audioCtx && window.audioCtx.state === 'suspended') {
+                try { await window.audioCtx.resume(); } catch (e) { console.debug('AudioContext resume failed', e); }
+            }
+
+            console.debug('Autoplay attempt', i+1, 'for trackId', trackId);
+            await playTrack(trackId, 'file');
+            console.debug('Autoplay attempt succeeded for', trackId, 'currentTrackId:', currentTrackId);
+            return true;
+        } catch (e) {
+            console.debug(`Autoplay attempt ${i + 1} failed for track ${trackId}:`, e && e.message);
+            // small backoff
+            await new Promise(r => setTimeout(r, 250 + i * 150));
+            // try emergency recovery on later attempts
+            if (i === 2) await emergencyAudioRecovery();
+        }
+    }
+    return false;
 }
 
 
@@ -3174,7 +3359,28 @@ function renderLibrary(filteredTracks = null) {
     if (!mainSection) return;
     
     let listToRender = filteredTracks !== null ? filteredTracks : [...tracks];
-    const existingGenres = [...new Set(tracks.map(t => t.genre).filter(Boolean))];
+    // Build sanitized genre list: group variants, remove junk (urls, site tags), and sort by frequency
+    const genreGroups = {};
+    tracks.forEach(t => {
+        const raw = (t.genre || '').toString().trim();
+        if (!raw) return;
+        const norm = normalizeGenreLabel(raw);
+        if (!genreGroups[norm]) genreGroups[norm] = { norm, rawSet: new Set(), count: 0 };
+        genreGroups[norm].rawSet.add(raw);
+        genreGroups[norm].count++;
+    });
+    const allGenreEntries = Object.values(genreGroups);
+    // Filter out junk and very long or URL-like genres
+    const filteredGenreEntries = allGenreEntries.filter(g => !isJunkGenre(g.norm));
+    // Sort by frequency desc, then by name
+    filteredGenreEntries.sort((a, b) => b.count - a.count || a.norm.localeCompare(b.norm));
+    // Limit to a reasonable number to avoid UI spam
+    const MAX_GENRES = 60;
+    const existingGenres = filteredGenreEntries.slice(0, MAX_GENRES).map(g => {
+        // pick a representative raw value (most common)
+        const repr = Array.from(g.rawSet)[0];
+        return { raw: repr, norm: g.norm, count: g.count };
+    });
 
     if (libraryGenreFilter !== 'all') listToRender = listToRender.filter(t => t.genre === libraryGenreFilter);
 
@@ -3211,10 +3417,12 @@ function renderLibrary(filteredTracks = null) {
     `;
     
     // Add genre chips (limit to reasonable number, wrap in scrollable container)
-    existingGenres.forEach(genre => {
-        const displayGenre = getGenreTranslation(genre) || genre;
+    existingGenres.forEach(g => {
+        const genre = g.raw;
+        const displayGenre = getGenreTranslation(g.norm) || cleanGenreDisplay(genre) || g.norm;
         const escapedGenre = genre.replace(/'/g, "\\'");
-        genreFilterHtml += `<button class="filter-chip ${libraryGenreFilter === genre ? 'active' : ''}" onclick="setLibraryGenreFilter('${escapedGenre}')">${escapeHtml(displayGenre)}</button>`;
+        const isActive = libraryGenreFilter === genre || libraryGenreFilter === g.norm;
+        genreFilterHtml += `<button class="filter-chip ${isActive ? 'active' : ''}" onclick="setLibraryGenreFilter('${escapedGenre}')">${escapeHtml(displayGenre)}</button>`;
     });
     
     genreFilterHtml += `
@@ -4127,11 +4335,58 @@ async function handleImport() {
         updateImportLoadingProgress(100, `Imported ${result.imported} track(s)!`);
 
         // Delay hiding modal slightly to show completion
-        setTimeout(async () => {
+                setTimeout(async () => {
             hideImportLoadingModal();
             showNotification(`Successfully added ${result.imported} tracks.`, 'success');
-            await loadTracks();
-            switchSection(currentActiveSection);
+                await loadTracks();
+                try {
+                        if (result.imported > 0 && tracks.length > 0) {
+                            // Prefer server-provided mapping when available
+                            if (Array.isArray(result.importedTracks) && result.importedTracks.length > 0) {
+                                let matched = null;
+                                for (const it of result.importedTracks) {
+                                    const ft = tracks.find(tt => tt.id === it.id || (tt.filePath && it.filePath && normalizePath(tt.filePath) === normalizePath(it.filePath)));
+                                    if (ft) { matched = ft; break; }
+                                }
+                                if (matched) {
+                                    console.debug('Autoplay matched by server mapping (select):', matched.id, matched.title);
+                                    tryAutoPlayTrack(matched.id).catch(e => console.debug('Autoplay failed', e));
+                                } else {
+                                    // Try to match by original file path(s)
+                                    let matched2 = null;
+                                    for (const fp of filePaths) {
+                                        const ft = findTrackByFilePath(fp);
+                                        if (ft) { matched2 = ft; break; }
+                                    }
+                                    if (matched2) {
+                                        console.debug('Autoplay matched by file path (select):', matched2.id, matched2.title);
+                                        tryAutoPlayTrack(matched2.id).catch(e => console.debug('Autoplay failed', e));
+                                    } else {
+                                        const newTracks = tracks.slice(-result.imported);
+                                        console.debug('Newly imported tracks (select fallback):', newTracks.map(t=>({ id: t.id, title: t.title })));
+                                        const lastTrack = newTracks[newTracks.length - 1] || newTracks[0];
+                                        if (lastTrack) tryAutoPlayTrack(lastTrack.id).catch(e => console.debug('Autoplay failed', e));
+                                    }
+                                }
+                            } else {
+                                let matched = null;
+                                for (const fp of filePaths) {
+                                    const ft = findTrackByFilePath(fp);
+                                    if (ft) { matched = ft; break; }
+                                }
+                                if (matched) {
+                                    console.debug('Autoplay matched by file path (select):', matched.id, matched.title);
+                                    tryAutoPlayTrack(matched.id).catch(e => console.debug('Autoplay failed', e));
+                                } else {
+                                    const newTracks = tracks.slice(-result.imported);
+                                    console.debug('Newly imported tracks (select fallback):', newTracks.map(t=>({ id: t.id, title: t.title })));
+                                    const lastTrack = newTracks[newTracks.length - 1] || newTracks[0];
+                                    if (lastTrack) tryAutoPlayTrack(lastTrack.id).catch(e => console.debug('Autoplay failed', e));
+                                }
+                            }
+                        }
+                } catch (e) { console.debug('Autoplay after import failed', e); }
+                switchSection(currentActiveSection);
         }, 500);
 
     } catch (err) {
@@ -4191,6 +4446,40 @@ async function handleFolderImport() {
             hideImportLoadingModal();
             showNotification(`Successfully imported ${result.imported} tracks.`, 'success');
             await loadTracks();
+            try {
+                if (result.imported > 0 && tracks.length > 0) {
+                    // Prefer server-provided mapping when available
+                    if (Array.isArray(result.importedTracks) && result.importedTracks.length > 0) {
+                        let matched = null;
+                        for (const it of result.importedTracks) {
+                            const ft = tracks.find(tt => tt.id === it.id || (tt.filePath && it.filePath && normalizePath(tt.filePath) === normalizePath(it.filePath)));
+                            if (ft) { matched = ft; break; }
+                        }
+                        if (matched) {
+                            console.debug('Autoplay matched by server mapping (folder):', matched.id, matched.title);
+                            tryAutoPlayTrack(matched.id).catch(e => console.debug('Autoplay failed', e));
+                        } else {
+                            const newTracks = tracks.slice(-result.imported);
+                            const lastTrack = newTracks[newTracks.length - 1] || newTracks[0];
+                            if (lastTrack) tryAutoPlayTrack(lastTrack.id).catch(e => console.debug('Autoplay failed', e));
+                        }
+                    } else {
+                        let matched = null;
+                        for (const fp of filePaths) {
+                            const ft = findTrackByFilePath(fp);
+                            if (ft) { matched = ft; break; }
+                        }
+                        if (matched) {
+                            console.debug('Autoplay matched by file path (folder):', matched.id, matched.title);
+                            tryAutoPlayTrack(matched.id).catch(e => console.debug('Autoplay failed', e));
+                        } else {
+                            const newTracks = tracks.slice(-result.imported);
+                            const lastTrack = newTracks[newTracks.length - 1] || newTracks[0];
+                            if (lastTrack) tryAutoPlayTrack(lastTrack.id).catch(e => console.debug('Autoplay failed', e));
+                        }
+                    }
+                }
+            } catch (e) { console.debug('Autoplay after folder import failed', e); }
             switchSection(currentActiveSection);
         }, 500);
 
@@ -5011,6 +5300,72 @@ function setupWindowFocusOptimization() {
     });
 }
 
+// Persist playback position and track so we can resume after restart
+function savePlaybackState() {
+    try {
+        if (!currentTrackId || !audioElement) return;
+        const state = {
+            trackId: currentTrackId,
+            currentTime: Math.floor(audioElement.currentTime || 0),
+            isPlaying: !!isPlaying,
+            queueIndex: typeof queueIndex === 'number' ? queueIndex : -1,
+            ts: Date.now()
+        };
+        localStorage.setItem('korai_playback_state', JSON.stringify(state));
+    } catch (e) { console.debug('savePlaybackState failed', e); }
+}
+
+async function restorePlaybackState() {
+    try {
+        const raw = localStorage.getItem('korai_playback_state');
+        if (!raw) return;
+        const state = JSON.parse(raw);
+        if (!state || !state.trackId) return;
+
+        // If library not loaded or track not present, skip
+        const found = tracks.find(t => t.id === state.trackId);
+        if (!found) return;
+
+        // Play the track (playTrack will set src and attempt play)
+        await playTrack(state.trackId);
+
+        // Seek to saved position (try immediately, otherwise wait for metadata)
+        const seekTo = Math.max(0, Number(state.currentTime) || 0);
+        try {
+            if (audioElement && audioElement.duration && !isNaN(audioElement.duration)) {
+                audioElement.currentTime = Math.min(audioElement.duration, seekTo);
+            } else if (audioElement) {
+                const onMeta = function() {
+                    try { audioElement.currentTime = Math.min(audioElement.duration, seekTo); } catch (e) {}
+                    audioElement.removeEventListener('loadedmetadata', onMeta);
+                };
+                audioElement.addEventListener('loadedmetadata', onMeta);
+            }
+        } catch (e) { console.debug('seek restore failed', e); }
+
+        // Restore play/pause: default to paused on start unless user opted-in
+        try {
+            const resumeOptIn = localStorage.getItem('korai_resume_on_start') === '1';
+            if (state.isPlaying && resumeOptIn) {
+                try { await audioElement.play(); setPlayState(true); } catch (e) { /* ignore */ }
+            } else {
+                try { await audioElement.pause(); setPlayState(false); } catch (e) { /* ignore */ }
+            }
+        } catch (e) { console.debug('restore play/pause failed', e); }
+
+        // Restore queue index if present
+        if (typeof state.queueIndex === 'number' && state.queueIndex >= 0) {
+            queueIndex = state.queueIndex;
+            renderQueue();
+        }
+    } catch (e) { console.debug('restorePlaybackState failed', e); }
+}
+
+// Save final state when window closes
+window.addEventListener('beforeunload', () => {
+    try { savePlaybackState(); } catch (e) {}
+});
+
 window.addEventListener('DOMContentLoaded', async () => {
     try {
         console.debug('🚀 DOM loaded, initializing KORAI Player...');
@@ -5031,6 +5386,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         setupEventListeners();
         setVolume(0.7);
         initAudio();
+        await restorePlaybackState();
         changeClientLanguage(currentLanguage);
         updateBodyClasses();
         switchSection('home');
@@ -5048,7 +5404,61 @@ window.addEventListener('DOMContentLoaded', async () => {
         try { setupWindowFocusOptimization(); } catch (e) {}
 
         if (window.electronAPI && window.electronAPI.onFilesOpened) {
-            window.electronAPI.onFilesOpened(async (files) => { if (files && files.length > 0) { showImportProgress(files.length); try { const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePaths: files }) }); if (res.ok) { const result = await res.json(); updateImportProgress(100, `Imported ${result.imported} track(s)!`); setTimeout(async () => { hideImportProgress(); showNotification(`Successfully imported ${result.imported} track(s)`, 'success'); await loadTracks(); await loadPlaylists(); if (result.imported > 0 && tracks.length > 0) { const newTracks = tracks.slice(-result.imported); const lastTrack = newTracks[0]; if (lastTrack) { setTimeout(() => { playTrack(lastTrack.id, 'file'); }, 300); } } switchSection(currentActiveSection); }, 500); } else { hideImportProgress(); const error = await res.json(); showNotification(`Import failed: ${error.error || 'Unknown error'}`, 'error'); } } catch (err) { console.error('File association import error:', err); hideImportProgress(); showNotification('Error importing files opened from system', 'error'); } } });
+            window.electronAPI.onFilesOpened(async (files) => {
+                if (!files || files.length === 0) return;
+                showImportProgress(files.length);
+                try {
+                    const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filePaths: files })
+                    });
+
+                    if (!res.ok) {
+                        hideImportProgress();
+                        const error = await res.json().catch(() => ({}));
+                        showNotification(`Import failed: ${error.error || 'Unknown error'}`, 'error');
+                        return;
+                    }
+
+                    const result = await res.json();
+                    updateImportProgress(100, `Imported ${result.imported} track(s)!`);
+
+                    // Small delay to show completion state
+                    setTimeout(async () => {
+                        hideImportProgress();
+                        showNotification(`Successfully imported ${result.imported} track(s)`, 'success');
+                        await loadTracks();
+                        await loadPlaylists();
+
+                        if (result.imported > 0 && tracks.length > 0) {
+                            // Prefer server-provided mapping when available
+                            if (Array.isArray(result.importedTracks) && result.importedTracks.length > 0) {
+                                let matched = null;
+                                for (const it of result.importedTracks) {
+                                    const ft = tracks.find(tt => tt.id === it.id || (tt.filePath && it.filePath && normalizePath(tt.filePath) === normalizePath(it.filePath)));
+                                    if (ft) { matched = ft; break; }
+                                }
+                                if (matched) {
+                                    await tryAutoPlayTrack(matched.id).catch(e => console.debug('Autoplay failed', e));
+                                    return;
+                                }
+                            }
+                            const newTracks = tracks.slice(-result.imported);
+                            const lastTrack = newTracks[newTracks.length - 1] || newTracks[0];
+                            if (lastTrack) {
+                                await tryAutoPlayTrack(lastTrack.id).catch(e => console.debug('Autoplay failed', e));
+                            }
+                        }
+
+                        switchSection(currentActiveSection);
+                    }, 500);
+                } catch (err) {
+                    console.error('File association import error:', err);
+                    hideImportProgress();
+                    showNotification('Error importing files opened from system', 'error');
+                }
+            });
         }
 
         setTimeout(async () => {

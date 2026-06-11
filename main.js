@@ -628,7 +628,9 @@ async function createWindow() {
                 zoomFactor: 0.4,
                 backgroundThrottling: true,
                 v8CacheOptions: 'code',
-                enableBlinkFeatures: 'OverlayScrollbars',
+                // Note: enableBlinkFeatures is intentionally omitted in dev
+                // to avoid Electron security warnings. If you need to enable
+                // a blink feature in production, set it when packaging.
                 enablePreferredSizeMode: true
             }
         };
@@ -642,6 +644,12 @@ async function createWindow() {
             windowOptions.backgroundMaterial = 'mica';
         }
 
+        // Enable experimental Blink features (OverlayScrollbars) — kept intentionally enabled
+        // Note: this can surface an Electron security warning during development.
+        // The user has requested this feature remain enabled.
+        try {
+            windowOptions.webPreferences.enableBlinkFeatures = 'OverlayScrollbars';
+        } catch (e) {}
         mainWindow = new BrowserWindow(windowOptions);
 
         const setZoom = () => {

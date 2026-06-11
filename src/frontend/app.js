@@ -78,6 +78,11 @@ let sleepIntervalId = null;
 let sleepTimeRemaining = 0;
 let lastSleepUpdateTime = 0;
 
+let pendingPlayRequest = null; // Prevent concurrent play requests
+let audioRecoveryAttempts = 0;
+const MAX_AUDIO_RECOVERY_ATTEMPTS = 3;
+
+
 // Mini window detection
 const urlParams = new URLSearchParams(window.location.search);
 const isMiniWindowMode = urlParams.get('mode') === 'mini';
@@ -142,6 +147,114 @@ function __enqueuePerf(metric) {
         if (__perfBuffer.length >= 12) __flushPerfBuffer();
     } catch (e) {}
 }
+
+// =============================================================================
+// SONG INFO MODAL FUNCTIONS
+// =============================================================================
+
+/**
+ * Show song info modal with current track metadata
+ */
+window.showSongInfo = function() {
+    if (!currentTrack) {
+        showNotification('No track is currently playing', 'warning');
+        return;
+    }
+
+    const modal = document.getElementById('songInfoModal');
+    const contentDiv = document.getElementById('songInfoContent');
+    if (!modal || !contentDiv) return;
+
+    // Format track details
+    const coverUrl = currentTrack.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${currentTrack.id}/cover` : null;
+
+    let lyricsHtml = '';
+    if (currentTrack.lyrics) {
+        lyricsHtml = `<div class="song-info-lyrics"><strong>${t('lyrics') || 'Lyrics'}:</strong><br>${escapeHtml(currentTrack.lyrics).replace(/\n/g, '<br>')}</div>`;
+    } else {
+        lyricsHtml = `<div class="song-info-lyrics"><em>${t('noLyrics')}</em></div>`;
+    }
+
+    contentDiv.innerHTML = `
+        <div class="song-info-cover" style="text-align:center; margin-bottom:16px;">
+            ${coverUrl ? `<img src="${coverUrl}" style="width:120px; height:120px; border-radius:12px; object-fit:cover;">` : '<i class="fa-solid fa-music" style="font-size:64px;"></i>'}
+        </div>
+        <div class="song-info-details">
+            <p><strong>${t('trackTitle') || 'Title'}:</strong> ${escapeHtml(currentTrack.title || '—')}</p>
+            <p><strong>${t('artist') || 'Artist'}:</strong> ${escapeHtml(currentTrack.artist || '—')}</p>
+            <p><strong>${t('album') || 'Album'}:</strong> ${escapeHtml(currentTrack.album || '—')}</p>
+            <p><strong>${t('genre') || 'Genre'}:</strong> ${escapeHtml(currentTrack.genre || '—')}</p>
+            <p><strong>BPM:</strong> ${currentTrack.bpm || '—'}</p>
+            <p><strong>${t('energy') || 'Energy'}:</strong> ${currentTrack.energy ? Math.round(currentTrack.energy * 100) + '%' : '—'}</p>
+            <p><strong>${t('duration') || 'Duration'}:</strong> ${formatTime(currentTrack.duration)}</p>
+            <p><strong>${t('codec') || 'Codec'}:</strong> ${currentTrack.codec ? currentTrack.codec.toUpperCase() : '—'}</p>
+            <p><strong>${t('bitrate') || 'Bitrate'}:</strong> ${currentTrack.bitrate ? Math.round(currentTrack.bitrate / 1000) + ' kbps' : '—'}</p>
+            <p><strong>${t('sampleRate') || 'Sample Rate'}:</strong> ${currentTrack.sampleRate ? (currentTrack.sampleRate / 1000).toFixed(1) + ' kHz' : '—'}</p>
+        </div>
+        ${lyricsHtml}
+    `;
+
+    modal.style.display = 'flex';
+};
+
+/**
+ * Close song info modal
+ */
+window.closeSongInfoModal = function() {
+    const modal = document.getElementById('songInfoModal');
+    if (modal) modal.style.display = 'none';
+};
+
+/**
+ * Extract vocal (karaoke) from current track and add as new track
+ */
+window.extractVocalFromCurrentTrack = async function() {
+    if (!currentTrack) {
+        showNotification('No track is currently playing', 'warning');
+        return;
+    }
+
+    // Check if extraction is already in progress (optional)
+    if (window._vocalExtractionInProgress) {
+        showNotification(t('extractionInProgress') || 'Extraction already in progress', 'info');
+        return;
+    }
+
+    window._vocalExtractionInProgress = true;
+    showNotification(t('preparingExtraction') || 'Preparing vocal extraction...', 'info');
+
+    try {
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/${currentTrack.id}/extract-vocal`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'vocal' })
+        });
+
+        if (!res.ok) {
+            const error = await res.json().catch(() => ({}));
+            throw new Error(error.error || 'Extraction failed');
+        }
+
+        const data = await res.json();
+        if (data.success && data.track) {
+            showNotification(t('extractionComplete') || 'Extraction complete!', 'success');
+            await loadTracks();    // refresh track list
+            await loadPlaylists(); // in case playlists reference new track
+            // Optionally play the new vocal track
+            if (data.track && data.track.id) {
+                setTimeout(() => playTrack(data.track.id), 500);
+            }
+        } else {
+            throw new Error('Server returned failure');
+        }
+    } catch (err) {
+        console.error('Vocal extraction error:', err);
+        showNotification(t('extractionFailed') || 'Extraction failed: ' + err.message, 'error');
+    } finally {
+        window._vocalExtractionInProgress = false;
+        closeSongInfoModal();
+    }
+};
 
 function __flushPerfBuffer() {
     if (__perfBuffer.length === 0) return;
@@ -768,7 +881,7 @@ function togglePlay() {
         }
         return;
     }
-
+    
     if (!currentTrackId && tracks.length > 0) {
         playTrack(tracks[0].id);
         return;
@@ -779,21 +892,57 @@ function togglePlay() {
         return;
     }
     
-    if (isPlaying) {
-        audioElement.pause();
-        document.body.classList.add('playing');
-        setPlayState(false);
-    } else {
-        document.body.classList.remove('playing');
-        if (typeof setupAudioNodes === 'function') setupAudioNodes();
-        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-        audioElement.play()
-            .then(() => setPlayState(true))
-            .catch((err) => {
-                console.error('Play failed:', err);
-                showNotification('Playback failed: ' + err.message, 'warning');
-            });
+    async function doToggle() {
+        try {
+            if (isPlaying) {
+                // Pause
+                try {
+                    await audioElement.pause();
+                } catch (e) {
+                    console.debug('Error pausing:', e);
+                }
+                setPlayState(false);
+            } else {
+                // Play - ensure context is ready
+                if (window.audioCtx && window.audioCtx.state === 'suspended') {
+                    try {
+                        await window.audioCtx.resume();
+                    } catch (e) {
+                        console.debug('Error resuming AudioContext:', e);
+                    }
+                }
+                
+                if (typeof setupAudioNodes === 'function') {
+                    setupAudioNodes();
+                }
+                
+                try {
+                    await audioElement.play();
+                    setPlayState(true);
+                } catch (err) {
+                    console.error('Play failed:', err);
+                    
+                    // Special handling for specific errors
+                    if (err.name === 'NotAllowedError') {
+                        showNotification('Playback requires user interaction first', 'warning');
+                    } else if (err.name === 'NotSupportedError') {
+                        showNotification('Audio format not supported', 'error');
+                    } else {
+                        showNotification('Playback failed: ' + err.message, 'warning');
+                    }
+                    
+                    // Attempt recovery
+                    if (currentTrackId) {
+                        setTimeout(() => playTrack(currentTrackId), 500);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Toggle play error:', e);
+        }
     }
+    
+    doToggle();
     if (typeof syncWithWindowsMediaSystem === 'function') syncWithWindowsMediaSystem();
 }
 
@@ -1009,6 +1158,78 @@ function playFromQueue(idx) {
     }
 }
 
+let emergencyRecoveryInProgress = false;
+
+async function emergencyAudioRecovery() {
+    if (emergencyRecoveryInProgress) return;
+    emergencyRecoveryInProgress = true;
+    
+    console.warn('🚨 Emergency audio recovery triggered');
+    
+    try {
+        // Force stop all audio
+        if (audioElement) {
+            try {
+                audioElement.pause();
+                audioElement.src = '';
+                audioElement.load();
+            } catch (e) {}
+        }
+        
+        // Close and recreate AudioContext
+        if (window.audioCtx && window.audioCtx.state !== 'closed') {
+            try {
+                await window.audioCtx.close();
+            } catch (e) {}
+        }
+        
+        // Reset all references
+        window.audioCtx = null;
+        window.audioSource = null;
+        window.gainNode = null;
+        window.analyser = null;
+        window.eqFilters = [];
+        
+        // Reset state
+        setPlayState(false);
+        
+        // Small delay
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Reinitialize audio
+        initAudio();
+        
+        // If there was a current track, try to play it
+        if (currentTrackId) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+            await playTrack(currentTrackId);
+        }
+        
+        showNotification('Audio system recovered', 'success');
+        
+    } catch (e) {
+        console.error('Emergency recovery failed:', e);
+        showNotification('Audio system error. Please restart the app.', 'error');
+    } finally {
+        emergencyRecoveryInProgress = false;
+    }
+}
+
+// Listen for audio element errors that might require recovery
+if (audioElement) {
+    audioElement.addEventListener('error', (e) => {
+        console.error('Audio element error:', e);
+        if (audioElement.error) {
+            const errorCode = audioElement.error.code;
+            // MEDIA_ERR_DECODE (3) or MEDIA_ERR_SRC_NOT_SUPPORTED (4)
+            if (errorCode === 3 || errorCode === 4) {
+                console.warn('Media decode error, attempting recovery...');
+                setTimeout(() => emergencyAudioRecovery(), 500);
+            }
+        }
+    });
+}
+
 function removeFromQueue(idx) {
     queue.splice(idx, 1);
     if (idx < queueIndex) {
@@ -1093,6 +1314,8 @@ function toggleMiniPlayer() {
 // FIXED NEXT & PREV TRACK FUNCTIONS
 // =============================================================================
 
+let isTransitioning = false; // Prevent rapid next/prev during transitions
+
 async function nextTrackEnhanced() {
     if (isMiniWindowMode) {
         if (window.electronAPI && typeof window.electronAPI.controlFromMini === 'function') {
@@ -1101,47 +1324,66 @@ async function nextTrackEnhanced() {
         return;
     }
     
+    // Prevent rapid successive calls
+    if (isTransitioning) {
+        console.debug('⏳ Transition in progress, ignoring next track request');
+        return;
+    }
+    
     // Repeat One mode
     if (repeatOneMode && currentTrackId) {
         if (audioElement) {
             audioElement.currentTime = 0;
             if (!isPlaying) {
-                await audioElement.play();
-                setPlayState(true);
+                try {
+                    await audioElement.play();
+                    setPlayState(true);
+                } catch (e) {
+                    console.debug('Error replaying track:', e);
+                }
             }
         }
         return;
     }
     
-    // Shuffle mode
-    if (shuffleMode && shuffleSessionActive) {
-        const nextTrackObj = getNextShuffleTrack();
-        if (nextTrackObj) {
-            // Update history
-            if (currentTrackId) shuffleHistory.push(currentTrackId);
-            await playTrack(nextTrackObj.id, lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
-            return;
-        }
-    }
+    isTransitioning = true;
     
-    // Normal queue mode
-    if (queue.length === 0 && tracks.length > 0) {
-        queue = [...tracks];
-        queueIndex = -1;
-    }
-    
-    if (queue.length > 0) {
-        if (queueIndex < queue.length - 1) {
-            queueIndex++;
-            await playTrack(queue[queueIndex].id, lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
-        } else if (repeatMode && !repeatOneMode) {
-            // Repeat all: loop to beginning
-            queueIndex = 0;
-            await playTrack(queue[0].id, lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
-        } else {
-            // End of queue, stop
-            setPlayState(false);
+    try {
+        // Shuffle mode
+        if (shuffleMode && shuffleSessionActive) {
+            const nextTrackObj = getNextShuffleTrack();
+            if (nextTrackObj) {
+                if (currentTrackId) shuffleHistory.push(currentTrackId);
+                await playTrack(nextTrackObj.id, lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
+                return;
+            }
         }
+        
+        // Normal queue mode
+        if (queue.length === 0 && tracks.length > 0) {
+            queue = [...tracks];
+            queueIndex = -1;
+        }
+        
+        if (queue.length > 0) {
+            if (queueIndex < queue.length - 1) {
+                queueIndex++;
+                await playTrack(queue[queueIndex].id, lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
+            } else if (repeatMode && !repeatOneMode) {
+                queueIndex = 0;
+                await playTrack(queue[0].id, lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
+            } else {
+                setPlayState(false);
+            }
+        }
+    } catch (err) {
+        console.error('Error in nextTrackEnhanced:', err);
+        showNotification('Error changing track', 'warning');
+    } finally {
+        // Small delay before allowing next transition
+        setTimeout(() => {
+            isTransitioning = false;
+        }, 500);
     }
 }
 
@@ -1153,38 +1395,52 @@ async function prevTrackEnhanced() {
         return;
     }
     
+    // Prevent rapid successive calls
+    if (isTransitioning) {
+        console.debug('⏳ Transition in progress, ignoring previous track request');
+        return;
+    }
+    
     // If current time > 3 seconds, just seek to start
     if (audioElement && audioElement.currentTime > 3) {
         audioElement.currentTime = 0;
         return;
     }
     
-    // Shuffle mode
-    if (shuffleMode && shuffleSessionActive && shuffleHistory.length > 1) {
-        // Go back to previous track in history
-        shuffleHistory.pop(); // remove current
-        const prevTrackId = shuffleHistory.pop();
-        if (prevTrackId) {
-            await playTrack(prevTrackId, lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
-            return;
-        }
-    }
+    isTransitioning = true;
     
-    // Normal queue mode
-    if (queue.length === 0 && tracks.length > 0) {
-        queue = [...tracks];
-        queueIndex = 0;
-    }
-    
-    if (queue.length > 0) {
-        if (queueIndex > 0) {
-            queueIndex--;
-            await playTrack(queue[queueIndex].id, lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
-        } else if (repeatMode) {
-            // Wrap to end
-            queueIndex = queue.length - 1;
-            await playTrack(queue[queueIndex].id, lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
+    try {
+        // Shuffle mode
+        if (shuffleMode && shuffleSessionActive && shuffleHistory.length > 1) {
+            shuffleHistory.pop();
+            const prevTrackId = shuffleHistory.pop();
+            if (prevTrackId) {
+                await playTrack(prevTrackId, lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
+                return;
+            }
         }
+        
+        // Normal queue mode
+        if (queue.length === 0 && tracks.length > 0) {
+            queue = [...tracks];
+            queueIndex = 0;
+        }
+        
+        if (queue.length > 0) {
+            if (queueIndex > 0) {
+                queueIndex--;
+                await playTrack(queue[queueIndex].id, lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
+            } else if (repeatMode) {
+                queueIndex = queue.length - 1;
+                await playTrack(queue[queueIndex].id, lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
+            }
+        }
+    } catch (err) {
+        console.error('Error in prevTrackEnhanced:', err);
+    } finally {
+        setTimeout(() => {
+            isTransitioning = false;
+        }, 500);
     }
 }
 
@@ -1221,58 +1477,45 @@ function initAudio() {
     audioElement = new Audio();
     audioElement.crossOrigin = "anonymous";
     audioElement.volume = volume;
-    
     window.audioElement = audioElement;
     
+    // Set up Web Audio graph once (EQ, analyser, etc.)
+    setupAudioNodes();
+    
+    // Event listeners
     audioElement.addEventListener('timeupdate', () => {
         const now = Date.now();
-        if (now - lastAudioTimeUpdateTime < 60) return; // Throttle to ~16 FPS
+        if (now - lastAudioTimeUpdateTime < 60) return;
         lastAudioTimeUpdateTime = now;
         
         const current = audioElement.currentTime;
         const total = audioElement.duration || 0;
-        
         const currentText = document.getElementById('currentTimeK');
         if (currentText) currentText.innerText = formatTime(current);
         
         const fill = document.getElementById('progressFillK');
         if (fill && total > 0) fill.style.width = `${(current / total) * 100}%`;
-
+        
         const fsFill = document.getElementById('fsMirrorProgressFill');
         if (fsFill && total > 0) fsFill.style.width = `${(current / total) * 100}%`;
-
-        // Update sleep timer from audio currentTime (avoid setInterval DOM thrashing)
+        
+        // update sleep timer
         if (sleepTimeRemaining > 0) {
-            const now = Date.now();
-            if (now - lastSleepUpdateTime >= 1000) {
-                lastSleepUpdateTime = now;
+            const nowMs = Date.now();
+            if (nowMs - lastSleepUpdateTime >= 1000) {
+                lastSleepUpdateTime = nowMs;
                 sleepTimeRemaining--;
                 const display = document.getElementById('sleepTimerVal');
                 if (display) display.innerText = formatTime(sleepTimeRemaining);
-                
                 if (sleepTimeRemaining <= 60 && sleepTimeRemaining > 0) {
                     const fadeVolume = (sleepTimeRemaining / 60) * volume;
                     if (audioElement) audioElement.volume = fadeVolume;
                 }
-                
-                if (sleepTimeRemaining <= 0) {
-                    cancelSleepTimer();
-                }
+                if (sleepTimeRemaining <= 0) cancelSleepTimer();
             }
         }
         
-        // Throttle media session updates to every 5% track progress
-        if (total > 0) {
-            const trackProgress = current / total;
-            const lastUpdate = window._lastMediaSessionProgress || 0;
-            if (Math.abs(trackProgress - lastUpdate) >= 0.05 || trackProgress === 0 || trackProgress >= 0.99) {
-                window._lastMediaSessionProgress = trackProgress;
-                if (typeof syncWithMediaSessionPosition === 'function') syncWithMediaSessionPosition();
-            }
-        } else {
-            if (typeof syncWithMediaSessionPosition === 'function') syncWithMediaSessionPosition();
-        }
-        
+        if (typeof syncWithMediaSessionPosition === 'function') syncWithMediaSessionPosition();
         if (typeof syncWithMiniPlayerWidget === 'function') syncWithMiniPlayerWidget();
     });
     
@@ -1284,7 +1527,7 @@ function initAudio() {
     audioElement.addEventListener('ended', () => {
         nextTrackEnhanced();
     });
-
+    
     audioElement.addEventListener('error', (e) => {
         console.error('Audio error:', e);
         showNotification('Audio file not found or access denied', 'error');
@@ -1294,44 +1537,101 @@ function initAudio() {
 
 function setupAudioNodes() {
     try {
+        // Don't proceed if no audio element or context
+        if (!audioElement) {
+            console.debug('No audio element, cannot setup audio nodes');
+            return false;
+        }
+        
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (!window.audioCtx) {
             window.audioCtx = new AudioContextClass();
         }
         
-        if (!window.audioSource && window.audioElement) {
-            window.audioSource = window.audioCtx.createMediaElementSource(window.audioElement);
+        // Check if context is closed
+        if (window.audioCtx.state === 'closed') {
+            console.debug('AudioContext is closed, creating new one');
+            window.audioCtx = new AudioContextClass();
         }
         
-        if (!window.gainNode && window.audioSource) {
-            window.gainNode = window.audioCtx.createGain();
-            window.analyser = window.audioCtx.createAnalyser();
-            window.analyser.fftSize = 256;
-            
-            let currentNode = window.audioSource;
-            
-            window.eqFilters = eqBands.map((freq, idx) => {
-                const filter = window.audioCtx.createBiquadFilter();
-                if (idx === 0) filter.type = 'lowshelf';
-                else if (idx === eqBands.length - 1) filter.type = 'highshelf';
-                else filter.type = 'peaking';
-                filter.frequency.value = freq;
-                filter.Q.value = 1.0;
-                filter.gain.value = 0;
-                currentNode.connect(filter);
-                currentNode = filter;
-                return filter;
-            });
-            
-            currentNode.connect(window.analyser);
-            window.analyser.connect(window.gainNode);
-            window.gainNode.connect(window.audioCtx.destination);
-            
-            // Ensure analyser is connected for visualizer
-            console.debug('✅ Audio nodes setup complete');
+        // Disconnect existing nodes if they exist
+        if (window.audioSource) {
+            try {
+                window.audioSource.disconnect();
+            } catch (e) {
+                console.debug('Error disconnecting audio source:', e);
+            }
+            window.audioSource = null;
         }
+        
+        if (window.gainNode) {
+            try {
+                window.gainNode.disconnect();
+            } catch (e) {
+                console.debug('Error disconnecting gain node:', e);
+            }
+            window.gainNode = null;
+        }
+        
+        if (window.analyser) {
+            try {
+                window.analyser.disconnect();
+            } catch (e) {
+                console.debug('Error disconnecting analyser:', e);
+            }
+            window.analyser = null;
+        }
+        
+        // Clean up EQ filters
+        if (window.eqFilters && window.eqFilters.length) {
+            window.eqFilters.forEach(filter => {
+                try {
+                    if (filter) filter.disconnect();
+                } catch (e) {}
+            });
+            window.eqFilters = [];
+        }
+        
+        // Create new source from audio element
+        try {
+            window.audioSource = window.audioCtx.createMediaElementSource(audioElement);
+        } catch (e) {
+            console.error('Failed to create media element source:', e);
+            return false;
+        }
+        
+        // Create gain node and analyser
+        window.gainNode = window.audioCtx.createGain();
+        window.analyser = window.audioCtx.createAnalyser();
+        window.analyser.fftSize = 256;
+        
+        // Build EQ chain
+        let currentNode = window.audioSource;
+        window.eqFilters = eqBands.map((freq, idx) => {
+            const filter = window.audioCtx.createBiquadFilter();
+            if (idx === 0) filter.type = 'lowshelf';
+            else if (idx === eqBands.length - 1) filter.type = 'highshelf';
+            else filter.type = 'peaking';
+            filter.frequency.value = freq;
+            filter.Q.value = 1.0;
+            filter.gain.value = 0;
+            
+            currentNode.connect(filter);
+            currentNode = filter;
+            return filter;
+        });
+        
+        // Connect the chain
+        currentNode.connect(window.analyser);
+        window.analyser.connect(window.gainNode);
+        window.gainNode.connect(window.audioCtx.destination);
+        
+        console.debug('✅ Audio nodes setup complete');
+        return true;
+        
     } catch (e) {
         console.warn("AudioContext setup failed:", e);
+        return false;
     }
 }
 
@@ -2515,166 +2815,181 @@ async function addTrackToPlaylist(playlistId, trackId) {
 // =============================================================================
 
 async function playTrack(trackId, sourceType = 'library', sourceId = null, sourceTracksArray = null) {
+    // Prevent concurrent play requests
+    if (pendingPlayRequest) {
+        console.debug('⏳ Play request already in progress, waiting...');
+        try { await pendingPlayRequest; } catch (e) { /* ignore */ }
+    }
+    
     const hasLibrary = Array.isArray(tracks) && tracks.length > 0;
-    const hasExternalTrack = !!window.currentTrack || !!window.currentTrackId;
-    if (!hasLibrary && !hasExternalTrack) {
+    if (!hasLibrary && !currentTrack) {
         showNotification(t('emptyLibrary'), 'warning');
         return;
     }
     if (isMiniWindowMode) return;
     
-    try {
-        console.debug('🎵 Playing track:', trackId, 'Source:', sourceType);
-        
-        currentTrackId = trackId;
-        currentTrack = null;
-        if (hasLibrary) currentTrack = tracks.find(t => t.id === trackId) || null;
-        if (!currentTrack && window.currentTrack && window.currentTrack.id === trackId) {
-            currentTrack = window.currentTrack;
-        }
-        if (!currentTrack && !hasLibrary && (window.currentTrackId === trackId || window.currentTrack)) {
-            currentTrack = window.currentTrack || { id: trackId, title: 'Unknown', artist: 'Unknown Artist', hasCover: false };
-        }
-        if (!currentTrack) { showNotification('Track not found', 'error'); return; }
-        
-        window.currentTrackId = trackId;
-        window.currentTrack = currentTrack;
-        
-        if (sourceTracksArray) {
-            setPlaySource(sourceType, sourceId, sourceTracksArray);
-        } else {
-            if (sourceType === 'playlist' && sourceId) {
-                const playlist = playlists.find(p => p.id === sourceId);
-                if (playlist) {
-                    const plTracks = tracks.filter(t => playlist.tracks.includes(t.id));
-                    setPlaySource('playlist', sourceId, plTracks);
-                } else { setPlaySource('library'); }
-            } else if (sourceType === 'favorites') {
-                const favTracks = tracks.filter(t => t.isLiked);
-                setPlaySource('favorites', null, favTracks);
-            } else if (sourceType === 'artists' && sourceId) {
-                const artistTracks = tracks.filter(t => (t.artist || 'Unknown Artist') === sourceId);
-                setPlaySource('artists', sourceId, artistTracks);
-            } else { setPlaySource('library'); }
-        }
-        
-        // Update queue index for normal playback
-        if (!shuffleMode) {
-            queueIndex = queue.findIndex(t => t.id === trackId);
-            if (queueIndex === -1) { queue.unshift(currentTrack); queueIndex = 0; }
-        } else {
-            const existingIndex = queue.findIndex(t => t.id === trackId);
-            if (existingIndex !== -1) {
-                queueIndex = existingIndex;
-            } else {
-                queue.unshift(currentTrack);
-                queueIndex = 0;
-            }
-        }
-        
-        initAudio();
-        
-        // ========== FIX: Properly cleanup previous audio source ==========
-        // 1. Pause the current audio element
-        if (audioElement && !audioElement.paused) {
-            audioElement.pause();
-        }
-        
-        // 2. Close and recreate AudioContext to ensure a clean slate (fixes frozen timeline)
-        // This is the key step that prevents the timeline from freezing after import
-        if (window.audioCtx && window.audioCtx.state !== 'closed') {
-            try {
-                await window.audioCtx.close();
-            } catch (e) {
-                console.debug('Error closing AudioContext:', e);
-            }
-        }
-        
-        // Reset all audio node references
-        window.audioCtx = null;
-        window.audioSource = null;
-        window.gainNode = null;
-        window.analyser = null;
-        window.eqFilters = [];
-        
-        // 3. Create fresh AudioContext
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        window.audioCtx = new AudioContextClass();
-        
-        // 4. Re-setup audio nodes with the new context
-        setupAudioNodes();
-        
-        // 5. Resume AudioContext if it was suspended
-        if (window.audioCtx && window.audioCtx.state === 'suspended') {
-            await window.audioCtx.resume();
-        }
-        
-        // Increment play request id to handle race conditions
-        playRequestCounter += 1;
-        const thisRequestId = playRequestCounter;
-        
-        const streamUrl = `http://127.0.0.1:${apiPort}/api/tracks/${trackId}/stream`;
-        
-        // Set source and load
-        audioElement.src = streamUrl;
-        audioElement.load();
-        
-        // Wait for 'canplay' or timeout
-        await new Promise((resolve, reject) => {
-            let settled = false;
-            const onCan = () => { if (settled) return; settled = true; cleanup(); resolve(); };
-            const onErr = (ev) => { if (settled) return; settled = true; cleanup(); reject(new Error('Media load error')); };
-            const onAbort = () => { if (settled) return; settled = true; cleanup(); reject(new Error('Media load aborted')); };
-            const cleanup = () => {
-                audioElement.removeEventListener('canplay', onCan);
-                audioElement.removeEventListener('error', onErr);
-                audioElement.removeEventListener('abort', onAbort);
-                clearTimeout(timeout);
-            };
-            audioElement.addEventListener('canplay', onCan);
-            audioElement.addEventListener('error', onErr);
-            audioElement.addEventListener('abort', onAbort);
-            const timeout = setTimeout(() => { if (settled) return; settled = true; cleanup(); resolve(); }, 3000);
-        }).catch((e) => {
-            if (thisRequestId !== playRequestCounter) return;
-            console.debug('Media load warning:', e.message || e);
-        });
-        
-        // Check if superseded
-        if (thisRequestId !== playRequestCounter) {
-            console.debug('Play request superseded, aborting play for', trackId);
-            return;
-        }
-        
-        // Attempt to play
+    pendingPlayRequest = (async () => {
         try {
-            await audioElement.play();
-        } catch (e) {
-            if (thisRequestId !== playRequestCounter) return;
-            console.error('Play attempt failed:', e);
-            throw e;
+            console.debug('🎵 Playing track:', trackId, 'Source:', sourceType);
+            
+            // Small delay to ensure previous operations settle
+            await new Promise(resolve => setTimeout(resolve, 50));
+            
+            currentTrackId = trackId;
+            currentTrack = tracks.find(t => t.id === trackId) || null;
+            if (!currentTrack && window.currentTrack && window.currentTrack.id === trackId) {
+                currentTrack = window.currentTrack;
+            }
+            if (!currentTrack) {
+                showNotification('Track not found', 'error');
+                return;
+            }
+            
+            window.currentTrackId = trackId;
+            window.currentTrack = currentTrack;
+            
+            // Update play source and queue
+            if (sourceTracksArray) {
+                setPlaySource(sourceType, sourceId, sourceTracksArray);
+            } else {
+                if (sourceType === 'playlist' && sourceId) {
+                    const playlist = playlists.find(p => p.id === sourceId);
+                    if (playlist) {
+                        const plTracks = tracks.filter(t => playlist.tracks.includes(t.id));
+                        setPlaySource('playlist', sourceId, plTracks);
+                    } else { setPlaySource('library'); }
+                } else if (sourceType === 'favorites') {
+                    const favTracks = tracks.filter(t => t.isLiked);
+                    setPlaySource('favorites', null, favTracks);
+                } else if (sourceType === 'artists' && sourceId) {
+                    const artistTracks = tracks.filter(t => (t.artist || 'Unknown Artist') === sourceId);
+                    setPlaySource('artists', sourceId, artistTracks);
+                } else { setPlaySource('library'); }
+            }
+            
+            if (!shuffleMode) {
+                queueIndex = queue.findIndex(t => t.id === trackId);
+                if (queueIndex === -1) { queue.unshift(currentTrack); queueIndex = 0; }
+            } else {
+                const existingIndex = queue.findIndex(t => t.id === trackId);
+                if (existingIndex !== -1) queueIndex = existingIndex;
+                else { queue.unshift(currentTrack); queueIndex = 0; }
+            }
+            
+            // Ensure audio element and context exist
+            initAudio();
+            
+            // If AudioContext is suspended, resume it
+            if (window.audioCtx && window.audioCtx.state === 'suspended') {
+                try { await window.audioCtx.resume(); } catch (e) { console.debug('Error resuming AudioContext:', e); }
+            }
+            
+            // === KEY CHANGE: Do NOT recreate audio context or source nodes ===
+            // Just change the src of the existing audio element
+            const streamUrl = `http://127.0.0.1:${apiPort}/api/tracks/${trackId}/stream`;
+            
+            // Reset current audio if playing
+            if (!audioElement.paused) {
+                try { await audioElement.pause(); } catch (e) { /* ignore */ }
+            }
+            
+            // Clear any pending load errors
+            audioElement.src = '';
+            audioElement.load();
+            audioElement.src = streamUrl;
+            audioElement.load();
+            
+            // Wait for 'canplay' or timeout
+            let loadError = null;
+            try {
+                await new Promise((resolve, reject) => {
+                    let settled = false;
+                    const timeoutId = setTimeout(() => {
+                        if (!settled) {
+                            settled = true;
+                            console.debug('Media load timeout, continuing anyway...');
+                            resolve();
+                        }
+                    }, 5000);
+                    
+                    const onCanPlay = () => {
+                        if (settled) return;
+                        settled = true;
+                        clearTimeout(timeoutId);
+                        cleanup();
+                        resolve();
+                    };
+                    
+                    const onError = (e) => {
+                        if (settled) return;
+                        settled = true;
+                        clearTimeout(timeoutId);
+                        loadError = e;
+                        cleanup();
+                        reject(new Error('Media load error: ' + (e.message || 'unknown')));
+                    };
+                    
+                    const cleanup = () => {
+                        audioElement.removeEventListener('canplay', onCanPlay);
+                        audioElement.removeEventListener('error', onError);
+                    };
+                    
+                    audioElement.addEventListener('canplay', onCanPlay);
+                    audioElement.addEventListener('error', onError);
+                });
+            } catch (e) {
+                console.warn('Media load warning:', e.message);
+            }
+            
+            // Attempt to play with retry
+            let playSuccess = false;
+            for (let attempt = 0; attempt < 3 && !playSuccess; attempt++) {
+                try {
+                    if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 100 * attempt));
+                    await audioElement.play();
+                    playSuccess = true;
+                    audioRecoveryAttempts = 0;
+                } catch (e) {
+                    console.warn(`Play attempt ${attempt + 1} failed:`, e.name, e.message);
+                    if (e.name === 'NotAllowedError' || e.name === 'NotSupportedError') break;
+                }
+            }
+            
+            if (!playSuccess) {
+                if (audioRecoveryAttempts < MAX_AUDIO_RECOVERY_ATTEMPTS) {
+                    audioRecoveryAttempts++;
+                    console.warn(`Play failed, attempting full recovery (${audioRecoveryAttempts}/${MAX_AUDIO_RECOVERY_ATTEMPTS})`);
+                    await emergencyAudioRecovery();
+                    await playTrack(trackId, sourceType, sourceId, sourceTracksArray);
+                    return;
+                } else {
+                    throw new Error('Playback failed after retries');
+                }
+            }
+            
+            // Re-apply vocal separator if needed
+            if (wasVocalSeparatorActive && typeof reconnectAudioGraph === 'function') {
+                setTimeout(() => reconnectAudioGraph(true).catch(e => console.debug(e)), 100);
+            }
+            
+            setPlayState(true);
+            updatePlayerUI();
+            syncWithWindowsMediaSystem();
+            
+            fetch(`http://127.0.0.1:${apiPort}/api/tracks/${trackId}/play`, { method: 'POST' }).catch(e => console.error(e));
+            renderQueue();
+            
+        } catch (err) {
+            console.error('Play error:', err);
+            showNotification('Error playing audio: ' + (err.message || 'Unknown error'), 'error');
+            setPlayState(false);
+            throw err;
+        } finally {
+            pendingPlayRequest = null;
         }
-        
-        // Re-apply vocal separator if it was active
-        if (wasVocalSeparatorActive && typeof reconnectAudioGraph === 'function') {
-            setTimeout(async () => {
-                await reconnectAudioGraph(true);
-            }, 100);
-        }
-        
-        setPlayState(true);
-        updatePlayerUI();
-        syncWithWindowsMediaSystem();
-        
-        // Send play history to backend (fire and forget)
-        fetch(`http://127.0.0.1:${apiPort}/api/tracks/${trackId}/play`, { method: 'POST' }).catch(e => console.error(e));
-        renderQueue();
-        
-    } catch (err) {
-        console.error('Play error:', err);
-        showNotification('Error playing audio file: ' + err.message, 'error');
-        setPlayState(false);
-    }
+    })();
+    
+    await pendingPlayRequest;
 }
 
 

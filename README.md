@@ -2,7 +2,7 @@
 
 <img src="korai.png" width="120" alt="KORAI Logo" />
 
-# KORAI · v1.4
+# KORAI · v1.4.5
 
 ### *Open Source. Local First. Intelligence Built In.*
 

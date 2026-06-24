@@ -4614,16 +4614,16 @@ body.theme-liquid-glass .filter-chip.active {
 }
 
 .track-row.active td {
-    border-top: 1px solid rgba(var(--accent-green-rgb), 0.2);
-    border-bottom: 1px solid rgba(var(--accent-green-rgb), 0.2);
+    border-top: 0px solid rgba(var(--accent-green-rgb), 0.2);
+    border-bottom: 0px solid rgba(var(--accent-green-rgb), 0.2);
 }
 
 .track-row.active td:first-child {
-    border-left: 1px solid rgba(var(--accent-green-rgb), 0.2);
+    border-left: 0px solid rgba(var(--accent-green-rgb), 0.2);
 }
 
 .track-row.active td:last-child {
-    border-right: 1px solid rgba(var(--accent-green-rgb), 0.2);
+    border-right: 0px solid rgba(var(--accent-green-rgb), 0.2);
 }
 
 body.theme-liquid-glass .track-row.active td {

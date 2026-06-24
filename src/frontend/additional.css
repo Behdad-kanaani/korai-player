@@ -1095,7 +1095,7 @@ body.drag-over::after {
     /* box-shadow: 0 10px 30px rgba(0,0,0,0.6); */
     transition: transform 260ms cubic-bezier(0.2,0.9,0.3,1), box-shadow 260ms ease, background 260ms ease;
 }
-.library-dreamy .track-row:hover td { transform: translateY(-6px); background: linear-gradient(180deg, rgba(0,229,255,0.02), rgba(255,255,255,0.02)); box-shadow: 0 20px 40px rgba(0,0,0,0.7); }
+/* .library-dreamy .track-row:hover td { transform: translateY(-6px); background: linear-gradient(180deg, rgba(0,229,255,0.02), rgba(255,255,255,0.02)); box-shadow: 0 20px 40px rgba(0,0,0,0.7); } */
 
 /* Card grid fallback - inserted by JS when user toggles 'dream' view */
 .library-cards-grid {
@@ -1282,7 +1282,7 @@ body.drag-over::after {
 .track-row:hover .table-action-btn { opacity: 1; transform: translateX(0); }
 
 /* Accessibility: focus styles */
-.library-tracks-table tr:focus-within td { outline: 3px solid rgba(0,229,255,0.10); outline-offset: 3px; }
+/* .library-tracks-table tr:focus-within td { outline: 3px solid rgba(0,229,255,0.10); outline-offset: 3px; } */
 
 /* --------------------------------------------------------------------------
    Minimal Library View - clean, spacious, high-contrast, minimal chrome
@@ -1312,7 +1312,7 @@ body.drag-over::after {
 .library-minimal .card-play { width:46px; height:46px; right:10px; bottom:10px; }
 
 /* Minimal mode subtle focus */
-.library-minimal .library-tracks-table tr:focus-within td { outline: 3px solid rgba(0,0,0,0.08); outline-offset: 2px; }
+/* .library-minimal .library-tracks-table tr:focus-within td { outline: 3px solid rgba(0,0,0,0.08); outline-offset: 2px; } */
 
 /* Toggle visual for minimal button */
 .library-view-toggle .minimal-btn { display:inline-flex; align-items:center; justify-content:center; padding:8px; border-radius:8px; }

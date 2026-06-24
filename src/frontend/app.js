@@ -2149,129 +2149,6 @@ async function saveTagChanges() {
 }
 
 // =============================================================================
-// ADVANCED SEARCH (unchanged)
-// =============================================================================
-
-function openAdvancedSearch() {
-    const modal = document.getElementById('advancedSearchModal');
-    if (!modal) createAdvancedSearchModal();
-    
-    const newModal = document.getElementById('advancedSearchModal');
-    if (newModal) newModal.style.display = 'flex';
-    
-    const searchInput = document.getElementById('advSearchInput');
-    if (searchInput) {
-        searchInput.focus();
-        searchInput.value = '';
-    }
-    
-    const resultsContainer = document.getElementById('advSearchResults');
-    if (resultsContainer) resultsContainer.innerHTML = '';
-}
-
-function createAdvancedSearchModal() {
-    const existing = document.getElementById('advancedSearchModal');
-    if (existing) return;
-    
-    const modal = document.createElement('div');
-    modal.id = 'advancedSearchModal';
-    modal.className = 'custom-modal-overlay';
-    modal.style.display = 'none';
-    
-    modal.innerHTML = `
-        <div class="custom-modal-card" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
-            <div class="modal-indicator-header">
-                <i class="fa-solid fa-magnifying-glass" style="color: var(--accent-cyan);"></i>
-                <h4>Advanced Search</h4>
-                <button class="close-modal-btn" onclick="closeAdvancedSearch()" style="margin-right: auto; background: none; border: none; color: var(--spotify-text-muted); cursor: pointer;">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </div>
-            <div class="adv-search-info">
-                <p style="font-size: 0.7rem; color: var(--spotify-text-muted); margin-bottom: 12px;">
-                    <i class="fa-regular fa-lightbulb"></i> Examples: 
-                    <code>bpm>120</code> <code>genre:rock</code> <code>energy>0.7</code> 
-                    <code>year:2020-2024</code> <code>artist:behdad</code>
-                </p>
-            </div>
-            <div class="form-group"><input type="text" id="advSearchInput" placeholder="Enter search query..." style="width: 100%; padding: 12px;"></div>
-            <div class="modal-buttons-footer" style="margin-top: 12px;">
-                <button class="modal-btn cancel" onclick="closeAdvancedSearch()">Cancel</button>
-                <button class="modal-btn confirm" id="executeAdvSearchBtn" style="background: var(--accent-cyan); color: #000;">Search</button>
-            </div>
-            <div id="advSearchResults" style="margin-top: 20px;"></div>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-    document.getElementById('executeAdvSearchBtn').addEventListener('click', async () => {
-        const query = document.getElementById('advSearchInput').value;
-        if (!query.trim()) return;
-        await executeAdvancedSearch(query);
-    });
-    document.getElementById('advSearchInput').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') document.getElementById('executeAdvSearchBtn').click();
-    });
-    modal.addEventListener('click', (e) => { if (e.target === modal) closeAdvancedSearch(); });
-}
-
-function closeAdvancedSearch() {
-    const modal = document.getElementById('advancedSearchModal');
-    if (modal) modal.style.display = 'none';
-}
-
-async function executeAdvancedSearch(query) {
-    showNotification('Searching...', 'info');
-    
-    try {
-        const res = await fetch(`http://127.0.0.1:${apiPort}/api/search/advanced`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query })
-        });
-        
-        if (!res.ok) throw new Error();
-        const data = await res.json();
-        
-        const resultsContainer = document.getElementById('advSearchResults');
-        if (!resultsContainer) return;
-        
-        if (data.results.length === 0) {
-            resultsContainer.innerHTML = `<p class="no-results" style="text-align: center; color: var(--spotify-text-muted);">No results found for "${query}"</p>`;
-            return;
-        }
-        
-        let resultsHtml = `<h4 style="margin-bottom: 12px;">Found ${data.results.length} tracks</h4><div class="adv-search-results-list">`;
-        
-        data.results.forEach(track => {
-            const coverUrl = track.coverUrl ? `http://127.0.0.1:${apiPort}${track.coverUrl}` : null;
-            resultsHtml += `
-                <div class="adv-search-result-item" onclick="playTrack(${track.id})">
-                    <div class="adv-result-cover">${coverUrl ? `<img src="${coverUrl}" alt="Cover" loading="lazy">` : '<i class="fa-solid fa-music"></i>'}</div>
-                    <div class="adv-result-info">
-                        <div class="adv-result-title">${escapeHtml(track.title || 'Untitled')}</div>
-                        <div class="adv-result-artist">${escapeHtml(track.artist || 'Unknown Artist')}</div>
-                        <div class="adv-result-meta">
-                            <span><i class="fa-solid fa-heartbeat"></i> ${track.bpm || '120'}</span>
-                            <span><i class="fa-solid fa-bolt"></i> ${Math.round((track.energy || 0.5) * 100)}%</span>
-                            <span><i class="fa-regular fa-clock"></i> ${formatTime(track.duration)}</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-        });
-        
-        resultsHtml += `</div>`;
-        resultsContainer.innerHTML = resultsHtml;
-        showNotification(`Found ${data.results.length} results`, 'success');
-        
-    } catch (err) {
-        console.error('Search error:', err);
-        showNotification('Search failed', 'error');
-    }
-}
-
-// =============================================================================
 // CUE SHEET & EXPORT (unchanged)
 // =============================================================================
 
@@ -5509,9 +5386,6 @@ window.addEventListener('DOMContentLoaded', async () => {
         
         const importCueBtn = document.getElementById('importCueBtn');
         if (importCueBtn) importCueBtn.addEventListener('click', importCueSheet);
-        
-        const advSearchBtn = document.getElementById('navAdvancedSearch');
-        if (advSearchBtn) advSearchBtn.addEventListener('click', openAdvancedSearch);
 
         console.debug('✅ KORAI Player initialized');
     } catch (err) { console.error('Init error:', err); showNotification('Initialization failed', 'error'); }

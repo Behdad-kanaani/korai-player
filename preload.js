@@ -158,11 +158,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onOpenTagEditor: (callback) => ipcRenderer.on('open-tag-editor', (event, trackId) => callback(trackId)),
     
     // =========================================================================
-    // ADVANCED SEARCH
-    // =========================================================================
-    advancedSearch: (query) => ipcRenderer.invoke('advanced-search', query),
-    
-    // =========================================================================
     // PLAYLIST EXPORT/IMPORT
     // =========================================================================
     exportPlaylist: (playlistId, format) => ipcRenderer.invoke('export-playlist', playlistId, format),

@@ -1,0 +1,1458 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.5, user-scalable=yes">
+  <title>KORAI · Explorer Pro</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --exp-primary: #00f5d4;
+      --exp-secondary: #8b5cf6;
+      --exp-accent: #f43f5e;
+      --exp-bg1: #07070e;
+      --exp-bg2: #0d0d1a;
+      --exp-card: rgba(18, 18, 32, 0.7);
+      --exp-border: rgba(255, 255, 255, 0.05);
+      --exp-text: #f0f0f8;
+      --exp-text2: #a8aec9;
+      --exp-text3: #5e647a;
+      --exp-radius: 24px;
+      --exp-transition: 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    body {
+      background: radial-gradient(ellipse at 30% 20%, #0f0f1f, #05050a 80%);
+      color: var(--exp-text);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+      padding: 0 0 80px 0;
+    }
+
+    .ambient-orbs {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .ambient-orbs span {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(140px);
+      opacity: 0.3;
+      animation: orbFloat 28s infinite alternate ease-in-out;
+    }
+    .ambient-orbs span:nth-child(1) {
+      width: 700px; height: 700px;
+      background: radial-gradient(circle, rgba(0, 245, 212, 0.35), transparent 70%);
+      top: -20%; right: -10%;
+      animation-duration: 32s;
+    }
+    .ambient-orbs span:nth-child(2) {
+      width: 550px; height: 550px;
+      background: radial-gradient(circle, rgba(139, 92, 246, 0.3), transparent 70%);
+      bottom: -15%; left: -8%;
+      animation-duration: 38s;
+      animation-delay: -6s;
+    }
+    .ambient-orbs span:nth-child(3) {
+      width: 400px; height: 400px;
+      background: radial-gradient(circle, rgba(244, 63, 94, 0.18), transparent 70%);
+      top: 40%; left: 20%;
+      animation-duration: 26s;
+      animation-delay: -12s;
+    }
+    @keyframes orbFloat {
+      0% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(70px, -50px) scale(1.15); }
+      100% { transform: translate(-40px, 60px) scale(0.9); }
+    }
+
+    .explorer-pro-container {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 20px 28px 120px;
+      position: relative;
+      z-index: 5;
+    }
+
+    .explorer-top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0 28px 0;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .explorer-top-bar .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 26px;
+      background: rgba(255,255,255,0.02);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 60px;
+      color: var(--exp-text2);
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: var(--exp-transition);
+      letter-spacing: 0.3px;
+    }
+    .explorer-top-bar .back-btn:hover {
+      background: rgba(0, 245, 212, 0.06);
+      border-color: var(--exp-primary);
+      color: var(--exp-primary);
+      transform: translateX(-6px);
+      box-shadow: 0 10px 30px rgba(0, 245, 212, 0.06);
+    }
+    .explorer-top-bar .brand-badge {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--exp-text3);
+    }
+    .explorer-top-bar .brand-badge i {
+      font-size: 1.4rem;
+      color: var(--exp-primary);
+      filter: drop-shadow(0 0 12px rgba(0,245,212,0.25));
+    }
+    .explorer-top-bar .brand-badge .live-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      background: var(--exp-accent);
+      border-radius: 50%;
+      animation: livePulse 1.8s infinite;
+      box-shadow: 0 0 20px rgba(244,63,94,0.3);
+    }
+    @keyframes livePulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.3; transform: scale(0.7); }
+    }
+
+    .explorer-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 32px;
+      background: rgba(255,255,255,0.02);
+      padding: 6px;
+      border-radius: 60px;
+      border: 1px solid rgba(255,255,255,0.04);
+      backdrop-filter: blur(8px);
+      width: fit-content;
+    }
+    .explorer-tab {
+      padding: 12px 32px;
+      border-radius: 40px;
+      background: transparent;
+      border: none;
+      color: var(--exp-text2);
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: var(--exp-transition);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      letter-spacing: 0.3px;
+    }
+    .explorer-tab i {
+      font-size: 1rem;
+      opacity: 0.7;
+    }
+    .explorer-tab:hover {
+      color: var(--exp-text);
+      background: rgba(255,255,255,0.03);
+    }
+    .explorer-tab.active {
+      background: linear-gradient(135deg, rgba(0,245,212,0.12), rgba(139,92,246,0.08));
+      color: var(--exp-primary);
+      box-shadow: 0 4px 20px rgba(0,245,212,0.04);
+    }
+    .explorer-tab.active i {
+      opacity: 1;
+    }
+
+    .explorer-search-premium {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      background: rgba(14, 14, 28, 0.7);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 80px;
+      padding: 4px 4px 4px 28px;
+      margin-bottom: 34px;
+      transition: var(--exp-transition);
+      box-shadow: 0 12px 48px rgba(0,0,0,0.5);
+    }
+    .explorer-search-premium:focus-within {
+      border-color: var(--exp-primary);
+      box-shadow: 0 12px 48px rgba(0,0,0,0.6), 0 0 0 4px rgba(0,245,212,0.06);
+    }
+    .explorer-search-premium .search-icon {
+      color: var(--exp-text3);
+      font-size: 1.1rem;
+      margin-right: 14px;
+    }
+    .explorer-search-premium input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      padding: 16px 10px;
+      color: var(--exp-text);
+      font-size: 1rem;
+      outline: none;
+      min-width: 180px;
+      font-weight: 450;
+    }
+    .explorer-search-premium input::placeholder {
+      color: var(--exp-text3);
+      font-weight: 400;
+      letter-spacing: 0.2px;
+    }
+    .explorer-search-premium .search-shortcut {
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: var(--exp-text3);
+      background: rgba(255,255,255,0.04);
+      padding: 6px 14px;
+      border-radius: 40px;
+      border: 1px solid rgba(255,255,255,0.04);
+      margin-right: 16px;
+      white-space: nowrap;
+      letter-spacing: 0.5px;
+    }
+    .explorer-search-premium .search-btn {
+      background: linear-gradient(135deg, var(--exp-primary), #00c9a7);
+      border: none;
+      border-radius: 60px;
+      padding: 14px 34px;
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: #07070e;
+      cursor: pointer;
+      transition: var(--exp-transition);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      white-space: nowrap;
+      box-shadow: 0 6px 24px rgba(0,245,212,0.2);
+    }
+    .explorer-search-premium .search-btn:hover {
+      transform: scale(1.03);
+      box-shadow: 0 10px 40px rgba(0,245,212,0.35);
+    }
+    .explorer-search-premium .search-btn:active { transform: scale(0.96); }
+
+    .explorer-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 30px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    .filter-chip-pro {
+      padding: 10px 24px;
+      border-radius: 60px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.04);
+      color: var(--exp-text2);
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--exp-transition);
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      backdrop-filter: blur(6px);
+      letter-spacing: 0.2px;
+    }
+    .filter-chip-pro i { font-size: 0.8rem; opacity: 0.7; }
+    .filter-chip-pro:hover {
+      background: rgba(255,255,255,0.05);
+      border-color: rgba(255,255,255,0.12);
+      color: var(--exp-text);
+      transform: translateY(-3px);
+    }
+    .filter-chip-pro.active {
+      background: rgba(0, 245, 212, 0.1);
+      border-color: var(--exp-primary);
+      color: var(--exp-primary);
+      box-shadow: 0 6px 24px rgba(0,245,212,0.04);
+    }
+
+    .new-releases-hero {
+      margin-bottom: 32px;
+      padding: 32px 28px;
+      background: rgba(255,255,255,0.02);
+      border-radius: var(--exp-radius);
+      border: 1px solid rgba(255,255,255,0.03);
+      backdrop-filter: blur(8px);
+    }
+    .new-releases-hero h2 {
+      font-size: 2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #fff, var(--exp-primary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .new-releases-hero h2 i {
+      -webkit-text-fill-color: initial;
+      color: var(--exp-primary);
+      font-size: 2rem;
+      filter: drop-shadow(0 0 20px rgba(0,245,212,0.2));
+    }
+    .new-releases-hero p {
+      color: var(--exp-text2);
+      margin-top: 8px;
+      font-size: 1rem;
+    }
+
+    .explorer-meta-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 18px;
+      margin-bottom: 28px;
+    }
+    .explorer-meta-bar .result-stats {
+      font-size: 0.9rem;
+      color: var(--exp-text2);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .explorer-meta-bar .result-stats strong {
+      color: var(--exp-text);
+      font-weight: 700;
+    }
+    .explorer-meta-bar .view-toggles {
+      display: flex;
+      gap: 6px;
+      background: rgba(255,255,255,0.02);
+      padding: 5px;
+      border-radius: 60px;
+      border: 1px solid rgba(255,255,255,0.04);
+    }
+    .explorer-meta-bar .view-toggles button {
+      background: transparent;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 40px;
+      color: var(--exp-text3);
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: var(--exp-transition);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .explorer-meta-bar .view-toggles button.active {
+      background: rgba(0,245,212,0.08);
+      color: var(--exp-primary);
+    }
+    .explorer-meta-bar .view-toggles button:hover {
+      color: var(--exp-text);
+    }
+
+    .explorer-results-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+      gap: 28px;
+      transition: grid-template-columns 0.3s ease;
+    }
+    .explorer-results-grid.list-mode {
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    .result-card-pro {
+      background: var(--exp-card);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--exp-border);
+      border-radius: var(--exp-radius);
+      overflow: hidden;
+      transition: var(--exp-transition);
+      cursor: pointer;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      animation: cardPop 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+      box-shadow: 0 10px 30px -10px rgba(0,0,0,0.4);
+    }
+    .result-card-pro:nth-child(1) { animation-delay: 0.02s; }
+    .result-card-pro:nth-child(2) { animation-delay: 0.04s; }
+    .result-card-pro:nth-child(3) { animation-delay: 0.06s; }
+    .result-card-pro:nth-child(4) { animation-delay: 0.08s; }
+    .result-card-pro:nth-child(5) { animation-delay: 0.10s; }
+    .result-card-pro:nth-child(6) { animation-delay: 0.12s; }
+    .result-card-pro:nth-child(7) { animation-delay: 0.14s; }
+    .result-card-pro:nth-child(8) { animation-delay: 0.16s; }
+    @keyframes cardPop {
+      from { opacity: 0; transform: translateY(30px) scale(0.94); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .result-card-pro:hover {
+      transform: translateY(-12px) scale(1.01);
+      border-color: rgba(0,245,212,0.2);
+      box-shadow: 0 30px 60px -16px rgba(0,0,0,0.7);
+    }
+    .result-card-pro .card-image {
+      position: relative;
+      aspect-ratio: 1;
+      background: #0a0a14;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .result-card-pro .card-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .result-card-pro:hover .card-image img {
+      transform: scale(1.08);
+    }
+    .result-card-pro .card-image .fallback-icon {
+      font-size: 3.2rem;
+      color: var(--exp-primary);
+      opacity: 0.2;
+    }
+    .result-card-pro .card-play-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.35s ease;
+    }
+    .result-card-pro:hover .card-play-overlay {
+      opacity: 1;
+    }
+    .result-card-pro .card-play-btn {
+      width: 68px;
+      height: 68px;
+      background: linear-gradient(135deg, var(--exp-primary), #00c9a7);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #07070e;
+      font-size: 1.6rem;
+      transform: scale(0.7);
+      transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s;
+      box-shadow: 0 8px 30px rgba(0,245,212,0.15);
+    }
+    .result-card-pro:hover .card-play-btn {
+      transform: scale(1);
+      box-shadow: 0 12px 44px rgba(0,245,212,0.3);
+    }
+    .result-card-pro .card-info {
+      padding: 18px 20px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+    }
+    .result-card-pro .card-info .title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--exp-text);
+    }
+    .result-card-pro .card-info .subtitle {
+      font-size: 0.8rem;
+      color: var(--exp-text2);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .result-card-pro .card-info .card-meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255,255,255,0.03);
+    }
+    .result-card-pro .card-info .type-badge {
+      font-size: 0.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 4px 14px;
+      border-radius: 40px;
+      background: rgba(0,245,212,0.06);
+      color: var(--exp-primary);
+      border: 1px solid rgba(0,245,212,0.06);
+      letter-spacing: 0.5px;
+    }
+    .result-card-pro .card-info .duration-badge {
+      font-size: 0.7rem;
+      color: var(--exp-text3);
+      font-family: 'Inter', monospace;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .explorer-results-grid.list-mode .result-card-pro {
+      flex-direction: row;
+      align-items: center;
+      padding: 8px;
+      gap: 18px;
+    }
+    .explorer-results-grid.list-mode .result-card-pro .card-image {
+      width: 90px;
+      height: 90px;
+      aspect-ratio: 1;
+      border-radius: 16px;
+      flex-shrink: 0;
+    }
+    .explorer-results-grid.list-mode .result-card-pro .card-info {
+      padding: 0 16px 0 0;
+      flex: 1;
+      flex-direction: row;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 20px;
+    }
+    .explorer-results-grid.list-mode .result-card-pro .card-info .title {
+      flex: 1;
+      min-width: 140px;
+    }
+
+    .explorer-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 80px 20px;
+      text-align: center;
+      color: var(--exp-text2);
+      animation: heroIn 0.5s ease both;
+      grid-column: 1 / -1;
+    }
+    .explorer-state i {
+      font-size: 4.5rem;
+      color: var(--exp-primary);
+      opacity: 0.2;
+      margin-bottom: 28px;
+    }
+    .explorer-state h3 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--exp-text);
+      margin-bottom: 10px;
+    }
+    .explorer-state p {
+      max-width: 420px;
+      line-height: 1.7;
+    }
+    .explorer-state .retry-btn {
+      margin-top: 24px;
+      padding: 12px 32px;
+      border-radius: 60px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      color: var(--exp-text);
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--exp-transition);
+    }
+    .explorer-state .retry-btn:hover {
+      background: rgba(0,245,212,0.06);
+      border-color: var(--exp-primary);
+      color: var(--exp-primary);
+    }
+
+    .loading-bar-container {
+      width: 100%;
+      height: 4px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 10px;
+      overflow: hidden;
+      margin: 16px 0 8px;
+      grid-column: 1 / -1;
+      position: relative;
+    }
+    .loading-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--exp-primary), var(--exp-secondary), var(--exp-primary));
+      background-size: 200% 100%;
+      border-radius: 10px;
+      transition: width 0.3s ease-out;
+      animation: shimmer 2s linear infinite;
+      box-shadow: 0 0 20px rgba(0,245,212,0.4);
+    }
+    .loading-bar-text {
+      font-size: 0.75rem;
+      color: var(--exp-text2);
+      text-align: center;
+      margin-top: 6px;
+      grid-column: 1 / -1;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+
+    .explorer-toast {
+      position: fixed;
+      bottom: 140px;
+      right: 32px;
+      background: rgba(12, 12, 24, 0.92);
+      backdrop-filter: blur(24px);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-left: 5px solid var(--exp-primary);
+      padding: 16px 28px;
+      border-radius: 20px;
+      color: var(--exp-text);
+      z-index: 9999;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+      animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+      max-width: 440px;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .explorer-toast i {
+      font-size: 1.4rem;
+      color: var(--exp-primary);
+    }
+    @keyframes slideInRight {
+      from { transform: translateX(70px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    .tab-content {
+      display: block;
+    }
+    .tab-content.hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 1024px) {
+      .new-releases-hero h2 { font-size: 1.6rem; }
+    }
+    @media (max-width: 768px) {
+      .explorer-pro-container { padding: 12px 16px 100px; }
+      .explorer-tabs { width: 100%; justify-content: center; }
+      .explorer-tab { padding: 10px 20px; font-size: 0.8rem; }
+      .explorer-search-premium { flex-wrap: wrap; padding: 8px 14px; border-radius: 40px; }
+      .explorer-search-premium input { padding: 12px 6px; font-size: 0.9rem; }
+      .explorer-search-premium .search-btn { padding: 12px 22px; font-size: 0.8rem; }
+      .explorer-search-premium .search-shortcut { display: none; }
+      .explorer-results-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 18px; }
+      .filter-chip-pro { padding: 8px 18px; font-size: 0.7rem; }
+      .explorer-top-bar .back-btn span { display: none; }
+      .new-releases-hero { padding: 24px 18px; }
+      .new-releases-hero h2 { font-size: 1.3rem; }
+    }
+    @media (max-width: 480px) {
+      .explorer-results-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
+      .result-card-pro .card-info .title { font-size: 0.8rem; }
+      .result-card-pro .card-info .subtitle { font-size: 0.7rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="ambient-orbs">
+    <span></span><span></span><span></span>
+  </div>
+
+  <div class="explorer-pro-container" id="explorerProApp">
+    <div class="explorer-top-bar">
+      <button class="back-btn" id="explorerBackBtn" aria-label="Back to Player">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span>Back to Player</span>
+      </button>
+      <div class="brand-badge">
+        <i class="fa-solid fa-compass"></i>
+        <span>Music Explorer</span>
+        <span class="live-dot"></span>
+      </div>
+    </div>
+
+    <div class="explorer-tabs" id="explorerTabs">
+      <button class="explorer-tab" data-tab="search" id="tabSearch">
+        <i class="fa-solid fa-magnifying-glass"></i> Search
+      </button>
+      <button class="explorer-tab active" data-tab="newreleases" id="tabNewReleases">
+        <i class="fa-solid fa-fire"></i> New Releases
+      </button>
+    </div>
+
+    <div class="tab-content hidden" id="searchTabContent">
+      <div class="explorer-search-premium" id="explorerSearchBar">
+        <i class="fa-solid fa-magnifying-glass search-icon"></i>
+        <input type="text" id="explorerSearchInput" placeholder="Search for songs, artists, albums..." autocomplete="off" spellcheck="false">
+        <span class="search-shortcut">⌘K</span>
+        <button class="search-btn" id="explorerSearchBtn">
+          <i class="fa-solid fa-arrow-right"></i>
+          Search
+        </button>
+      </div>
+
+      <div class="explorer-filters" id="explorerFilterContainer"></div>
+
+      <div class="explorer-meta-bar" id="explorerMetaBar">
+        <div class="result-stats" id="explorerResultStats"><span>Ready to explore</span></div>
+        <div class="view-toggles">
+          <button class="active" data-view="grid" aria-label="Grid view">
+            <i class="fa-solid fa-grid-2"></i> Grid
+          </button>
+          <button data-view="list" aria-label="List view">
+            <i class="fa-solid fa-list"></i> List
+          </button>
+        </div>
+      </div>
+
+      <div class="explorer-results-grid" id="explorerResultsGrid"></div>
+      <div id="searchLoadingWrapper" style="display: none; grid-column: 1 / -1;">
+        <div class="loading-bar-container">
+          <div class="loading-bar-fill" id="searchLoadingFill"></div>
+        </div>
+        <div class="loading-bar-text" id="searchLoadingText">Connecting...</div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="newReleasesTabContent">
+      <div class="new-releases-hero">
+        <h2><i class="fa-solid fa-bolt"></i> Fresh &amp; New</h2>
+        <p>Discover the latest tracks, albums and artists — updated daily.</p>
+      </div>
+
+      <div class="explorer-meta-bar" id="newReleasesMetaBar">
+        <div class="result-stats" id="newReleasesStats"><span>Loading fresh picks...</span></div>
+        <div class="view-toggles">
+          <button class="active" data-view="grid" aria-label="Grid view">
+            <i class="fa-solid fa-grid-2"></i> Grid
+          </button>
+          <button data-view="list" aria-label="List view">
+            <i class="fa-solid fa-list"></i> List
+          </button>
+        </div>
+      </div>
+
+      <div class="explorer-results-grid" id="newReleasesGrid"></div>
+      <div id="nrLoadingWrapper" style="display: none; grid-column: 1 / -1;">
+        <div class="loading-bar-container">
+          <div class="loading-bar-fill" id="nrLoadingFill"></div>
+        </div>
+        <div class="loading-bar-text" id="nrLoadingText">Connecting...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      'use strict';
+
+      const API_BASE = 'https://music.appw4486.workers.dev';
+      const FILTERS = [
+        { id: 'songs', label: '🎵 Songs', icon: 'fa-music' },
+        { id: 'albums', label: '💿 Albums', icon: 'fa-compact-disc' },
+        { id: 'artists', label: '🎤 Artists', icon: 'fa-microphone' },
+        { id: 'playlists', label: '📋 Playlists', icon: 'fa-list' },
+      ];
+      const DEFAULT_FILTER = 'songs';
+      const ITEMS_PER_PAGE = 24;
+      const REQUEST_TIMEOUT = 25000;
+
+      function getMockResults(query, filter = 'songs', page = 1) {
+        const mockArtists = ['The Weeknd', 'Dua Lipa', 'Drake', 'Taylor Swift', 'Ed Sheeran', 'Ariana Grande', 'Post Malone', 'Billie Eilish', 'Bruno Mars', 'Rihanna'];
+        const mockTitles = ['Blinding Lights', 'Levitating', 'God\'s Plan', 'Shake It Off', 'Shape of You', '7 rings', 'Circles', 'bad guy', 'Leave The Door Open', 'Diamonds'];
+        const mockAlbums = ['After Hours', 'Future Nostalgia', 'Scorpion', '1989', '÷', 'thank u, next', 'Hollywood\'s Bleeding', 'WHEN WE ALL FALL ASLEEP', 'An Evening With Silk Sonic', 'Anti'];
+        
+        const count = Math.min(ITEMS_PER_PAGE, 12);
+        const results = [];
+        const startIdx = (page - 1) * 12;
+        
+        for (let i = 0; i < count; i++) {
+          const idx = (startIdx + i) % mockArtists.length;
+          const titleIdx = (startIdx + i * 2) % mockTitles.length;
+          const albumIdx = (startIdx + i * 3) % mockAlbums.length;
+          const type = filter === 'artists' ? 'artist' : 
+                      filter === 'albums' ? 'album' : 
+                      filter === 'playlists' ? 'playlist' : 
+                      filter === 'new_releases' ? 'new_release' : 'song';
+          
+          results.push({
+            id: `mock_${Date.now()}_${i}`,
+            title: type === 'artist' ? mockArtists[idx] : 
+                   type === 'album' ? mockAlbums[albumIdx] : 
+                   mockTitles[titleIdx] + (query && query !== 'new' ? ` (${query})` : ''),
+            subtitle: type === 'artist' ? 'Popular Artist' :
+                      type === 'album' ? mockArtists[idx] :
+                      mockArtists[idx],
+            thumbnail: null,
+            type: type,
+            duration: Math.floor(120 + Math.random() * 180),
+            artist: type === 'artist' ? '' : mockArtists[idx],
+            album: type === 'album' ? mockAlbums[albumIdx] : '',
+          });
+        }
+        return { results, totalCount: 48 };
+      }
+
+      let currentTab = 'newreleases';
+      let currentQuery = '';
+      let currentFilter = DEFAULT_FILTER;
+      let currentView = 'grid';
+      let currentPage = 1;
+      let isLoading = false;
+      let hasMore = true;
+      let totalResults = 0;
+      let allResults = [];
+      let useMockData = false;
+
+      let nrPage = 1;
+      let nrHasMore = true;
+      let nrIsLoading = false;
+      let nrAllResults = [];
+      let nrTotal = 0;
+      let nrUseMockData = false;
+
+      const searchInput = document.getElementById('explorerSearchInput');
+      const searchBtn = document.getElementById('explorerSearchBtn');
+      const resultsGrid = document.getElementById('explorerResultsGrid');
+      const resultStats = document.getElementById('explorerResultStats');
+      const filterContainer = document.getElementById('explorerFilterContainer');
+      const searchLoadingWrapper = document.getElementById('searchLoadingWrapper');
+      const searchLoadingFill = document.getElementById('searchLoadingFill');
+      const searchLoadingText = document.getElementById('searchLoadingText');
+      const nrGrid = document.getElementById('newReleasesGrid');
+      const nrStats = document.getElementById('newReleasesStats');
+      const nrLoadingWrapper = document.getElementById('nrLoadingWrapper');
+      const nrLoadingFill = document.getElementById('nrLoadingFill');
+      const nrLoadingText = document.getElementById('nrLoadingText');
+
+      const tabSearch = document.getElementById('tabSearch');
+      const tabNewReleases = document.getElementById('tabNewReleases');
+      const searchContent = document.getElementById('searchTabContent');
+      const nrContent = document.getElementById('newReleasesTabContent');
+      const backBtn = document.getElementById('explorerBackBtn');
+
+      function escapeHtml(text) {
+        if (!text) return '';
+        return String(text).replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m] || m));
+      }
+      function formatDuration(sec) {
+        if (!sec || sec < 0) return '0:00';
+        const m = Math.floor(sec / 60);
+        const s = Math.floor(sec % 60);
+        return `${m}:${s.toString().padStart(2, '0')}`;
+      }
+      function showToast(msg, type = 'info') {
+        document.querySelectorAll('.explorer-toast').forEach(el => el.remove());
+        const toast = document.createElement('div');
+        toast.className = 'explorer-toast';
+        const icon = type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-circle-exclamation' : 'fa-info-circle';
+        toast.innerHTML = `<i class="fa-solid ${icon}"></i><span>${escapeHtml(msg)}</span>`;
+        document.body.appendChild(toast);
+        setTimeout(() => {
+          toast.style.opacity = '0';
+          toast.style.transform = 'translateX(70px)';
+          setTimeout(() => toast.remove(), 400);
+        }, 3200);
+      }
+      function debounce(fn, delay = 350) {
+        let timer;
+        return function(...args) {
+          clearTimeout(timer);
+          timer = setTimeout(() => fn.apply(this, args), delay);
+        };
+      }
+
+      function updateLoadingBar(fillElement, textElement, percent, statusText) {
+        if (fillElement) fillElement.style.width = Math.min(100, Math.max(0, percent)) + '%';
+        if (textElement && statusText) textElement.textContent = statusText;
+      }
+
+      async function fetchWithProgress(url, fillElement, textElement, timeout = REQUEST_TIMEOUT) {
+        updateLoadingBar(fillElement, textElement, 5, 'Connecting...');
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+        
+        try {
+          updateLoadingBar(fillElement, textElement, 15, 'Waiting for response...');
+          const response = await fetch(url, {
+            signal: controller.signal,
+            headers: { 
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            },
+            mode: 'cors',
+            credentials: 'omit'
+          });
+          clearTimeout(timeoutId);
+          
+          updateLoadingBar(fillElement, textElement, 25, `Server responded: ${response.status}`);
+          
+          if (!response.ok) {
+            const errorText = await response.text().catch(() => 'Unknown error');
+            console.error(`Server error ${response.status}:`, errorText);
+            throw new Error(`Server error ${response.status}. Please try again later.`);
+          }
+          
+          const contentLength = response.headers.get('content-length');
+          const total = contentLength ? parseInt(contentLength, 10) : 0;
+          const reader = response.body.getReader();
+          const chunks = [];
+          let receivedLength = 0;
+          
+          updateLoadingBar(fillElement, textElement, 30, 'Downloading data...');
+          
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            chunks.push(value);
+            receivedLength += value.length;
+            
+            if (total > 0) {
+              const percent = 30 + (receivedLength / total) * 65;
+              const kbReceived = Math.round(receivedLength / 1024);
+              const kbTotal = Math.round(total / 1024);
+              updateLoadingBar(fillElement, textElement, percent, `Downloading ${kbReceived}KB / ${kbTotal}KB`);
+            } else {
+              const kbReceived = Math.round(receivedLength / 1024);
+              const simulatedPercent = Math.min(90, 30 + (receivedLength / 50000) * 60);
+              updateLoadingBar(fillElement, textElement, simulatedPercent, `Received ${kbReceived}KB`);
+            }
+          }
+          
+          updateLoadingBar(fillElement, textElement, 95, 'Processing data...');
+          
+          const allChunks = new Uint8Array(receivedLength);
+          let position = 0;
+          for (const chunk of chunks) {
+            allChunks.set(chunk, position);
+            position += chunk.length;
+          }
+          
+          const text = new TextDecoder('utf-8').decode(allChunks);
+          let data;
+          try {
+            data = JSON.parse(text);
+          } catch (parseErr) {
+            console.error('JSON parse error:', parseErr, 'Raw text:', text.substring(0, 200));
+            throw new Error('Invalid response format from server');
+          }
+          
+          updateLoadingBar(fillElement, textElement, 100, 'Complete');
+          return data;
+          
+        } catch (err) {
+          clearTimeout(timeoutId);
+          if (err.name === 'AbortError') {
+            updateLoadingBar(fillElement, textElement, 100, 'Request timed out');
+            throw new Error('Request timed out. Please check your connection.');
+          }
+          updateLoadingBar(fillElement, textElement, 100, 'Failed');
+          throw err;
+        }
+      }
+
+      async function fetchMusic(query, filter = 'songs', page = 1) {
+        if (!query || query.trim() === '') return { results: [], totalCount: 0 };
+        
+        if (useMockData) {
+          updateLoadingBar(searchLoadingFill, searchLoadingText, 50, 'Loading demo data...');
+          await new Promise(resolve => setTimeout(resolve, 400));
+          updateLoadingBar(searchLoadingFill, searchLoadingText, 100, 'Demo ready');
+          return getMockResults(query, filter, page);
+        }
+        
+        const q = encodeURIComponent(query.trim());
+        const url = `${API_BASE}/?action=search&q=${q}&filter=${filter}&page=${page}&limit=${ITEMS_PER_PAGE}`;
+        try {
+          const data = await fetchWithProgress(url, searchLoadingFill, searchLoadingText);
+          let results = data.results || data.items || data.data || [];
+          let totalCount = data.totalCount || data.total || data.total_results || results.length;
+          results = results.map(item => ({
+            id: item.id || item.videoId || item.trackId || 'unknown',
+            title: item.title || item.name || 'Untitled',
+            subtitle: item.subtitle || item.artist || item.album || '',
+            thumbnail: item.thumbnail || item.cover || item.coverUrl || null,
+            type: item.type || filter,
+            duration: item.duration || 0,
+            artist: item.artist || item.subtitle || '',
+            album: item.album || '',
+          }));
+          return { results, totalCount };
+        } catch (err) {
+          console.error('Search API error:', err);
+          useMockData = true;
+          showToast('Server unavailable. Using demo data.', 'error');
+          return getMockResults(query, filter, page);
+        }
+      }
+
+      async function fetchNewReleases(page = 1) {
+        if (nrUseMockData) {
+          updateLoadingBar(nrLoadingFill, nrLoadingText, 50, 'Loading demo data...');
+          await new Promise(resolve => setTimeout(resolve, 400));
+          updateLoadingBar(nrLoadingFill, nrLoadingText, 100, 'Demo ready');
+          return getMockResults('new', 'new_releases', page);
+        }
+        
+        const url = `${API_BASE}/`;
+        console.log('Fetching new releases from:', url);
+        try {
+          const data = await fetchWithProgress(url, nrLoadingFill, nrLoadingText);
+          let results = data.releases || data.results || data.items || data.data || [];
+          let totalCount = data.totalCount || 0;
+          
+          if (!results || results.length === 0) {
+            console.warn('Empty results from new_releases API, using demo data');
+            throw new Error('No results from server');
+          }
+          
+          results = results.map(item => ({
+            id: item.playlistId || item.videoId || item.id || 'unknown',
+            title: item.title || 'Untitled',
+            subtitle: item.subtitle || item.artist || item.album || '',
+            thumbnail: item.thumbnail || null,
+            type: item.type || 'new_release',
+            duration: item.duration || 0,
+            artist: item.artist || '',
+            album: item.album || '',
+          }));
+          return { results, totalCount };
+        } catch (err) {
+          console.error('New releases API error:', err);
+          nrUseMockData = true;
+          showToast('New releases unavailable. Using demo data.', 'error');
+          return getMockResults('new', 'new_releases', page);
+        }
+      }
+
+      function renderCard(item) {
+        const card = document.createElement('div');
+        card.className = 'result-card-pro';
+        card.dataset.id = item.id;
+        const thumb = item.thumbnail || '';
+        const title = escapeHtml(item.title);
+        const subtitle = escapeHtml(item.subtitle);
+        const typeLabel = item.type || 'track';
+        const duration = item.duration || 0;
+        const iconMap = { album:'fa-compact-disc', artist:'fa-microphone', playlist:'fa-list', track:'fa-music', song:'fa-music', new_release:'fa-bolt' };
+        const fallbackIcon = iconMap[typeLabel] || 'fa-music';
+        
+        const colors = ['#1a1a2e', '#16213e', '#0f3460', '#533483', '#e94560', '#f5a623'];
+        const bgColor = colors[Math.floor(Math.random() * colors.length)];
+        
+        card.innerHTML = `
+          <div class="card-image" style="background: ${bgColor};">
+            ${thumb ? `<img src="${thumb}" alt="${title}" loading="lazy" onerror="this.style.display='none'">` : `<i class="fa-solid ${fallbackIcon} fallback-icon" style="font-size: 4rem; opacity: 0.4;"></i>`}
+            <div class="card-play-overlay">
+              <div class="card-play-btn" data-action="play" data-id="${item.id}" data-title="${title}" data-artist="${escapeHtml(item.artist || '')}">
+                <i class="fa-solid fa-play"></i>
+              </div>
+            </div>
+          </div>
+          <div class="card-info">
+            <div class="title" title="${title}">${title}</div>
+            <div class="subtitle" title="${subtitle}">${subtitle}</div>
+            <div class="card-meta-row">
+              <span class="type-badge">${escapeHtml(typeLabel)}</span>
+              ${duration > 0 ? `<span class="duration-badge"><i class="fa-regular fa-clock"></i> ${formatDuration(duration)}</span>` : ''}
+            </div>
+          </div>
+        `;
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('[data-action="play"]')) return;
+          handleCardClick(item);
+        });
+        const playBtn = card.querySelector('[data-action="play"]');
+        if (playBtn) {
+          playBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            handlePlayButton(item);
+          });
+        }
+        return card;
+      }
+
+      function renderResultsInto(grid, results, append = false, viewMode = 'grid') {
+        if (!append) grid.innerHTML = '';
+        if (!results || results.length === 0) {
+          if (!append && grid.children.length === 0) {
+            grid.innerHTML = `
+              <div class="explorer-state">
+                <i class="fa-solid fa-music"></i>
+                <h3>No results found</h3>
+                <p>Try a different search term or filter.</p>
+              </div>
+            `;
+          }
+          return;
+        }
+        const fragment = document.createDocumentFragment();
+        results.forEach(item => {
+          fragment.appendChild(renderCard(item));
+        });
+        grid.appendChild(fragment);
+        grid.classList.toggle('list-mode', viewMode === 'list');
+      }
+
+      function handleCardClick(item) {
+        if (item.type === 'track' || item.type === 'song' || item.type === 'new_release') {
+          handlePlayButton(item);
+        } else {
+          showToast(`📂 ${escapeHtml(item.title)} (${escapeHtml(item.type)})`, 'info');
+        }
+      }
+
+      async function handlePlayButton(item) {
+        showToast(`▶️ Playing: ${item.title}`, 'success');
+        try {
+          const trackId = item.id;
+          if (!trackId) { showToast('Cannot play: missing ID', 'error'); return; }
+          
+          if (useMockData || nrUseMockData || trackId.startsWith('mock_')) {
+            showToast(`🎵 ${item.title} - ${item.artist || item.subtitle} (demo mode)`, 'info');
+            return;
+          }
+          
+          const streamUrl = `${API_BASE}/?action=stream&id=${encodeURIComponent(trackId)}`;
+          const resp = await fetch(streamUrl, { signal: AbortSignal.timeout(30000) });
+          if (!resp.ok) throw new Error('Stream fetch failed');
+          const audioData = await resp.arrayBuffer();
+          const blob = new Blob([audioData], { type: 'audio/mpeg' });
+          const url = URL.createObjectURL(blob);
+          if (window.audioElement) {
+            window.audioElement.src = url;
+            window.audioElement.load();
+            await window.audioElement.play();
+            if (window.setPlayState) window.setPlayState(true);
+            if (window.currentTrack) {
+              window.currentTrack.title = item.title || 'Untitled';
+              window.currentTrack.artist = item.artist || item.subtitle || '';
+            } else {
+              window.currentTrack = { title: item.title || 'Untitled', artist: item.artist || item.subtitle || '', duration: item.duration || 0 };
+            }
+            if (window.updatePlayerUI) window.updatePlayerUI();
+          } else {
+            const audio = new Audio(url);
+            audio.play().catch(err => { showToast('Playback failed', 'error'); });
+          }
+        } catch (err) {
+          console.error('Playback error:', err);
+          showToast('Failed to play: ' + err.message, 'error');
+        }
+      }
+
+      async function performSearch(resetPagination = true) {
+        const query = searchInput.value.trim();
+        if (!query) {
+          resultsGrid.innerHTML = `
+            <div class="explorer-state">
+              <i class="fa-solid fa-compass"></i>
+              <h3>Explore New Music</h3>
+              <p>Search for your favorite artists, songs, or albums to get started.</p>
+            </div>
+          `;
+          resultStats.innerHTML = `<span>Enter a search term to discover music</span>`;
+          searchLoadingWrapper.style.display = 'none';
+          hasMore = false;
+          allResults = [];
+          return;
+        }
+        if (resetPagination) {
+          currentPage = 1;
+          hasMore = true;
+          allResults = [];
+          resultsGrid.innerHTML = '';
+        }
+        if (isLoading) return;
+        isLoading = true;
+        searchLoadingWrapper.style.display = 'block';
+        updateLoadingBar(searchLoadingFill, searchLoadingText, 0, 'Starting search...');
+        try {
+          const data = await fetchMusic(query, currentFilter, currentPage);
+          const newResults = data.results || [];
+          const total = data.totalCount || 0;
+          if (resetPagination) {
+            allResults = newResults;
+            totalResults = total;
+            renderResultsInto(resultsGrid, allResults, false, currentView);
+            resultStats.innerHTML = `
+              <span>
+                <strong>${total.toLocaleString()}</strong> results for
+                "<strong>${escapeHtml(query)}</strong>"
+                <span style="color: var(--exp-text3); margin-left: 10px; font-size:0.8rem;">
+                  ${currentFilter !== 'all' ? `· ${FILTERS.find(f => f.id === currentFilter)?.label || currentFilter}` : ''}
+                  ${useMockData ? ' · 📡 demo' : ''}
+                </span>
+              </span>
+            `;
+          } else {
+            allResults = [...allResults, ...newResults];
+            renderResultsInto(resultsGrid, newResults, true, currentView);
+          }
+          hasMore = allResults.length < total;
+          setTimeout(() => { 
+            if (!hasMore || allResults.length >= totalResults) {
+              searchLoadingWrapper.style.display = 'none'; 
+            }
+          }, 600);
+          if (hasMore) currentPage++;
+        } catch (err) {
+          showToast('Search failed: ' + err.message, 'error');
+          if (resetPagination) {
+            resultsGrid.innerHTML = `
+              <div class="explorer-state">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <h3>Something went wrong</h3>
+                <p>${escapeHtml(err.message || 'Please try again.')}</p>
+                <button class="retry-btn" id="explorerRetryBtn">Retry</button>
+              </div>
+            `;
+            document.getElementById('explorerRetryBtn')?.addEventListener('click', () => {
+              useMockData = false;
+              performSearch(true);
+            });
+          }
+          setTimeout(() => { searchLoadingWrapper.style.display = 'none'; }, 800);
+        } finally {
+          isLoading = false;
+        }
+      }
+
+      async function loadNewReleases(reset = true) {
+        if (reset) {
+          nrPage = 1;
+          nrHasMore = true;
+          nrAllResults = [];
+          nrGrid.innerHTML = '';
+          nrStats.innerHTML = `<span>Loading fresh picks...</span>`;
+        }
+        if (nrIsLoading) return;
+        nrIsLoading = true;
+        nrLoadingWrapper.style.display = 'block';
+        updateLoadingBar(nrLoadingFill, nrLoadingText, 0, 'Starting...');
+        try {
+          const data = await fetchNewReleases(nrPage);
+          const results = data.results || [];
+          const total = data.totalCount || 0;
+          nrTotal = total;
+          if (reset) {
+            nrAllResults = results;
+            renderResultsInto(nrGrid, nrAllResults, false, currentView);
+            nrStats.innerHTML = `<span><strong>${total.toLocaleString()}</strong> fresh releases ${nrUseMockData ? '· 📡 demo' : ''}</span>`;
+          } else {
+            nrAllResults = [...nrAllResults, ...results];
+            renderResultsInto(nrGrid, results, true, currentView);
+          }
+          nrHasMore = nrAllResults.length < total;
+          setTimeout(() => { 
+            if (!nrHasMore || nrAllResults.length >= nrTotal) {
+              nrLoadingWrapper.style.display = 'none'; 
+            }
+          }, 600);
+          if (nrHasMore) nrPage++;
+        } catch (err) {
+          console.error('New releases load error:', err);
+          const errorMsg = err.message || 'Failed to load new releases';
+          if (reset) {
+            nrGrid.innerHTML = `
+              <div class="explorer-state">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <h3>Could not load new releases</h3>
+                <p>${escapeHtml(errorMsg)}</p>
+                <button class="retry-btn" id="nrRetryBtn">Retry</button>
+              </div>
+            `;
+            document.getElementById('nrRetryBtn')?.addEventListener('click', () => {
+              nrUseMockData = false;
+              loadNewReleases(true);
+            });
+          }
+          setTimeout(() => { nrLoadingWrapper.style.display = 'none'; }, 800);
+        } finally {
+          nrIsLoading = false;
+        }
+      }
+
+      let searchObserver = null;
+      function setupSearchInfiniteScroll() {
+        if (searchObserver) searchObserver.disconnect();
+        searchObserver = new IntersectionObserver((entries) => {
+          if (entries[0].isIntersecting && !isLoading && hasMore && searchInput.value.trim() !== '') {
+            performSearch(false);
+          }
+        }, { rootMargin: '200px' });
+        const sentinel = document.createElement('div');
+        sentinel.id = 'searchSentinel';
+        sentinel.style.height = '1px';
+        sentinel.style.width = '100%';
+        sentinel.style.gridColumn = '1 / -1';
+        resultsGrid.appendChild(sentinel);
+        searchObserver.observe(sentinel);
+      }
+
+      let nrObserver = null;
+      function setupNrInfiniteScroll() {
+        if (nrObserver) nrObserver.disconnect();
+        nrObserver = new IntersectionObserver((entries) => {
+          if (entries[0].isIntersecting && !nrIsLoading && nrHasMore) {
+            loadNewReleases(false);
+          }
+        }, { rootMargin: '200px' });
+        const sentinel = document.createElement('div');
+        sentinel.id = 'nrSentinel';
+        sentinel.style.height = '1px';
+        sentinel.style.width = '100%';
+        sentinel.style.gridColumn = '1 / -1';
+        nrGrid.appendChild(sentinel);
+        nrObserver.observe(sentinel);
+      }
+
+      function setView(view) {
+        currentView = view;
+        document.querySelectorAll('.view-toggles').forEach(group => {
+          group.querySelectorAll('button').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.view === view);
+          });
+        });
+        resultsGrid.classList.toggle('list-mode', view === 'list');
+        nrGrid.classList.toggle('list-mode', view === 'list');
+        if (allResults.length > 0) renderResultsInto(resultsGrid, allResults, false, view);
+        if (nrAllResults.length > 0) renderResultsInto(nrGrid, nrAllResults, false, view);
+      }
+
+      function switchTab(tab) {
+        currentTab = tab;
+        tabSearch.classList.toggle('active', tab === 'search');
+        tabNewReleases.classList.toggle('active', tab === 'newreleases');
+        searchContent.classList.toggle('hidden', tab !== 'search');
+        nrContent.classList.toggle('hidden', tab !== 'newreleases');
+        if (tab === 'newreleases' && nrAllResults.length === 0) {
+          loadNewReleases(true);
+        }
+      }
+
+      function renderFilters() {
+        filterContainer.innerHTML = FILTERS.map(f => `
+          <button class="filter-chip-pro ${f.id === currentFilter ? 'active' : ''}"
+                  data-filter="${f.id}" aria-pressed="${f.id === currentFilter}">
+            <i class="fa-solid ${f.icon}"></i> ${f.label}
+          </button>
+        `).join('');
+        filterContainer.querySelectorAll('.filter-chip-pro').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const filter = btn.dataset.filter;
+            if (filter === currentFilter) return;
+            currentFilter = filter;
+            currentPage = 1;
+            hasMore = true;
+            allResults = [];
+            resultsGrid.innerHTML = '';
+            renderFilters();
+            performSearch(false);
+          });
+        });
+      }
+
+      function init() {
+        renderFilters();
+        renderResultsInto(resultsGrid, [], false, currentView);
+        resultStats.innerHTML = `<span>Ready to explore</span>`;
+        nrStats.innerHTML = `<span>Loading fresh picks...</span>`;
+
+        searchBtn.addEventListener('click', () => performSearch(true));
+        const debouncedSearch = debounce(() => performSearch(true), 400);
+        searchInput.addEventListener('input', debouncedSearch);
+        searchInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); performSearch(true); }
+        });
+
+        document.querySelectorAll('.view-toggles').forEach(group => {
+          group.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', () => setView(btn.dataset.view));
+          });
+        });
+
+        tabSearch.addEventListener('click', () => switchTab('search'));
+        tabNewReleases.addEventListener('click', () => switchTab('newreleases'));
+
+        backBtn.addEventListener('click', () => {
+          if (window.history.length > 1) window.history.back();
+          else window.location.href = 'index.html';
+        });
+
+        document.addEventListener('keydown', (e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+            if (currentTab === 'search') {
+              e.preventDefault();
+              searchInput.focus();
+              searchInput.select();
+            }
+          }
+          if (e.key === 'Escape') searchInput.blur();
+        });
+
+        setupSearchInfiniteScroll();
+        setupNrInfiniteScroll();
+
+        const mo1 = new MutationObserver(() => {
+          if (!document.getElementById('searchSentinel')) setupSearchInfiniteScroll();
+        });
+        mo1.observe(resultsGrid, { childList: true });
+
+        const mo2 = new MutationObserver(() => {
+          if (!document.getElementById('nrSentinel')) setupNrInfiniteScroll();
+        });
+        mo2.observe(nrGrid, { childList: true });
+
+        setTimeout(() => {
+          loadNewReleases(true);
+        }, 200);
+
+        console.log('🚀 Explorer Pro — real API progress bar with error handling');
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+  </script>
+</body>
+</html>

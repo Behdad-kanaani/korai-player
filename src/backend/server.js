@@ -27,7 +27,6 @@ const { exportToM3U, exportToPLS, exportLibraryToCSV, exportPlaylistToCSV,
         importFromM3U, importFromPLS, importFromXSPF, importFromASX, 
         importFromWPL, importFromJSON } = require('./playlistExporter');
 const { getTracksFromCue, generateCueSheet } = require('./cueParser');
-const { advancedSearchFilter } = require('../frontend/advancedSearch');
 const AudioSeparator = require('./audioSeparator');
 const os = require('os');
 const PluginManager = require('./pluginManager');
@@ -1163,38 +1162,6 @@ function setupRoutes() {
             res.json({ success: true, path: resultPath });
         } catch (error) {
             console.error('Library export error:', error);
-            res.status(500).json({ error: error.message });
-        }
-    });
-
-    // ========== Advanced Search ==========
-    app.post('/api/search/advanced', (req, res) => {
-        try {
-            const db = getDb();
-            const { query } = req.body;
-            const tracks = db.getAllTracks();
-            const results = advancedSearchFilter(tracks, query);
-            
-            res.json({
-                query,
-                count: results.length,
-                results: results.map(t => ({
-                    id: t.id,
-                    title: t.title,
-                    artist: t.artist,
-                    album: t.album,
-                    duration: t.duration,
-                    bpm: t.bpm,
-                    energy: t.energy,
-                    genre: t.genre,
-                    year: t.year,
-                    playCount: t.playCount,
-                    likeCount: t.likeCount,
-                    coverUrl: t.hasCover ? `/api/tracks/${t.id}/cover` : null
-                }))
-            });
-        } catch (error) {
-            console.error('Search error:', error);
             res.status(500).json({ error: error.message });
         }
     });

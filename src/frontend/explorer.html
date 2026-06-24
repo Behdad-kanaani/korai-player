@@ -6,12 +6,7 @@
   <title>KORAI · Explorer Pro</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
       --exp-primary: #00f5d4;
       --exp-secondary: #8b5cf6;
@@ -26,7 +21,6 @@
       --exp-radius: 24px;
       --exp-transition: 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     }
-
     body {
       background: radial-gradient(ellipse at 30% 20%, #0f0f1f, #05050a 80%);
       color: var(--exp-text);
@@ -35,7 +29,6 @@
       overflow-x: hidden;
       padding: 0 0 80px 0;
     }
-
     .ambient-orbs {
       position: fixed;
       inset: 0;
@@ -75,7 +68,6 @@
       50% { transform: translate(70px, -50px) scale(1.15); }
       100% { transform: translate(-40px, 60px) scale(0.9); }
     }
-
     .explorer-pro-container {
       max-width: 1440px;
       margin: 0 auto;
@@ -83,7 +75,6 @@
       position: relative;
       z-index: 5;
     }
-
     .explorer-top-bar {
       display: flex;
       align-items: center;
@@ -143,7 +134,6 @@
       0%, 100% { opacity: 1; transform: scale(1); }
       50% { opacity: 0.3; transform: scale(0.7); }
     }
-
     .explorer-tabs {
       display: flex;
       gap: 8px;
@@ -170,10 +160,7 @@
       gap: 10px;
       letter-spacing: 0.3px;
     }
-    .explorer-tab i {
-      font-size: 1rem;
-      opacity: 0.7;
-    }
+    .explorer-tab i { font-size: 1rem; opacity: 0.7; }
     .explorer-tab:hover {
       color: var(--exp-text);
       background: rgba(255,255,255,0.03);
@@ -183,10 +170,7 @@
       color: var(--exp-primary);
       box-shadow: 0 4px 20px rgba(0,245,212,0.04);
     }
-    .explorer-tab.active i {
-      opacity: 1;
-    }
-
+    .explorer-tab.active i { opacity: 1; }
     .explorer-search-premium {
       display: flex;
       align-items: center;
@@ -258,7 +242,6 @@
       box-shadow: 0 10px 40px rgba(0,245,212,0.35);
     }
     .explorer-search-premium .search-btn:active { transform: scale(0.96); }
-
     .explorer-filters {
       display: flex;
       flex-wrap: wrap;
@@ -296,7 +279,6 @@
       color: var(--exp-primary);
       box-shadow: 0 6px 24px rgba(0,245,212,0.04);
     }
-
     .new-releases-hero {
       margin-bottom: 32px;
       padding: 32px 28px;
@@ -327,7 +309,6 @@
       margin-top: 8px;
       font-size: 1rem;
     }
-
     .explorer-meta-bar {
       display: flex;
       align-items: center;
@@ -375,7 +356,6 @@
     .explorer-meta-bar .view-toggles button:hover {
       color: var(--exp-text);
     }
-
     .explorer-results-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
@@ -386,7 +366,6 @@
       grid-template-columns: 1fr;
       gap: 14px;
     }
-
     .result-card-pro {
       background: var(--exp-card);
       backdrop-filter: blur(16px);
@@ -522,7 +501,50 @@
       align-items: center;
       gap: 4px;
     }
-
+    .result-card-pro .card-actions-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255,255,255,0.03);
+      align-items: center;
+    }
+    .card-action-btn {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 30px;
+      padding: 6px 14px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--exp-text2);
+      cursor: pointer;
+      transition: all 0.25s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      backdrop-filter: blur(4px);
+    }
+    .card-action-btn:hover {
+      background: rgba(255,255,255,0.06);
+      border-color: rgba(255,255,255,0.1);
+      color: var(--exp-text);
+    }
+    .card-action-btn.liked {
+      background: rgba(244, 63, 94, 0.15);
+      border-color: rgba(244, 63, 94, 0.3);
+      color: var(--exp-accent);
+    }
+    .card-action-btn.liked i { color: var(--exp-accent); }
+    .card-action-btn.import-btn {
+      background: rgba(0,245,212,0.05);
+      border-color: rgba(0,245,212,0.1);
+      color: var(--exp-primary);
+    }
+    .card-action-btn.import-btn:hover {
+      background: rgba(0,245,212,0.12);
+      border-color: var(--exp-primary);
+      box-shadow: 0 0 12px rgba(0,245,212,0.1);
+    }
     .explorer-results-grid.list-mode .result-card-pro {
       flex-direction: row;
       align-items: center;
@@ -548,7 +570,6 @@
       flex: 1;
       min-width: 140px;
     }
-
     .explorer-state {
       display: flex;
       flex-direction: column;
@@ -592,7 +613,6 @@
       border-color: var(--exp-primary);
       color: var(--exp-primary);
     }
-
     .loading-bar-container {
       width: 100%;
       height: 4px;
@@ -626,7 +646,6 @@
       0% { background-position: -200% 0; }
       100% { background-position: 200% 0; }
     }
-
     .explorer-toast {
       position: fixed;
       bottom: 140px;
@@ -655,14 +674,8 @@
       from { transform: translateX(70px); opacity: 0; }
       to { transform: translateX(0); opacity: 1; }
     }
-
-    .tab-content {
-      display: block;
-    }
-    .tab-content.hidden {
-      display: none !important;
-    }
-
+    .tab-content { display: block; }
+    .tab-content.hidden { display: none !important; }
     @media (max-width: 1024px) {
       .new-releases-hero h2 { font-size: 1.6rem; }
     }
@@ -791,42 +804,6 @@
       const ITEMS_PER_PAGE = 24;
       const REQUEST_TIMEOUT = 25000;
 
-      function getMockResults(query, filter = 'songs', page = 1) {
-        const mockArtists = ['The Weeknd', 'Dua Lipa', 'Drake', 'Taylor Swift', 'Ed Sheeran', 'Ariana Grande', 'Post Malone', 'Billie Eilish', 'Bruno Mars', 'Rihanna'];
-        const mockTitles = ['Blinding Lights', 'Levitating', 'God\'s Plan', 'Shake It Off', 'Shape of You', '7 rings', 'Circles', 'bad guy', 'Leave The Door Open', 'Diamonds'];
-        const mockAlbums = ['After Hours', 'Future Nostalgia', 'Scorpion', '1989', '÷', 'thank u, next', 'Hollywood\'s Bleeding', 'WHEN WE ALL FALL ASLEEP', 'An Evening With Silk Sonic', 'Anti'];
-        
-        const count = Math.min(ITEMS_PER_PAGE, 12);
-        const results = [];
-        const startIdx = (page - 1) * 12;
-        
-        for (let i = 0; i < count; i++) {
-          const idx = (startIdx + i) % mockArtists.length;
-          const titleIdx = (startIdx + i * 2) % mockTitles.length;
-          const albumIdx = (startIdx + i * 3) % mockAlbums.length;
-          const type = filter === 'artists' ? 'artist' : 
-                      filter === 'albums' ? 'album' : 
-                      filter === 'playlists' ? 'playlist' : 
-                      filter === 'new_releases' ? 'new_release' : 'song';
-          
-          results.push({
-            id: `mock_${Date.now()}_${i}`,
-            title: type === 'artist' ? mockArtists[idx] : 
-                   type === 'album' ? mockAlbums[albumIdx] : 
-                   mockTitles[titleIdx] + (query && query !== 'new' ? ` (${query})` : ''),
-            subtitle: type === 'artist' ? 'Popular Artist' :
-                      type === 'album' ? mockArtists[idx] :
-                      mockArtists[idx],
-            thumbnail: null,
-            type: type,
-            duration: Math.floor(120 + Math.random() * 180),
-            artist: type === 'artist' ? '' : mockArtists[idx],
-            album: type === 'album' ? mockAlbums[albumIdx] : '',
-          });
-        }
-        return { results, totalCount: 48 };
-      }
-
       let currentTab = 'newreleases';
       let currentQuery = '';
       let currentFilter = DEFAULT_FILTER;
@@ -903,46 +880,34 @@
 
       async function fetchWithProgress(url, fillElement, textElement, timeout = REQUEST_TIMEOUT) {
         updateLoadingBar(fillElement, textElement, 5, 'Connecting...');
-        
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
-        
         try {
           updateLoadingBar(fillElement, textElement, 15, 'Waiting for response...');
           const response = await fetch(url, {
             signal: controller.signal,
-            headers: { 
-              'Accept': 'application/json',
-              'Content-Type': 'application/json'
-            },
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
             mode: 'cors',
             credentials: 'omit'
           });
           clearTimeout(timeoutId);
-          
           updateLoadingBar(fillElement, textElement, 25, `Server responded: ${response.status}`);
-          
           if (!response.ok) {
             const errorText = await response.text().catch(() => 'Unknown error');
             console.error(`Server error ${response.status}:`, errorText);
             throw new Error(`Server error ${response.status}. Please try again later.`);
           }
-          
           const contentLength = response.headers.get('content-length');
           const total = contentLength ? parseInt(contentLength, 10) : 0;
           const reader = response.body.getReader();
           const chunks = [];
           let receivedLength = 0;
-          
           updateLoadingBar(fillElement, textElement, 30, 'Downloading data...');
-          
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            
             chunks.push(value);
             receivedLength += value.length;
-            
             if (total > 0) {
               const percent = 30 + (receivedLength / total) * 65;
               const kbReceived = Math.round(receivedLength / 1024);
@@ -954,28 +919,21 @@
               updateLoadingBar(fillElement, textElement, simulatedPercent, `Received ${kbReceived}KB`);
             }
           }
-          
           updateLoadingBar(fillElement, textElement, 95, 'Processing data...');
-          
           const allChunks = new Uint8Array(receivedLength);
           let position = 0;
           for (const chunk of chunks) {
             allChunks.set(chunk, position);
             position += chunk.length;
           }
-          
           const text = new TextDecoder('utf-8').decode(allChunks);
           let data;
-          try {
-            data = JSON.parse(text);
-          } catch (parseErr) {
+          try { data = JSON.parse(text); } catch (parseErr) {
             console.error('JSON parse error:', parseErr, 'Raw text:', text.substring(0, 200));
             throw new Error('Invalid response format from server');
           }
-          
           updateLoadingBar(fillElement, textElement, 100, 'Complete');
           return data;
-          
         } catch (err) {
           clearTimeout(timeoutId);
           if (err.name === 'AbortError') {
@@ -989,14 +947,12 @@
 
       async function fetchMusic(query, filter = 'songs', page = 1) {
         if (!query || query.trim() === '') return { results: [], totalCount: 0 };
-        
         if (useMockData) {
           updateLoadingBar(searchLoadingFill, searchLoadingText, 50, 'Loading demo data...');
           await new Promise(resolve => setTimeout(resolve, 400));
           updateLoadingBar(searchLoadingFill, searchLoadingText, 100, 'Demo ready');
           return getMockResults(query, filter, page);
         }
-        
         const q = encodeURIComponent(query.trim());
         const url = `${API_BASE}/?action=search&q=${q}&filter=${filter}&page=${page}&limit=${ITEMS_PER_PAGE}`;
         try {
@@ -1012,6 +968,7 @@
             duration: item.duration || 0,
             artist: item.artist || item.subtitle || '',
             album: item.album || '',
+            url: item.url || null
           }));
           return { results, totalCount };
         } catch (err) {
@@ -1029,19 +986,16 @@
           updateLoadingBar(nrLoadingFill, nrLoadingText, 100, 'Demo ready');
           return getMockResults('new', 'new_releases', page);
         }
-        
         const url = `${API_BASE}/`;
         console.log('Fetching new releases from:', url);
         try {
           const data = await fetchWithProgress(url, nrLoadingFill, nrLoadingText);
           let results = data.releases || data.results || data.items || data.data || [];
           let totalCount = data.totalCount || 0;
-          
           if (!results || results.length === 0) {
             console.warn('Empty results from new_releases API, using demo data');
             throw new Error('No results from server');
           }
-          
           results = results.map(item => ({
             id: item.playlistId || item.videoId || item.id || 'unknown',
             title: item.title || 'Untitled',
@@ -1051,6 +1005,7 @@
             duration: item.duration || 0,
             artist: item.artist || '',
             album: item.album || '',
+            url: item.url || null
           }));
           return { results, totalCount };
         } catch (err) {
@@ -1059,6 +1014,59 @@
           showToast('New releases unavailable. Using demo data.', 'error');
           return getMockResults('new', 'new_releases', page);
         }
+      }
+
+      function getMockResults(query, filter = 'songs', page = 1) {
+        const mockArtists = ['The Weeknd', 'Dua Lipa', 'Drake', 'Taylor Swift', 'Ed Sheeran', 'Ariana Grande', 'Post Malone', 'Billie Eilish', 'Bruno Mars', 'Rihanna'];
+        const mockTitles = ['Blinding Lights', 'Levitating', 'God\'s Plan', 'Shake It Off', 'Shape of You', '7 rings', 'Circles', 'bad guy', 'Leave The Door Open', 'Diamonds'];
+        const mockAlbums = ['After Hours', 'Future Nostalgia', 'Scorpion', '1989', '÷', 'thank u, next', 'Hollywood\'s Bleeding', 'WHEN WE ALL FALL ASLEEP', 'An Evening With Silk Sonic', 'Anti'];
+        const count = Math.min(ITEMS_PER_PAGE, 12);
+        const results = [];
+        const startIdx = (page - 1) * 12;
+        for (let i = 0; i < count; i++) {
+          const idx = (startIdx + i) % mockArtists.length;
+          const titleIdx = (startIdx + i * 2) % mockTitles.length;
+          const albumIdx = (startIdx + i * 3) % mockAlbums.length;
+          const type = filter === 'artists' ? 'artist' :
+                      filter === 'albums' ? 'album' :
+                      filter === 'playlists' ? 'playlist' :
+                      filter === 'new_releases' ? 'new_release' : 'song';
+          results.push({
+            id: `mock_${Date.now()}_${i}`,
+            title: type === 'artist' ? mockArtists[idx] :
+                   type === 'album' ? mockAlbums[albumIdx] :
+                   mockTitles[titleIdx] + (query && query !== 'new' ? ` (${query})` : ''),
+            subtitle: type === 'artist' ? 'Popular Artist' :
+                      type === 'album' ? mockArtists[idx] :
+                      mockArtists[idx],
+            thumbnail: null,
+            type: type,
+            duration: Math.floor(120 + Math.random() * 180),
+            artist: type === 'artist' ? '' : mockArtists[idx],
+            album: type === 'album' ? mockAlbums[albumIdx] : '',
+            url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+          });
+        }
+        return { results, totalCount: 48 };
+      }
+
+      const likedKey = 'korai_explorer_likes';
+      let likedSet = new Set(JSON.parse(localStorage.getItem(likedKey) || '[]'));
+
+      function saveLikes() {
+        localStorage.setItem(likedKey, JSON.stringify([...likedSet]));
+      }
+
+      function toggleLike(itemId) {
+        if (likedSet.has(itemId)) {
+          likedSet.delete(itemId);
+          showToast('Removed from favorites', 'info');
+        } else {
+          likedSet.add(itemId);
+          showToast('Added to favorites', 'success');
+        }
+        saveLikes();
+        renderAllResults();
       }
 
       function renderCard(item) {
@@ -1072,16 +1080,15 @@
         const duration = item.duration || 0;
         const iconMap = { album:'fa-compact-disc', artist:'fa-microphone', playlist:'fa-list', track:'fa-music', song:'fa-music', new_release:'fa-bolt' };
         const fallbackIcon = iconMap[typeLabel] || 'fa-music';
-        
         const colors = ['#1a1a2e', '#16213e', '#0f3460', '#533483', '#e94560', '#f5a623'];
         const bgColor = colors[Math.floor(Math.random() * colors.length)];
-        
+        const isLiked = likedSet.has(item.id);
         card.innerHTML = `
           <div class="card-image" style="background: ${bgColor};">
             ${thumb ? `<img src="${thumb}" alt="${title}" loading="lazy" onerror="this.style.display='none'">` : `<i class="fa-solid ${fallbackIcon} fallback-icon" style="font-size: 4rem; opacity: 0.4;"></i>`}
             <div class="card-play-overlay">
-              <div class="card-play-btn" data-action="play" data-id="${item.id}" data-title="${title}" data-artist="${escapeHtml(item.artist || '')}">
-                <i class="fa-solid fa-play"></i>
+              <div class="card-play-btn" data-action="open" data-url="${escapeHtml(item.url || '')}">
+                <i class="fa-solid fa-arrow-up-right-from-square"></i>
               </div>
             </div>
           </div>
@@ -1092,19 +1099,72 @@
               <span class="type-badge">${escapeHtml(typeLabel)}</span>
               ${duration > 0 ? `<span class="duration-badge"><i class="fa-regular fa-clock"></i> ${formatDuration(duration)}</span>` : ''}
             </div>
+            <div class="card-actions-row">
+              <button class="card-action-btn like-btn ${isLiked ? 'liked' : ''}" data-id="${item.id}">
+                <i class="fa-solid ${isLiked ? 'fa-heart' : 'fa-heart'}"></i>
+                ${isLiked ? 'Liked' : 'Like'}
+              </button>
+              <button class="card-action-btn import-btn" data-action="import" data-id="${item.id}" data-title="${title}" data-url="${escapeHtml(item.url || '')}">
+                <i class="fa-solid fa-cloud-arrow-down"></i> Import
+              </button>
+            </div>
           </div>
         `;
         card.addEventListener('click', (e) => {
-          if (e.target.closest('[data-action="play"]')) return;
-          handleCardClick(item);
+          if (e.target.closest('[data-action]') || e.target.closest('.like-btn')) return;
+          if (item.url) {
+            window.open(item.url, '_blank');
+          } else {
+            showToast('No URL available for this track', 'warning');
+          }
         });
-        const playBtn = card.querySelector('[data-action="play"]');
-        if (playBtn) {
-          playBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            handlePlayButton(item);
-          });
-        }
+        card.querySelector('.card-play-btn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          const url = e.currentTarget.dataset.url;
+          if (url) window.open(url, '_blank');
+          else showToast('No URL available', 'warning');
+        });
+        card.querySelector('.like-btn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleLike(item.id);
+        });
+        card.querySelector('.import-btn').addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = e.currentTarget.dataset.id;
+          const title = e.currentTarget.dataset.title;
+          const url = e.currentTarget.dataset.url;
+          if (!url) { showToast('No URL to import', 'error'); return; }
+          try {
+            e.currentTarget.disabled = true;
+            e.currentTarget.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Importing...';
+            const res = await fetch('/api/tracks/import-from-url', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url, title: title || undefined })
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || 'Import failed');
+            }
+            const data = await res.json();
+            showToast(`Imported: ${data.track.title}`, 'success');
+            // Optionally like the imported track
+            if (data.track && data.track.id) {
+              try {
+                await fetch(`/api/tracks/${data.track.id}/like`, { method: 'POST' });
+                showToast('Added to library and liked!', 'success');
+              } catch (likeErr) {}
+            }
+            e.currentTarget.disabled = false;
+            e.currentTarget.innerHTML = '<i class="fa-solid fa-cloud-arrow-down"></i> Imported';
+            e.currentTarget.style.opacity = '0.6';
+          } catch (err) {
+            console.error('Import error:', err);
+            showToast('Import failed: ' + err.message, 'error');
+            e.currentTarget.disabled = false;
+            e.currentTarget.innerHTML = '<i class="fa-solid fa-cloud-arrow-down"></i> Import';
+          }
+        });
         return card;
       }
 
@@ -1130,50 +1190,11 @@
         grid.classList.toggle('list-mode', viewMode === 'list');
       }
 
-      function handleCardClick(item) {
-        if (item.type === 'track' || item.type === 'song' || item.type === 'new_release') {
-          handlePlayButton(item);
+      function renderAllResults() {
+        if (currentTab === 'search') {
+          renderResultsInto(resultsGrid, allResults, false, currentView);
         } else {
-          showToast(`📂 ${escapeHtml(item.title)} (${escapeHtml(item.type)})`, 'info');
-        }
-      }
-
-      async function handlePlayButton(item) {
-        showToast(`▶️ Playing: ${item.title}`, 'success');
-        try {
-          const trackId = item.id;
-          if (!trackId) { showToast('Cannot play: missing ID', 'error'); return; }
-          
-          if (useMockData || nrUseMockData || trackId.startsWith('mock_')) {
-            showToast(`🎵 ${item.title} - ${item.artist || item.subtitle} (demo mode)`, 'info');
-            return;
-          }
-          
-          const streamUrl = `${API_BASE}/?action=stream&id=${encodeURIComponent(trackId)}`;
-          const resp = await fetch(streamUrl, { signal: AbortSignal.timeout(30000) });
-          if (!resp.ok) throw new Error('Stream fetch failed');
-          const audioData = await resp.arrayBuffer();
-          const blob = new Blob([audioData], { type: 'audio/mpeg' });
-          const url = URL.createObjectURL(blob);
-          if (window.audioElement) {
-            window.audioElement.src = url;
-            window.audioElement.load();
-            await window.audioElement.play();
-            if (window.setPlayState) window.setPlayState(true);
-            if (window.currentTrack) {
-              window.currentTrack.title = item.title || 'Untitled';
-              window.currentTrack.artist = item.artist || item.subtitle || '';
-            } else {
-              window.currentTrack = { title: item.title || 'Untitled', artist: item.artist || item.subtitle || '', duration: item.duration || 0 };
-            }
-            if (window.updatePlayerUI) window.updatePlayerUI();
-          } else {
-            const audio = new Audio(url);
-            audio.play().catch(err => { showToast('Playback failed', 'error'); });
-          }
-        } catch (err) {
-          console.error('Playback error:', err);
-          showToast('Failed to play: ' + err.message, 'error');
+          renderResultsInto(nrGrid, nrAllResults, false, currentView);
         }
       }
 
@@ -1226,9 +1247,9 @@
             renderResultsInto(resultsGrid, newResults, true, currentView);
           }
           hasMore = allResults.length < total;
-          setTimeout(() => { 
+          setTimeout(() => {
             if (!hasMore || allResults.length >= totalResults) {
-              searchLoadingWrapper.style.display = 'none'; 
+              searchLoadingWrapper.style.display = 'none';
             }
           }, 600);
           if (hasMore) currentPage++;
@@ -1280,9 +1301,9 @@
             renderResultsInto(nrGrid, results, true, currentView);
           }
           nrHasMore = nrAllResults.length < total;
-          setTimeout(() => { 
+          setTimeout(() => {
             if (!nrHasMore || nrAllResults.length >= nrTotal) {
-              nrLoadingWrapper.style.display = 'none'; 
+              nrLoadingWrapper.style.display = 'none';
             }
           }, 600);
           if (nrHasMore) nrPage++;

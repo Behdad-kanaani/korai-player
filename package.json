@@ -34,7 +34,8 @@
     "sharp": "^0.33.5",
     "wav": "^1.0.2",
     "winston": "^3.9.0",
-    "xml2js": "^0.6.2"
+    "xml2js": "^0.6.2",
+    "youtube-dl-exec": "^2.5.8"
   },
   "devDependencies": {
     "electron": "^28.0.0",

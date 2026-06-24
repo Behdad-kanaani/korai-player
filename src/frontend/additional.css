@@ -3961,3 +3961,20 @@ body.theme-liquid-glass .empty-home-feature {
         font-size: 0.8rem;
     }
 }
+
+.song-info-modal-modern .song-info-cover { text-align: center; margin-bottom: 20px; }
+.song-info-modal-modern .song-info-cover img { width: 140px; height: 140px; border-radius: 50%; object-fit: cover; box-shadow: 0 12px 30px rgba(0,0,0,0.6); border: 3px solid var(--accent-cyan); }
+.song-info-modal-modern .song-info-cover i { font-size: 4rem; color: var(--accent-cyan); background: var(--spotify-grey); padding: 30px; border-radius: 50%; }
+.song-info-modal-modern .song-info-details { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; background: rgba(255,255,255,0.02); padding: 16px; border-radius: 12px; border: 1px solid var(--border-color); }
+.song-info-modal-modern .song-info-details p { margin: 6px 0; font-size: 0.8rem; display: flex; align-items: center; gap: 8px; }
+.song-info-modal-modern .song-info-details p strong { color: var(--spotify-text-muted); font-weight: 600; min-width: 90px; }
+.song-info-modal-modern .song-info-lyrics { margin-top: 16px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 10px; max-height: 150px; overflow-y: auto; font-size: 0.85rem; line-height: 1.6; color: var(--spotify-text-muted); border-left: 3px solid var(--accent-cyan); }
+
+.empty-home-features { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; margin: 30px 0; }
+.empty-home-feature { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 20px 28px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 24px; min-width: 120px; cursor: pointer; transition: all 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1); backdrop-filter: blur(8px); }
+.empty-home-feature:hover { transform: translateY(-8px) scale(1.02); border-color: var(--accent-cyan); background: rgba(0, 255, 213, 0.04); box-shadow: 0 16px 40px -12px rgba(0,0,0,0.5); }
+.feature-icon-wrapper { width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, rgba(0,255,213,0.1), rgba(0,255,213,0.02)); display: flex; align-items: center; justify-content: center; font-size: 1.8rem; color: var(--accent-cyan); transition: transform 0.3s ease; }
+.empty-home-feature:hover .feature-icon-wrapper { transform: scale(1.1) rotate(-5deg); }
+.empty-home-feature span { font-size: 0.8rem; font-weight: 600; color: var(--spotify-text-active); }
+
+

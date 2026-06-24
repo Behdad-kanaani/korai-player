@@ -147,24 +147,20 @@ function getDb() {
                 console.debug('ℹ️ DB.addTrack: already exists, returning existing track id', existing.id);
                 return existing;
             }
-
             let coverPath = null;
             let coverFilename = null;
-            
-            // Save cover image to disk if present (async, don't block)
+            const newId = dbData.nextIds.track++;
             if (track.coverImage && track.coverImage.length > 0) {
-                coverFilename = `${Date.now()}_cover.jpg`;
+                coverFilename = `cover_${newId}_${Date.now()}.jpg`;
                 coverPath = path.join(coversDir, coverFilename);
                 const coverBuffer = Buffer.isBuffer(track.coverImage) 
                     ? track.coverImage 
                     : Buffer.from(track.coverImage);
-                // Fire and forget - don't block the main thread
                 fsPromises.writeFile(coverPath, coverBuffer)
                     .catch(err => console.error('Failed to save cover:', err));
             }
-            
             const newTrack = {
-                id: dbData.nextIds.track++,
+                id: newId,
                 title: track.title || 'Unknown Title',
                 artist: track.artist || '',
                 filePath: track.filePath,
@@ -181,12 +177,12 @@ function getDb() {
                 playCount: 0,
                 likeCount: 0,
                 createdAt: Date.now(),
+                updatedAt: Date.now(),
                 isLiked: false,
                 sampleRate: track.sampleRate || 0,
                 bitrate: track.bitrate || 0,
                 codec: track.codec || ''
             };
-            
             dbData.tracks.push(newTrack);
             console.debug('✅ DB.addTrack: new track added id=', newTrack.id, 'title=', newTrack.title);
             if (autoSave) {

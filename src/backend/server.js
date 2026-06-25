@@ -461,47 +461,174 @@ function setupRoutes() {
         try {
             const { url, title } = req.body;
             if (!url) return res.status(400).json({ error: 'URL is required' });
+            
+            // Validate URL protocol
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                return res.status(400).json({ error: 'Invalid URL protocol' });
+            }
+
             const downloadsDir = path.join(serverUserDataPath, 'downloads');
             if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
-            const tempFileName = `import_${Date.now()}.%(ext)s`;
-            const tempFilePath = path.join(downloadsDir, tempFileName);
-            await ytdl(url, {
-                extractAudio: true,
-                audioFormat: 'mp3',
-                audioQuality: 0,
-                output: tempFilePath,
-                noCheckCertificate: true,
-                preferFreeFormats: true,
-            });
-            const files = fs.readdirSync(downloadsDir);
-            const downloadedFile = files.find(f => f.startsWith(path.basename(tempFileName, path.extname(tempFileName))));
-            if (!downloadedFile) throw new Error('Downloaded file not found');
-            const finalPath = path.join(downloadsDir, downloadedFile);
-            const analysis = await analyzeAudioFile(finalPath);
+            
+            const timestamp = Date.now();
+            let downloadedFile = null;
+            let finalPath = null;
+
+            // --- Detect if this is a direct file link (non-YouTube) ---
+            // Check for audio file extensions in URL
+            const isDirectLink = /\.(mp3|wav|ogg|m4a|flac|aac|wma)(\?.*)?$/i.test(url) || 
+                                /^(?!.*(youtube|youtu.be|vimeo|soundcloud|spotify)).*\.(mp3|wav|ogg|m4a|flac)/i.test(url);
+            
+            if (isDirectLink) {
+                // Direct download - use simple HTTP GET
+                const fileName = `import_${timestamp}.mp3`; // Default to mp3
+                finalPath = path.join(downloadsDir, fileName);
+                console.debug(`📥 Downloading direct link: ${url}`);
+                await downloadFileDirect(url, finalPath);
+                downloadedFile = fileName;
+            } else {
+                // Try with youtube-dl-exec (for YouTube and similar services)
+                console.debug(`📥 Downloading with yt-dlp: ${url}`);
+                const tempFileName = `import_${timestamp}.%(ext)s`;
+                const tempFilePath = path.join(downloadsDir, tempFileName);
+                
+                try {
+                    await ytdl(url, {
+                        extractAudio: true,
+                        audioFormat: 'mp3',
+                        audioQuality: 0,
+                        output: tempFilePath,
+                        noCheckCertificate: true,
+                        preferFreeFormats: true,
+                        timeout: 120,
+                        addHeader: ['User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36']
+                    });
+                    
+                    // Find the downloaded file
+                    const files = fs.readdirSync(downloadsDir);
+                    downloadedFile = files.find(f => f.startsWith(`import_${timestamp}`));
+                    if (downloadedFile) finalPath = path.join(downloadsDir, downloadedFile);
+                } catch (ytError) {
+                    console.error('yt-dlp error:', ytError.message);
+                    // Fallback: try direct download (in case URL redirects to a direct file)
+                    try {
+                        const fileName = `import_${timestamp}.mp3`;
+                        finalPath = path.join(downloadsDir, fileName);
+                        await downloadFileDirect(url, finalPath);
+                        downloadedFile = fileName;
+                    } catch (fallbackErr) {
+                        throw new Error(`Download failed: ${ytError.message || fallbackErr.message}`);
+                    }
+                }
+            }
+
+            // Verify file was downloaded
+            if (!downloadedFile || !finalPath || !fs.existsSync(finalPath)) {
+                throw new Error('Downloaded file not found');
+            }
+
+            const stats = fs.statSync(finalPath);
+            if (stats.size === 0) {
+                throw new Error('Downloaded file is empty');
+            }
+
+            console.debug(`📊 File size: ${stats.size} bytes`);
+
+            // Analyze the audio file
+            let analysis;
+            try {
+                analysis = await analyzeAudioFile(finalPath);
+            } catch (analysisErr) {
+                console.warn('⚠️ Audio analysis failed, using fallback metadata:', analysisErr.message);
+                analysis = {
+                    duration: 0,
+                    bpm: 120,
+                    energy: 0.5,
+                    loudness: -12,
+                    sampleRate: 44100,
+                    bitrate: 0,
+                    codec: path.extname(finalPath).replace('.', '') || 'mp3',
+                    genre: 'Downloaded',
+                    title: title || path.basename(finalPath, path.extname(finalPath)),
+                    artist: null,
+                    album: null,
+                    featureVector: null,
+                    rawFeatures: null,
+                    coverImage: null
+                };
+            }
+
             if (title) analysis.title = title;
+
+            // Add track to database
             const db = getDb();
             const newTrack = db.addTrack({
                 title: analysis.title || path.basename(finalPath, path.extname(finalPath)),
-                artist: analysis.artist || '',
+                artist: analysis.artist || 'Unknown Artist',
                 filePath: finalPath,
                 duration: analysis.duration,
                 bpm: analysis.bpm,
                 energy: analysis.energy,
                 loudness: analysis.loudness,
-                genre: analysis.genre,
-                album: analysis.album,
+                genre: analysis.genre || 'Downloaded',
+                album: analysis.album || '',
                 coverImage: analysis.coverImage,
                 featureVector: analysis.featureVector,
                 sampleRate: analysis.sampleRate,
                 bitrate: analysis.bitrate,
                 codec: analysis.codec,
             });
+
+            console.debug(`✅ Imported track: ${newTrack.title} (ID: ${newTrack.id})`);
+
             res.json({ success: true, track: newTrack });
+
         } catch (error) {
             console.error('Import from URL error:', error);
-            res.status(500).json({ error: error.message });
+            res.status(500).json({ error: error.message || 'Failed to import track from URL' });
         }
     });
+
+    async function downloadFileDirect(fileUrl, destPath) {
+        return new Promise((resolve, reject) => {
+            const urlObj = new URL(fileUrl);
+            const client = urlObj.protocol === 'https:' ? https : http;
+            
+            const request = client.get(fileUrl, (response) => {
+            // Handle redirects
+            if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+                const redirectUrl = new URL(response.headers.location, fileUrl).href;
+                return downloadFileDirect(redirectUrl, destPath).then(resolve).catch(reject);
+            }
+            
+            if (response.statusCode !== 200) {
+                return reject(new Error(`Server responded with status: ${response.statusCode}`));
+            }
+            
+            const fileStream = fs.createWriteStream(destPath);
+            response.pipe(fileStream);
+            
+            fileStream.on('finish', () => {
+                fileStream.close();
+                resolve();
+            });
+            
+            fileStream.on('error', (err) => {
+                fs.unlink(destPath, () => {});
+                reject(err);
+            });
+            });
+            
+            request.setTimeout(30000, () => {
+            request.destroy();
+            reject(new Error('Download timeout'));
+            });
+            
+            request.on('error', reject);
+        });
+        }
+
+
 
     app.get('/api/playlists', (req, res) => {
         try {

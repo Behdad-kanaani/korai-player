@@ -698,6 +698,19 @@
       .result-card-pro .card-info .title { font-size: 0.8rem; }
       .result-card-pro .card-info .subtitle { font-size: 0.7rem; }
     }
+    .card-action-btn.import-btn:disabled,
+    .card-action-btn.import-btn[disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    color: var(--exp-text3);
+    filter: grayscale(0.8);
+    transform: none !important;
+    box-shadow: none !important;
+    pointer-events: none;
+    user-select: none;
+    }
   </style>
 </head>
 <body>
@@ -724,6 +737,10 @@
       </button>
       <button class="explorer-tab active" data-tab="newreleases" id="tabNewReleases">
         <i class="fa-solid fa-fire"></i> New Releases
+      </button>
+      <!-- NEW TAB: Liked -->
+      <button class="explorer-tab" data-tab="liked" id="tabLiked">
+        <i class="fa-solid fa-heart" style="color: var(--exp-accent);"></i> Liked
       </button>
     </div>
 
@@ -787,13 +804,42 @@
         <div class="loading-bar-text" id="nrLoadingText">Connecting...</div>
       </div>
     </div>
+
+    <!-- NEW TAB CONTENT: Liked -->
+    <div class="tab-content hidden" id="likedTabContent">
+      <div class="new-releases-hero" style="border-color: rgba(244,63,94,0.2);">
+        <h2><i class="fa-solid fa-heart" style="color: var(--exp-accent);"></i> Your Liked Tracks</h2>
+        <p>All the tracks you've liked. They are stored locally and synced with KORAI.</p>
+      </div>
+
+      <div class="explorer-meta-bar" id="likedMetaBar">
+        <div class="result-stats" id="likedStats"><span>0 liked tracks</span></div>
+        <div class="view-toggles">
+          <button class="active" data-view="grid" aria-label="Grid view">
+            <i class="fa-solid fa-grid-2"></i> Grid
+          </button>
+          <button data-view="list" aria-label="List view">
+            <i class="fa-solid fa-list"></i> List
+          </button>
+        </div>
+      </div>
+
+      <div class="explorer-results-grid" id="likedGrid"></div>
+      <!-- No loading wrapper needed for liked tab -->
+    </div>
   </div>
 
   <script>
     (function() {
       'use strict';
 
-      const API_BASE = 'https://music.appw4486.workers.dev';
+      // ============================================================
+      // CONFIGURATION
+      // ============================================================
+      
+      const CLOUD_API = 'http://music.korai.ir';
+      const LOCAL_API = 'http://127.0.0.1:3000';
+
       const FILTERS = [
         { id: 'songs', label: '🎵 Songs', icon: 'fa-music' },
         { id: 'albums', label: '💿 Albums', icon: 'fa-compact-disc' },
@@ -822,6 +868,10 @@
       let nrTotal = 0;
       let nrUseMockData = false;
 
+      // liked items are stored in localStorage, but we also keep a separate array
+      // that holds the full item objects for rendering.
+      let likedItems = [];
+
       const searchInput = document.getElementById('explorerSearchInput');
       const searchBtn = document.getElementById('explorerSearchBtn');
       const resultsGrid = document.getElementById('explorerResultsGrid');
@@ -835,11 +885,15 @@
       const nrLoadingWrapper = document.getElementById('nrLoadingWrapper');
       const nrLoadingFill = document.getElementById('nrLoadingFill');
       const nrLoadingText = document.getElementById('nrLoadingText');
+      const likedGrid = document.getElementById('likedGrid');
+      const likedStats = document.getElementById('likedStats');
 
       const tabSearch = document.getElementById('tabSearch');
       const tabNewReleases = document.getElementById('tabNewReleases');
+      const tabLiked = document.getElementById('tabLiked');
       const searchContent = document.getElementById('searchTabContent');
       const nrContent = document.getElementById('newReleasesTabContent');
+      const likedContent = document.getElementById('likedTabContent');
       const backBtn = document.getElementById('explorerBackBtn');
 
       function escapeHtml(text) {
@@ -878,6 +932,9 @@
         if (textElement && statusText) textElement.textContent = statusText;
       }
 
+      // ============================================================
+      // FETCH WITH PROGRESS
+      // ============================================================
       async function fetchWithProgress(url, fillElement, textElement, timeout = REQUEST_TIMEOUT) {
         updateLoadingBar(fillElement, textElement, 5, 'Connecting...');
         const controller = new AbortController();
@@ -945,6 +1002,9 @@
         }
       }
 
+      // ============================================================
+      // SEARCH
+      // ============================================================
       async function fetchMusic(query, filter = 'songs', page = 1) {
         if (!query || query.trim() === '') return { results: [], totalCount: 0 };
         if (useMockData) {
@@ -954,7 +1014,7 @@
           return getMockResults(query, filter, page);
         }
         const q = encodeURIComponent(query.trim());
-        const url = `${API_BASE}/?action=search&q=${q}&filter=${filter}&page=${page}&limit=${ITEMS_PER_PAGE}`;
+        const url = `${CLOUD_API}/?action=search&q=${q}&filter=${filter}&page=${page}&limit=${ITEMS_PER_PAGE}`;
         try {
           const data = await fetchWithProgress(url, searchLoadingFill, searchLoadingText);
           let results = data.results || data.items || data.data || [];
@@ -968,7 +1028,8 @@
             duration: item.duration || 0,
             artist: item.artist || item.subtitle || '',
             album: item.album || '',
-            url: item.url || null
+            url: item.url || null,
+            serverTrackId: null
           }));
           return { results, totalCount };
         } catch (err) {
@@ -979,6 +1040,9 @@
         }
       }
 
+      // ============================================================
+      // NEW RELEASES
+      // ============================================================
       async function fetchNewReleases(page = 1) {
         if (nrUseMockData) {
           updateLoadingBar(nrLoadingFill, nrLoadingText, 50, 'Loading demo data...');
@@ -986,7 +1050,7 @@
           updateLoadingBar(nrLoadingFill, nrLoadingText, 100, 'Demo ready');
           return getMockResults('new', 'new_releases', page);
         }
-        const url = `${API_BASE}/`;
+        const url = `${CLOUD_API}/`;
         console.log('Fetching new releases from:', url);
         try {
           const data = await fetchWithProgress(url, nrLoadingFill, nrLoadingText);
@@ -1005,7 +1069,8 @@
             duration: item.duration || 0,
             artist: item.artist || '',
             album: item.album || '',
-            url: item.url || null
+            url: item.url || null,
+            serverTrackId: null
           }));
           return { results, totalCount };
         } catch (err) {
@@ -1044,31 +1109,75 @@
             duration: Math.floor(120 + Math.random() * 180),
             artist: type === 'artist' ? '' : mockArtists[idx],
             album: type === 'album' ? mockAlbums[albumIdx] : '',
-            url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+            url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+            serverTrackId: null
           });
         }
         return { results, totalCount: 48 };
       }
 
+      // ============================================================
+      // LIKES MANAGEMENT
+      // ============================================================
       const likedKey = 'korai_explorer_likes';
       let likedSet = new Set(JSON.parse(localStorage.getItem(likedKey) || '[]'));
 
       function saveLikes() {
         localStorage.setItem(likedKey, JSON.stringify([...likedSet]));
+        // update liked items array from allResults and nrAllResults
+        rebuildLikedItems();
+        renderLikedTab();
       }
 
+      function rebuildLikedItems() {
+        const allItems = [...allResults, ...nrAllResults];
+        likedItems = allItems.filter(item => likedSet.has(item.id));
+        // Also include items that might be only in localStorage but not in current results?
+        // We keep them as they are, but they won't have full metadata. That's fine.
+      }
+
+      // ============================================================
+      // TOGGLE LIKE (optimistic + server sync)
+      // ============================================================
       function toggleLike(itemId) {
-        if (likedSet.has(itemId)) {
-          likedSet.delete(itemId);
-          showToast('Removed from favorites', 'info');
-        } else {
+        const isLiked = likedSet.has(itemId);
+        const newLiked = !isLiked;
+
+        if (newLiked) {
           likedSet.add(itemId);
           showToast('Added to favorites', 'success');
+        } else {
+          likedSet.delete(itemId);
+          showToast('Removed from favorites', 'info');
         }
         saveLikes();
         renderAllResults();
+        renderLikedTab();
+
+        // Sync with KORAI server in background
+        (async () => {
+          try {
+            const allItems = [...allResults, ...nrAllResults];
+            const item = allItems.find(i => i.id === itemId);
+            let serverId = itemId;
+            if (item && item.serverTrackId) {
+              serverId = item.serverTrackId;
+            }
+            const method = newLiked ? 'POST' : 'DELETE';
+            const url = `${LOCAL_API}/api/tracks/${serverId}/like`;
+            const res = await fetch(url, { method });
+            if (!res.ok) {
+              console.error('Failed to sync like with server:', await res.text());
+            }
+          } catch (err) {
+            console.error('Error syncing like with server:', err);
+          }
+        })();
       }
 
+      // ============================================================
+      // RENDER CARD
+      // ============================================================
       function renderCard(item) {
         const card = document.createElement('div');
         card.className = 'result-card-pro';
@@ -1104,7 +1213,7 @@
                 <i class="fa-solid ${isLiked ? 'fa-heart' : 'fa-heart'}"></i>
                 ${isLiked ? 'Liked' : 'Like'}
               </button>
-              <button class="card-action-btn import-btn" data-action="import" data-id="${item.id}" data-title="${title}" data-url="${escapeHtml(item.url || '')}">
+              <button disabled class="card-action-btn import-btn" data-action="import" data-id="${item.id}" data-title="${title}" data-url="${escapeHtml(item.url || '')}">
                 <i class="fa-solid fa-cloud-arrow-down"></i> Import
               </button>
             </div>
@@ -1128,41 +1237,66 @@
           e.stopPropagation();
           toggleLike(item.id);
         });
+
+        // Import button
         card.querySelector('.import-btn').addEventListener('click', async (e) => {
           e.stopPropagation();
           const id = e.currentTarget.dataset.id;
           const title = e.currentTarget.dataset.title;
           const url = e.currentTarget.dataset.url;
           if (!url) { showToast('No URL to import', 'error'); return; }
+          
+          const originalContent = e.currentTarget.innerHTML;
+          
           try {
             e.currentTarget.disabled = true;
-            e.currentTarget.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Importing...';
-            const res = await fetch('/api/tracks/import-from-url', {
+            e.currentTarget.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Downloading...';
+            showToast('⏳ Downloading track... This may take a moment.', 'info');
+            
+            const res = await fetch(`${LOCAL_API}/api/tracks/import-from-url`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ url, title: title || undefined })
             });
+            
             if (!res.ok) {
-              const err = await res.json().catch(() => ({}));
-              throw new Error(err.error || 'Import failed');
-            }
-            const data = await res.json();
-            showToast(`Imported: ${data.track.title}`, 'success');
-            // Optionally like the imported track
-            if (data.track && data.track.id) {
+              let errorMessage = 'Import failed';
               try {
-                await fetch(`/api/tracks/${data.track.id}/like`, { method: 'POST' });
-                showToast('Added to library and liked!', 'success');
-              } catch (likeErr) {}
+                const err = await res.json();
+                errorMessage = err.error || errorMessage;
+              } catch (e) {}
+              throw new Error(errorMessage);
             }
-            e.currentTarget.disabled = false;
-            e.currentTarget.innerHTML = '<i class="fa-solid fa-cloud-arrow-down"></i> Imported';
+            
+            const data = await res.json();
+            showToast(`✅ Imported: ${data.track.title}`, 'success');
+            
+            // Update serverTrackId
+            const allItems = [...allResults, ...nrAllResults];
+            const targetItem = allItems.find(i => i.id === id);
+            if (targetItem) {
+              targetItem.serverTrackId = data.track.id;
+              if (likedSet.has(id)) {
+                try {
+                  await fetch(`${LOCAL_API}/api/tracks/${data.track.id}/like`, { method: 'POST' });
+                } catch (likeErr) {
+                  console.warn('Could not sync like for imported track:', likeErr);
+                }
+              }
+              renderAllResults();
+              renderLikedTab();
+            }
+            
+            e.currentTarget.disabled = true;
+            e.currentTarget.innerHTML = '<i class="fa-solid fa-check-circle"></i> Imported';
             e.currentTarget.style.opacity = '0.6';
+            e.currentTarget.style.cursor = 'default';
+            
           } catch (err) {
             console.error('Import error:', err);
-            showToast('Import failed: ' + err.message, 'error');
+            showToast('❌ Import failed: ' + err.message, 'error');
             e.currentTarget.disabled = false;
-            e.currentTarget.innerHTML = '<i class="fa-solid fa-cloud-arrow-down"></i> Import';
+            e.currentTarget.innerHTML = originalContent;
           }
         });
         return card;
@@ -1193,11 +1327,34 @@
       function renderAllResults() {
         if (currentTab === 'search') {
           renderResultsInto(resultsGrid, allResults, false, currentView);
-        } else {
+        } else if (currentTab === 'newreleases') {
           renderResultsInto(nrGrid, nrAllResults, false, currentView);
         }
       }
 
+      // ============================================================
+      // LIKED TAB RENDER
+      // ============================================================
+      function renderLikedTab() {
+        rebuildLikedItems();
+        const count = likedItems.length;
+        likedStats.innerHTML = `<span><strong>${count}</strong> liked tracks</span>`;
+        if (count === 0) {
+          likedGrid.innerHTML = `
+            <div class="explorer-state">
+              <i class="fa-solid fa-heart" style="color: var(--exp-accent); opacity:0.4;"></i>
+              <h3>No liked tracks yet</h3>
+              <p>Start exploring and hit the like button on tracks you love.</p>
+            </div>
+          `;
+        } else {
+          renderResultsInto(likedGrid, likedItems, false, currentView);
+        }
+      }
+
+      // ============================================================
+      // SEARCH LOGIC
+      // ============================================================
       async function performSearch(resetPagination = true) {
         const query = searchInput.value.trim();
         if (!query) {
@@ -1275,6 +1432,9 @@
         }
       }
 
+      // ============================================================
+      // NEW RELEASES
+      // ============================================================
       async function loadNewReleases(reset = true) {
         if (reset) {
           nrPage = 1;
@@ -1373,19 +1533,28 @@
         });
         resultsGrid.classList.toggle('list-mode', view === 'list');
         nrGrid.classList.toggle('list-mode', view === 'list');
+        likedGrid.classList.toggle('list-mode', view === 'list');
         if (allResults.length > 0) renderResultsInto(resultsGrid, allResults, false, view);
         if (nrAllResults.length > 0) renderResultsInto(nrGrid, nrAllResults, false, view);
+        if (likedItems.length > 0) renderResultsInto(likedGrid, likedItems, false, view);
       }
 
       function switchTab(tab) {
         currentTab = tab;
         tabSearch.classList.toggle('active', tab === 'search');
         tabNewReleases.classList.toggle('active', tab === 'newreleases');
+        tabLiked.classList.toggle('active', tab === 'liked');
         searchContent.classList.toggle('hidden', tab !== 'search');
         nrContent.classList.toggle('hidden', tab !== 'newreleases');
+        likedContent.classList.toggle('hidden', tab !== 'liked');
         if (tab === 'newreleases' && nrAllResults.length === 0) {
           loadNewReleases(true);
         }
+        if (tab === 'liked') {
+          renderLikedTab();
+        }
+        // re-apply view
+        setView(currentView);
       }
 
       function renderFilters() {
@@ -1415,6 +1584,8 @@
         renderResultsInto(resultsGrid, [], false, currentView);
         resultStats.innerHTML = `<span>Ready to explore</span>`;
         nrStats.innerHTML = `<span>Loading fresh picks...</span>`;
+        likedStats.innerHTML = `<span>0 liked tracks</span>`;
+        renderLikedTab();
 
         searchBtn.addEventListener('click', () => performSearch(true));
         const debouncedSearch = debounce(() => performSearch(true), 400);
@@ -1431,6 +1602,7 @@
 
         tabSearch.addEventListener('click', () => switchTab('search'));
         tabNewReleases.addEventListener('click', () => switchTab('newreleases'));
+        tabLiked.addEventListener('click', () => switchTab('liked'));
 
         backBtn.addEventListener('click', () => {
           if (window.history.length > 1) window.history.back();
@@ -1465,7 +1637,9 @@
           loadNewReleases(true);
         }, 200);
 
-        console.log('🚀 Explorer Pro — real API progress bar with error handling');
+        console.log('🚀 Explorer Pro — with Liked tab');
+        console.log('📡 Cloud API:', CLOUD_API);
+        console.log('🏠 Local API (for imports):', LOCAL_API);
       }
 
       if (document.readyState === 'loading') {

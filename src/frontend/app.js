@@ -92,6 +92,10 @@ const isMiniWindowMode = urlParams.get('mode') === 'mini';
 //
 let currentActiveAlbumId = null;
 
+
+let settingsSyncInitialized = false;
+
+
 // Make variables available globally
 window.audioCtx = audioCtx;
 window.audioSource = audioSource;
@@ -130,6 +134,53 @@ function detectPerformanceMode() {
     }
     return false;
 }
+
+
+
+async function initSettingsSync() {
+    if (settingsSyncInitialized) return;
+    
+    // Wait for settingsSync to be ready
+    if (!window.settingsSync || !window.settingsSync.initialized) {
+        await new Promise(resolve => {
+            const check = () => {
+                if (window.settingsSync?.initialized) {
+                    resolve();
+                } else {
+                    setTimeout(check, 100);
+                }
+            };
+            check();
+        });
+    }
+    
+    // Apply settings that affect playback
+    const store = window.settingsStore;
+    if (store) {
+        // Apply volume
+        const volume = store.getNumber('defaultVolume', 70) / 100;
+        if (typeof setVolume === 'function') {
+            setVolume(volume);
+        }
+        
+        // Apply EQ
+        const eq = store.getArray('eq', [0, 0, 0, 0, 0]);
+        if (typeof updateEqualizerBand === 'function') {
+            for (let i = 0; i < 5; i++) {
+                updateEqualizerBand(i, eq[i] || 0);
+            }
+        }
+    }
+    
+    settingsSyncInitialized = true;
+    console.debug('✅ Settings sync initialized in app.js');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(initSettingsSync, 500);
+});
+
+
 
 // =========================
 // Lightweight Performance Observability
@@ -4519,6 +4570,36 @@ function setupEventListeners() {
         }
     }
 
+
+    // Listen for settings changes
+    window.addEventListener('settings-changed', (e) => {
+        const { key, value } = e.detail;
+        
+        // Apply settings that affect playback in real-time
+        switch (key) {
+            case 'defaultVolume':
+                if (typeof setVolume === 'function') {
+                    setVolume(value / 100);
+                }
+                break;
+            case 'eq':
+                if (typeof updateEqualizerBand === 'function') {
+                    for (let i = 0; i < 5; i++) {
+                        updateEqualizerBand(i, value[i] || 0);
+                    }
+                }
+                break;
+            case 'gaplessEnabled':
+            case 'crossfadeDuration':
+                // Will be applied by settingsSync
+                break;
+        }
+    });
+
+    // Listen for stay-in-tray changes from main process
+    window.addEventListener('stay-in-tray-changed', (e) => {
+        console.debug('🟢 Stay in tray changed:', e.detail.enabled);
+    });
     // =========================================================================
     // AI / PLAYLIST ACTIONS
     // =========================================================================

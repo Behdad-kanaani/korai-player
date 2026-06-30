@@ -33,6 +33,15 @@ const _executeControlHandlers = new Map();
 
 // Expose safe APIs to renderer
 contextBridge.exposeInMainWorld('electronAPI', {
+
+
+    // Get data directory path
+    getDataPath: () => ipcRenderer.invoke('get-data-path'),
+
+    // Get app version
+    getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+
+    
     // =========================================================================
     // SERVER AND FILE OPERATIONS
     // =========================================================================

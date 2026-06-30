@@ -716,8 +716,33 @@ async function createWindow() {
 
         mainWindow.on('close', (event) => {
             if (!isQuitting) {
-                event.preventDefault();
-                mainWindow.hide();
+                let stayInTray = true;
+                
+                try {
+                    const userDataPath = app.getPath('userData');
+                    const settingsPath = path.join(userDataPath, 'korai_data_v2.json');
+                    
+                    if (fs.existsSync(settingsPath)) {
+                        const data = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+                        stayInTray = data.settings?.stayInTray !== false;
+                    }
+                } catch (err) {
+                    stayInTray = true;
+                }
+                
+                if (stayInTray) {
+                    event.preventDefault();
+                    mainWindow.hide();
+                    
+                    try {
+                        const settingsPath = path.join(app.getPath('userData'), 'korai_data_v2.json');
+                        if (fs.existsSync(settingsPath)) {
+                            const data = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+                            if (data.settings?.trayNotification !== false) {
+                            }
+                        }
+                    } catch (e) {}
+                }
             }
         });
 
@@ -1189,6 +1214,15 @@ ipcMain.handle('import-playlist-auto', async (event, filePath) => {
 ipcMain.handle('show-open-dialog', async (event, options) => {
     const result = await dialog.showOpenDialog(mainWindow, options);
     return result;
+});
+
+
+ipcMain.handle('get-data-path', () => {
+    return app.getPath('userData');
+});
+
+ipcMain.handle('get-app-version', () => {
+    return app.getVersion();
 });
 
 // =============================================================================

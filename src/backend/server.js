@@ -436,6 +436,88 @@ function setupRoutes() {
         }
     });
 
+
+    // Reset all settings to defaults
+    app.post('/api/settings/reset', (req, res) => {
+        try {
+            const db = getDb();
+            const defaultSettings = {
+                gaplessEnabled: true,
+                crossfadeDuration: 0,
+                repeatMode: 'off',
+                shuffleDefault: false,
+                resumeOnStart: false,
+                defaultVolume: 70,
+                audioOutput: 'stereo',
+                theme: 'default',
+                direction: 'ltr',
+                fontSize: 'medium',
+                showAlbumArt: true,
+                scanPath: '',
+                formats: ['mp3', 'wav', 'flac', 'ogg', 'm4a'],
+                autoScan: false,
+                maxScanDepth: 100,
+                autoActivatePlugins: true,
+                hotReload: false,
+                hookTimeout: 5000,
+                pluginMemory: 64,
+                aiRecommendations: true,
+                discoveryMode: true,
+                weightLike: 0.40,
+                weightPlay: 0.12,
+                weightSkip: 0.30,
+                weightRepeat: 0.25,
+                weightPlaylistAdd: 0.15,
+                diversityBoost: 0.85,
+                stayInTray: true,
+                trayNotification: true,
+                autoUpdate: true,
+                updateInterval: 24,
+                performanceMode: false,
+                debugLogs: false,
+                eq: [0, 0, 0, 0, 0]
+            };
+            db.updateSettings(defaultSettings);
+            res.json({ success: true, settings: defaultSettings });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Clear cache
+    app.post('/api/settings/clear-cache', (req, res) => {
+        try {
+            const userDataPath = serverUserDataPath;
+            if (!userDataPath) throw new Error('User data path not set');
+            
+            // Clear telemetry
+            const telemetryDir = path.join(userDataPath, 'telemetry');
+            if (fs.existsSync(telemetryDir)) {
+                fs.rmSync(telemetryDir, { recursive: true, force: true });
+                fs.mkdirSync(telemetryDir, { recursive: true });
+            }
+            
+            // Clear temp files
+            const tempDir = path.join(userDataPath, 'temp_extract');
+            if (fs.existsSync(tempDir)) {
+                fs.rmSync(tempDir, { recursive: true, force: true });
+                fs.mkdirSync(tempDir, { recursive: true });
+            }
+            
+            // Clear downloads temp
+            const downloadsDir = path.join(userDataPath, 'downloads');
+            if (fs.existsSync(downloadsDir)) {
+                fs.rmSync(downloadsDir, { recursive: true, force: true });
+                fs.mkdirSync(downloadsDir, { recursive: true });
+            }
+            
+            res.json({ success: true });
+        } catch (error) {
+            console.error('Clear cache error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
     app.get('/api/health', (req, res) => {
         res.json({ status: 'ok', timestamp: Date.now() });
     });

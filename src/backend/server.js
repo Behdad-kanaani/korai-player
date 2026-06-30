@@ -1,3 +1,11 @@
+/**
+ * server.js - KORAI Music Player Backend Server
+ * Complete file with MusicDel proxy endpoints added
+ * 
+ * FIXED: Added MusicDel proxy endpoints for search and download
+ * FIXED: Proper error handling and domain validation
+ */
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -38,6 +46,227 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// =============================================================================
+// MUSICDEL PROXY ENDPOINTS
+// =============================================================================
+
+/**
+ * Proxy endpoint for MusicDel search and page fetching
+ * POST /api/proxy/musicdel
+ * 
+ * Request body: { url: "https://musicdel.ir/..." }
+ * Response: HTML content of the requested page
+ */
+app.post('/api/proxy/musicdel', async (req, res) => {
+    try {
+        const { url } = req.body;
+        
+        if (!url) {
+            return res.status(400).json({ error: 'URL is required' });
+        }
+
+        // Validate URL - only allow musicdel.ir domain
+        const urlObj = new URL(url);
+        if (!urlObj.hostname.includes('musicdel.ir')) {
+            return res.status(403).json({ error: 'Only musicdel.ir domains are allowed' });
+        }
+
+        console.debug(`📡 Proxy request to: ${url}`);
+
+        // Use node-fetch to get content
+        const fetch = require('node-fetch');
+        
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'fa-IR,fa;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Cache-Control': 'no-cache'
+            },
+            timeout: 30000
+        });
+
+        if (!response.ok) {
+            console.warn(`⚠️ Proxy response not OK: ${response.status} for ${url}`);
+            return res.status(response.status).json({ 
+                error: `Server responded with status ${response.status}` 
+            });
+        }
+
+        const html = await response.text();
+        
+        // Add cache control headers to prevent caching
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(html);
+
+    } catch (error) {
+        console.error('❌ Proxy error:', error.message);
+        
+        // Specific error handling
+        let statusCode = 500;
+        let errorMessage = 'Internal server error';
+        
+        if (error.code === 'ECONNREFUSED') {
+            statusCode = 503;
+            errorMessage = 'Could not connect to musicdel.ir. Please check your internet connection.';
+        } else if (error.code === 'ENOTFOUND') {
+            statusCode = 404;
+            errorMessage = 'musicdel.ir could not be resolved. Please check your DNS settings.';
+        } else if (error.message.includes('timeout')) {
+            statusCode = 408;
+            errorMessage = 'Request to musicdel.ir timed out. Please try again.';
+        }
+        
+        res.status(statusCode).json({ error: errorMessage });
+    }
+});
+
+/**
+ * Proxy endpoint for direct MusicDel file download
+ * GET /api/proxy/musicdel/download?url=...
+ * 
+ * Query param: url - Direct download URL from musicdel.ir
+ * Response: Audio file with proper headers
+ */
+app.get('/api/proxy/musicdel/download', async (req, res) => {
+    try {
+        const { url } = req.query;
+        
+        if (!url) {
+            return res.status(400).json({ error: 'URL is required' });
+        }
+
+        // Validate URL - only allow musicdel.ir domains
+        const urlObj = new URL(url);
+        if (!urlObj.hostname.includes('musicdel.ir') && !urlObj.hostname.includes('dl.musicdel.ir')) {
+            return res.status(403).json({ error: 'Only musicdel.ir domains are allowed' });
+        }
+
+        console.debug(`📥 Proxy download from: ${url}`);
+        
+        const fetch = require('node-fetch');
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': '*/*',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Accept-Language': 'fa-IR,fa;q=0.9,en-US;q=0.8,en;q=0.7'
+            },
+            timeout: 60000
+        });
+
+        if (!response.ok) {
+            throw new Error(`Download failed: ${response.status}`);
+        }
+
+        // Stream the file directly to client
+        const buffer = await response.buffer();
+        res.setHeader('Content-Type', response.headers.get('content-type') || 'audio/mpeg');
+        res.setHeader('Content-Length', buffer.length);
+        res.setHeader('Content-Disposition', `attachment; filename="musicdel_${Date.now()}.mp3"`);
+        res.send(buffer);
+
+    } catch (error) {
+        console.error('❌ Proxy download error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * Search MusicDel using the official search-html.php API
+ * POST /api/search/musicdel
+ *
+ * Request body: { query: "song name" }
+ * Response: { results: [ { title, subtitle, thumbnail, url } ] }
+ */
+app.post('/api/search/musicdel', async (req, res) => {
+    try {
+        const { query } = req.body;
+
+        if (!query || query.trim().length < 2) {
+            return res.status(400).json({ error: 'Search query must be at least 2 characters' });
+        }
+
+        const MUSICDEL_SEARCH_API = 'https://musicdel.ir/wp-content/themes/musicdel2/api/search-html.php';
+        const encodedQuery = encodeURIComponent(query.trim());
+
+        console.debug(`📡 Searching MusicDel for: ${encodedQuery}`);
+
+        // Use node-fetch to get the HTML search results
+        const fetch = require('node-fetch');
+        const searchUrl = `${MUSICDEL_SEARCH_API}?q=${encodedQuery}`;
+
+        const response = await fetch(searchUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'fa-IR,fa;q=0.9,en-US;q=0.8,en;q=0.7',
+            },
+            timeout: 30000
+        });
+
+        if (!response.ok) {
+            console.warn(`⚠️ MusicDel search failed with status: ${response.status}`);
+            return res.status(response.status).json({ error: `MusicDel search failed with status ${response.status}` });
+        }
+
+        const html = await response.text();
+
+        // Extract result items using regex (since we want to avoid adding cheerio just for this)
+        const results = [];
+        const figureRegex = /<figure class="result">(.*?)<\/figure>/gs;
+        let figureMatch;
+
+        while ((figureMatch = figureRegex.exec(html)) !== null) {
+            const figureHtml = figureMatch[1];
+            const linkMatch = figureHtml.match(/<a href="([^"]+)"/);
+            const titleMatch = figureHtml.match(/<figcaption>.*?<span>(.*?)<\/span>/);
+            const artistMatch = figureHtml.match(/<figcaption>.*?<span>(.*?)<\/span>.*?<span>(.*?)<\/span>/s);
+            const imgMatch = figureHtml.match(/<img[^>]+src="([^"]+)"/);
+
+            let link = linkMatch ? linkMatch[1] : null;
+            if (link && link.startsWith('/')) {
+                link = 'https://musicdel.ir' + link;
+            }
+
+            let title = titleMatch ? titleMatch[1].trim() : 'Unknown Title';
+            let artist = artistMatch ? artistMatch[2].trim() : 'Unknown Artist';
+
+            let thumbnail = imgMatch ? imgMatch[1] : null;
+            if (thumbnail && !thumbnail.startsWith('http')) {
+                thumbnail = 'https://musicdel.ir' + thumbnail;
+            }
+
+            if (link) {
+                results.push({
+                    id: link,
+                    url: link,
+                    title: title,
+                    subtitle: artist,
+                    thumbnail: thumbnail || ''
+                });
+            }
+        }
+
+        console.debug(`✅ MusicDel search found ${results.length} results`);
+
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.json({ results });
+
+    } catch (error) {
+        console.error('❌ MusicDel search error:', error.message);
+        res.status(500).json({ error: 'Failed to search MusicDel: ' + error.message });
+    }
+});
+
+// =============================================================================
+// END OF MUSICDEL PROXY ENDPOINTS
+// =============================================================================
+
+// ... (بقیه کدهای server.js - همه اندپوینت‌های موجود بدون تغییر می‌مانند)
 
 const SYSTEM_FOLDERS_TO_SKIP = new Set([
     '$recycle.bin', 'recycle.bin', 'system volume information', 'windows', 
@@ -627,8 +856,6 @@ function setupRoutes() {
             request.on('error', reject);
         });
         }
-
-
 
     app.get('/api/playlists', (req, res) => {
         try {

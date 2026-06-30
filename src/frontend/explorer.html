@@ -3,1650 +3,1653 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.5, user-scalable=yes">
-  <title>KORAI · Explorer Pro</title>
+  <title>Korai Explore</title>
+  
+  <!-- Premium Font: Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    /* =========================================
+       1. VARIABLES & RESET & PREMIUM BASE
+       ========================================= */
     :root {
-      --exp-primary: #00f5d4;
-      --exp-secondary: #8b5cf6;
-      --exp-accent: #f43f5e;
-      --exp-bg1: #07070e;
-      --exp-bg2: #0d0d1a;
-      --exp-card: rgba(18, 18, 32, 0.7);
-      --exp-border: rgba(255, 255, 255, 0.05);
-      --exp-text: #f0f0f8;
-      --exp-text2: #a8aec9;
-      --exp-text3: #5e647a;
-      --exp-radius: 24px;
-      --exp-transition: 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      /* Refined Neon Colors */
+      --primary: #00f0ff;
+      --primary-glow: rgba(0, 240, 255, 0.5);
+      --secondary: #9d00ff;
+      --secondary-glow: rgba(157, 0, 255, 0.4);
+      --accent: #ff2a5f;
+      --accent-glow: rgba(255, 42, 95, 0.4);
+      --musicdel: #ff6b4a;
+      --musicdel-glow: rgba(255, 107, 74, 0.4);
+      
+      /* Deep Dark Premium Backgrounds */
+      --bg-dark: #050507;
+      --bg-light: #0d0b14;
+      
+      /* Advanced Glassmorphism */
+      --glass-bg: rgba(255, 255, 255, 0.03);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --glass-border-highlight: rgba(255, 255, 255, 0.15);
+      --glass-blur: blur(20px);
+      --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      
+      /* Text Colors */
+      --text-main: #ffffff;
+      --text-muted: #9494a8;
+      --text-dim: #5c5c70;
+      
+      /* Metrics */
+      --radius-xl: 32px;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+      --transition: 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+      --transition-bounce: 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    /* Custom Scrollbar for a premium feel */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: var(--bg-dark); }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
     body {
-      background: radial-gradient(ellipse at 30% 20%, #0f0f1f, #05050a 80%);
-      color: var(--exp-text);
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
       min-height: 100vh;
       overflow-x: hidden;
-      padding: 0 0 80px 0;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      position: relative;
     }
+
+    /* Cinematic Noise Overlay */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background: url('data:image/svg+xml;utf8,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)" opacity="0.04"/%3E%3C/svg%3E');
+      pointer-events: none;
+      z-index: 9999;
+      mix-blend-mode: overlay;
+    }
+
+    /* =========================================
+       2. AMBIENT BACKGROUND (MESH GRADIENT)
+       ========================================= */
     .ambient-orbs {
       position: fixed;
       inset: 0;
-      z-index: 0;
+      z-index: -1;
       pointer-events: none;
       overflow: hidden;
+      background: radial-gradient(circle at 50% 0%, var(--bg-light), var(--bg-dark) 80%);
     }
     .ambient-orbs span {
       position: absolute;
       border-radius: 50%;
-      filter: blur(140px);
-      opacity: 0.3;
-      animation: orbFloat 28s infinite alternate ease-in-out;
+      filter: blur(120px);
+      opacity: 0.4;
+      animation: orbFloat 20s infinite alternate ease-in-out;
+      will-change: transform;
     }
     .ambient-orbs span:nth-child(1) {
-      width: 700px; height: 700px;
-      background: radial-gradient(circle, rgba(0, 245, 212, 0.35), transparent 70%);
-      top: -20%; right: -10%;
-      animation-duration: 32s;
+      width: 45vw; height: 45vw;
+      background: radial-gradient(circle, var(--primary), transparent 70%);
+      top: -15%; right: 5%;
+      animation-duration: 25s;
     }
     .ambient-orbs span:nth-child(2) {
-      width: 550px; height: 550px;
-      background: radial-gradient(circle, rgba(139, 92, 246, 0.3), transparent 70%);
-      bottom: -15%; left: -8%;
-      animation-duration: 38s;
-      animation-delay: -6s;
+      width: 55vw; height: 55vw;
+      background: radial-gradient(circle, var(--secondary), transparent 70%);
+      bottom: -20%; left: -10%;
+      animation-duration: 30s;
+      animation-delay: -5s;
     }
     .ambient-orbs span:nth-child(3) {
-      width: 400px; height: 400px;
-      background: radial-gradient(circle, rgba(244, 63, 94, 0.18), transparent 70%);
-      top: 40%; left: 20%;
-      animation-duration: 26s;
-      animation-delay: -12s;
+      width: 40vw; height: 40vw;
+      background: radial-gradient(circle, var(--accent), transparent 70%);
+      top: 40%; left: 50%;
+      transform: translateX(-50%);
+      animation-duration: 22s;
+      opacity: 0.2;
     }
     @keyframes orbFloat {
       0% { transform: translate(0, 0) scale(1); }
-      50% { transform: translate(70px, -50px) scale(1.15); }
-      100% { transform: translate(-40px, 60px) scale(0.9); }
+      100% { transform: translate(-5vw, 5vw) scale(1.1); }
     }
-    .explorer-pro-container {
+
+    /* =========================================
+       3. LAYOUT & HEADER
+       ========================================= */
+    .app-container {
       max-width: 1440px;
       margin: 0 auto;
-      padding: 20px 28px 120px;
+      padding: 40px 32px 120px;
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      margin-bottom: 56px;
+    }
+
+    .btn-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 24px;
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--glass-border);
+      border-top-color: var(--glass-border-highlight);
+      border-radius: 100px;
+      color: var(--text-main);
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: var(--transition);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    .btn-back:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: var(--glass-border-highlight);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 1.4rem;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      color: var(--text-main);
+      text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    }
+    .brand-logo i {
+      font-size: 1.8rem;
+      color: var(--primary);
+      filter: drop-shadow(0 0 15px var(--primary-glow));
+    }
+    
+    .brand-attribution {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-weight: 500;
+      border-right: 1px solid rgba(255, 255, 255, 0.15);
+      padding-right: 12px;
+      margin-right: 4px;
+    }
+
+    /* =========================================
+       4. TABS NAVIGATION
+       ========================================= */
+    .tabs-wrapper {
+      display: flex;
+      justify-content: center;
+      width: 100%;
+      margin-bottom: 48px;
+    }
+    .tabs-container {
+      display: inline-flex;
+      background: rgba(0, 0, 0, 0.4);
+      backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--glass-border);
+      padding: 8px;
+      border-radius: 100px;
+      gap: 8px;
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.5), var(--glass-shadow);
+    }
+    .tab-btn {
+      padding: 14px 32px;
+      border-radius: 100px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-family: inherit;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: var(--transition);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: relative;
+      overflow: hidden;
+    }
+    .tab-btn i { font-size: 1.2rem; transition: var(--transition-bounce); }
+    .tab-btn:hover { color: var(--text-main); background: rgba(255,255,255,0.03); }
+    
+    .tab-btn.active {
+      color: var(--text-main);
+      box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+    }
+    .tab-btn.active i { transform: scale(1.15); }
+    
+    .tab-btn[data-tab="search"].active { 
+      background: linear-gradient(135deg, rgba(0, 240, 255, 0.15), rgba(157, 0, 255, 0.15));
+      border: 1px solid rgba(0, 240, 255, 0.3);
+      color: var(--primary);
+      text-shadow: 0 0 10px var(--primary-glow);
+    }
+    .tab-btn[data-tab="liked"].active { 
+      background: linear-gradient(135deg, rgba(255, 42, 95, 0.15), rgba(255, 107, 74, 0.15));
+      border: 1px solid rgba(255, 42, 95, 0.3);
+      color: var(--accent);
+      text-shadow: 0 0 10px var(--accent-glow);
+    }
+
+    .tab-content { 
+      display: none; 
+      width: 100%;
+      animation: fadeScaleUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .tab-content.active { display: block; }
+    @keyframes fadeScaleUp { 
+      from { opacity: 0; transform: translateY(20px) scale(0.98); } 
+      to { opacity: 1; transform: translateY(0) scale(1); } 
+    }
+
+    /* =========================================
+       5. SEARCH & FILTERS (REFINED & GLOWING)
+       ========================================= */
+    .section-hero {
+      text-align: center;
+      margin-bottom: 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .section-hero h2 {
+      font-size: 3.5rem;
+      font-weight: 800;
+      margin-bottom: 16px;
+      letter-spacing: -1.5px;
+      background: linear-gradient(180deg, #ffffff 0%, rgba(255,255,255,0.6) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: inline-flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .section-hero p { 
+      color: var(--text-muted); 
+      font-size: 1.2rem; 
+      max-width: 550px; 
+      line-height: 1.6;
+    }
+
+    .search-box {
+      width: 100%;
+      max-width: 750px;
+      margin: 0 auto 36px;
+      display: flex;
+      align-items: center;
+      background: rgba(10, 10, 15, 0.55);
+      border: 1px solid var(--glass-border);
+      border-top: 1px solid var(--glass-border-highlight);
+      border-radius: 100px;
+      padding: 6px;
+      backdrop-filter: var(--glass-blur);
+      transition: var(--transition-bounce);
+      box-shadow: 
+        0 4px 20px rgba(0, 0, 0, 0.4),
+        inset 0 1px 1px rgba(255, 255, 255, 0.08),
+        0 12px 40px rgba(0, 0, 0, 0.3);
       position: relative;
       z-index: 5;
     }
-    .explorer-top-bar {
+
+    /* Glowing back-ring for search bar focus */
+    .search-box::before {
+      content: '';
+      position: absolute;
+      inset: -1.5px;
+      border-radius: 100px;
+      background: linear-gradient(90deg, var(--primary), var(--secondary));
+      z-index: -1;
+      opacity: 0;
+      transition: opacity 0.4s ease;
+    }
+
+    .search-box:focus-within::before {
+      opacity: 0.65;
+    }
+
+    .search-box:focus-within {
+      background: rgba(8, 8, 12, 0.85);
+      border-color: transparent;
+      transform: translateY(-4px);
+      box-shadow: 
+        0 20px 40px rgba(0, 240, 255, 0.12),
+        0 10px 30px rgba(0, 0, 0, 0.6),
+        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    }
+
+    .search-input-wrap {
+      flex: 1;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      padding: 10px 0 28px 0;
-      flex-wrap: wrap;
+      padding: 0 24px;
       gap: 16px;
     }
-    .explorer-top-bar .back-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 26px;
-      background: rgba(255,255,255,0.02);
-      backdrop-filter: blur(8px);
-      border: 1px solid rgba(255,255,255,0.04);
-      border-radius: 60px;
-      color: var(--exp-text2);
-      font-weight: 600;
-      font-size: 0.85rem;
-      cursor: pointer;
-      transition: var(--exp-transition);
-      letter-spacing: 0.3px;
+    .search-input-wrap i { 
+      color: var(--text-dim); 
+      font-size: 1.35rem; 
+      transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1); 
     }
-    .explorer-top-bar .back-btn:hover {
-      background: rgba(0, 245, 212, 0.06);
-      border-color: var(--exp-primary);
-      color: var(--exp-primary);
-      transform: translateX(-6px);
-      box-shadow: 0 10px 30px rgba(0, 245, 212, 0.06);
+    
+    .search-box:focus-within .search-input-wrap i { 
+      color: var(--primary); 
+      transform: scale(1.1) rotate(5deg);
+      filter: drop-shadow(0 0 8px var(--primary-glow));
     }
-    .explorer-top-bar .brand-badge {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      font-size: 0.7rem;
-      font-weight: 700;
-      letter-spacing: 1.2px;
-      text-transform: uppercase;
-      color: var(--exp-text3);
-    }
-    .explorer-top-bar .brand-badge i {
-      font-size: 1.4rem;
-      color: var(--exp-primary);
-      filter: drop-shadow(0 0 12px rgba(0,245,212,0.25));
-    }
-    .explorer-top-bar .brand-badge .live-dot {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      background: var(--exp-accent);
-      border-radius: 50%;
-      animation: livePulse 1.8s infinite;
-      box-shadow: 0 0 20px rgba(244,63,94,0.3);
-    }
-    @keyframes livePulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.3; transform: scale(0.7); }
-    }
-    .explorer-tabs {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 32px;
-      background: rgba(255,255,255,0.02);
-      padding: 6px;
-      border-radius: 60px;
-      border: 1px solid rgba(255,255,255,0.04);
-      backdrop-filter: blur(8px);
-      width: fit-content;
-    }
-    .explorer-tab {
-      padding: 12px 32px;
-      border-radius: 40px;
+    
+    .search-box input {
+      width: 100%;
       background: transparent;
       border: none;
-      color: var(--exp-text2);
-      font-weight: 600;
-      font-size: 0.9rem;
+      color: var(--text-main);
+      font-size: 1.15rem;
+      outline: none;
+      font-family: inherit;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+    }
+    .search-box input::placeholder { 
+      color: var(--text-dim); 
+      font-weight: 500; 
+      transition: color 0.3s ease;
+    }
+    .search-box:focus-within input::placeholder {
+      color: rgba(255, 255, 255, 0.25);
+    }
+    
+    .btn-search {
+      background: linear-gradient(135deg, #ffffff 0%, #e2e8f0 100%);
+      color: #050507;
+      border: none;
+      border-radius: 100px;
+      padding: 14px 44px;
+      font-weight: 800;
+      font-size: 1.05rem;
+      font-family: inherit;
       cursor: pointer;
-      transition: var(--exp-transition);
+      transition: var(--transition-bounce);
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Glossy reflection shimmer */
+    .btn-search::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -60%;
+      width: 30%;
+      height: 200%;
+      background: rgba(255, 255, 255, 0.4);
+      transform: rotate(35deg);
+      transition: all 0.6s ease;
+      opacity: 0;
+    }
+    .btn-search:hover::after {
+      left: 130%;
+      opacity: 1;
+    }
+
+    .btn-search:hover { 
+      transform: scale(1.04); 
+      background: linear-gradient(135deg, var(--primary) 0%, #00bfff 100%);
+      color: #000;
+      box-shadow: 0 10px 25px var(--primary-glow);
+    }
+    .btn-search:active {
+      transform: scale(0.97);
+    }
+
+    .filters-container {
+      display: flex;
+      justify-content: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-bottom: 56px;
+    }
+    .filter-chip {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--glass-border);
+      padding: 12px 28px;
+      border-radius: 100px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: var(--transition);
+      font-size: 0.95rem;
+      font-weight: 600;
       display: flex;
       align-items: center;
       gap: 10px;
-      letter-spacing: 0.3px;
+      backdrop-filter: blur(10px);
     }
-    .explorer-tab i { font-size: 1rem; opacity: 0.7; }
-    .explorer-tab:hover {
-      color: var(--exp-text);
-      background: rgba(255,255,255,0.03);
+    .filter-chip:hover { 
+      border-color: var(--glass-border-highlight); 
+      color: var(--text-main); 
+      background: rgba(255,255,255,0.06); 
+      transform: translateY(-2px);
     }
-    .explorer-tab.active {
-      background: linear-gradient(135deg, rgba(0,245,212,0.12), rgba(139,92,246,0.08));
-      color: var(--exp-primary);
-      box-shadow: 0 4px 20px rgba(0,245,212,0.04);
+    .filter-chip.active {
+      background: linear-gradient(135deg, rgba(0, 240, 255, 0.15), rgba(0, 240, 255, 0.05));
+      border-color: var(--primary);
+      color: #fff;
+      box-shadow: 0 4px 20px var(--primary-glow);
     }
-    .explorer-tab.active i { opacity: 1; }
-    .explorer-search-premium {
+
+    /* =========================================
+       6. GRID & PREMIUM CARDS
+       ========================================= */
+    .meta-bar {
       display: flex;
+      justify-content: center;
       align-items: center;
-      gap: 0;
-      background: rgba(14, 14, 28, 0.7);
-      backdrop-filter: blur(20px);
-      border: 1px solid rgba(255,255,255,0.05);
-      border-radius: 80px;
-      padding: 4px 4px 4px 28px;
-      margin-bottom: 34px;
-      transition: var(--exp-transition);
-      box-shadow: 0 12px 48px rgba(0,0,0,0.5);
-    }
-    .explorer-search-premium:focus-within {
-      border-color: var(--exp-primary);
-      box-shadow: 0 12px 48px rgba(0,0,0,0.6), 0 0 0 4px rgba(0,245,212,0.06);
-    }
-    .explorer-search-premium .search-icon {
-      color: var(--exp-text3);
-      font-size: 1.1rem;
-      margin-right: 14px;
-    }
-    .explorer-search-premium input {
-      flex: 1;
-      background: transparent;
-      border: none;
-      padding: 16px 10px;
-      color: var(--exp-text);
+      margin-bottom: 32px;
+      width: 100%;
+      color: var(--text-dim);
       font-size: 1rem;
-      outline: none;
-      min-width: 180px;
-      font-weight: 450;
-    }
-    .explorer-search-premium input::placeholder {
-      color: var(--exp-text3);
-      font-weight: 400;
-      letter-spacing: 0.2px;
-    }
-    .explorer-search-premium .search-shortcut {
-      font-size: 0.65rem;
-      font-weight: 700;
-      color: var(--exp-text3);
-      background: rgba(255,255,255,0.04);
-      padding: 6px 14px;
-      border-radius: 40px;
-      border: 1px solid rgba(255,255,255,0.04);
-      margin-right: 16px;
-      white-space: nowrap;
+      font-weight: 500;
+      border-bottom: 1px solid var(--glass-border);
+      padding-bottom: 20px;
       letter-spacing: 0.5px;
     }
-    .explorer-search-premium .search-btn {
-      background: linear-gradient(135deg, var(--exp-primary), #00c9a7);
-      border: none;
-      border-radius: 60px;
-      padding: 14px 34px;
-      font-weight: 700;
-      font-size: 0.9rem;
-      color: #07070e;
-      cursor: pointer;
-      transition: var(--exp-transition);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      white-space: nowrap;
-      box-shadow: 0 6px 24px rgba(0,245,212,0.2);
-    }
-    .explorer-search-premium .search-btn:hover {
-      transform: scale(1.03);
-      box-shadow: 0 10px 40px rgba(0,245,212,0.35);
-    }
-    .explorer-search-premium .search-btn:active { transform: scale(0.96); }
-    .explorer-filters {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      margin-bottom: 30px;
-      padding-bottom: 24px;
-      border-bottom: 1px solid rgba(255,255,255,0.03);
-    }
-    .filter-chip-pro {
-      padding: 10px 24px;
-      border-radius: 60px;
-      background: rgba(255,255,255,0.02);
-      border: 1px solid rgba(255,255,255,0.04);
-      color: var(--exp-text2);
-      font-size: 0.78rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: var(--exp-transition);
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      backdrop-filter: blur(6px);
-      letter-spacing: 0.2px;
-    }
-    .filter-chip-pro i { font-size: 0.8rem; opacity: 0.7; }
-    .filter-chip-pro:hover {
-      background: rgba(255,255,255,0.05);
-      border-color: rgba(255,255,255,0.12);
-      color: var(--exp-text);
-      transform: translateY(-3px);
-    }
-    .filter-chip-pro.active {
-      background: rgba(0, 245, 212, 0.1);
-      border-color: var(--exp-primary);
-      color: var(--exp-primary);
-      box-shadow: 0 6px 24px rgba(0,245,212,0.04);
-    }
-    .new-releases-hero {
-      margin-bottom: 32px;
-      padding: 32px 28px;
-      background: rgba(255,255,255,0.02);
-      border-radius: var(--exp-radius);
-      border: 1px solid rgba(255,255,255,0.03);
-      backdrop-filter: blur(8px);
-    }
-    .new-releases-hero h2 {
-      font-size: 2rem;
-      font-weight: 700;
-      background: linear-gradient(135deg, #fff, var(--exp-primary));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-    .new-releases-hero h2 i {
-      -webkit-text-fill-color: initial;
-      color: var(--exp-primary);
-      font-size: 2rem;
-      filter: drop-shadow(0 0 20px rgba(0,245,212,0.2));
-    }
-    .new-releases-hero p {
-      color: var(--exp-text2);
-      margin-top: 8px;
-      font-size: 1rem;
-    }
-    .explorer-meta-bar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 18px;
-      margin-bottom: 28px;
-    }
-    .explorer-meta-bar .result-stats {
-      font-size: 0.9rem;
-      color: var(--exp-text2);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .explorer-meta-bar .result-stats strong {
-      color: var(--exp-text);
-      font-weight: 700;
-    }
-    .explorer-meta-bar .view-toggles {
-      display: flex;
-      gap: 6px;
-      background: rgba(255,255,255,0.02);
-      padding: 5px;
-      border-radius: 60px;
-      border: 1px solid rgba(255,255,255,0.04);
-    }
-    .explorer-meta-bar .view-toggles button {
-      background: transparent;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 40px;
-      color: var(--exp-text3);
-      font-size: 0.85rem;
-      cursor: pointer;
-      transition: var(--exp-transition);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .explorer-meta-bar .view-toggles button.active {
-      background: rgba(0,245,212,0.08);
-      color: var(--exp-primary);
-    }
-    .explorer-meta-bar .view-toggles button:hover {
-      color: var(--exp-text);
-    }
-    .explorer-results-grid {
+    .meta-bar strong { color: var(--text-main); font-weight: 700; margin: 0 4px; }
+
+    .results-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
       gap: 28px;
-      transition: grid-template-columns 0.3s ease;
+      width: 100%;
     }
-    .explorer-results-grid.list-mode {
-      grid-template-columns: 1fr;
-      gap: 14px;
-    }
-    .result-card-pro {
-      background: var(--exp-card);
-      backdrop-filter: blur(16px);
-      border: 1px solid var(--exp-border);
-      border-radius: var(--exp-radius);
+
+    .track-card {
+      background: linear-gradient(160deg, rgba(30, 30, 40, 0.5) 0%, rgba(15, 15, 20, 0.7) 100%);
+      border: 1px solid var(--glass-border);
+      border-top: 1px solid var(--glass-border-highlight);
+      border-left: 1px solid var(--glass-border-highlight);
+      border-radius: var(--radius-lg);
       overflow: hidden;
-      transition: var(--exp-transition);
-      cursor: pointer;
-      position: relative;
+      backdrop-filter: var(--glass-blur);
+      transition: var(--transition-bounce);
       display: flex;
       flex-direction: column;
-      animation: cardPop 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
-      box-shadow: 0 10px 30px -10px rgba(0,0,0,0.4);
+      position: relative;
+      box-shadow: var(--glass-shadow);
     }
-    .result-card-pro:nth-child(1) { animation-delay: 0.02s; }
-    .result-card-pro:nth-child(2) { animation-delay: 0.04s; }
-    .result-card-pro:nth-child(3) { animation-delay: 0.06s; }
-    .result-card-pro:nth-child(4) { animation-delay: 0.08s; }
-    .result-card-pro:nth-child(5) { animation-delay: 0.10s; }
-    .result-card-pro:nth-child(6) { animation-delay: 0.12s; }
-    .result-card-pro:nth-child(7) { animation-delay: 0.14s; }
-    .result-card-pro:nth-child(8) { animation-delay: 0.16s; }
-    @keyframes cardPop {
-      from { opacity: 0; transform: translateY(30px) scale(0.94); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
+    .track-card:hover {
+      transform: translateY(-12px) scale(1.02);
+      border-color: rgba(255,255,255,0.2);
+      background: linear-gradient(160deg, rgba(40, 40, 55, 0.6) 0%, rgba(20, 20, 30, 0.8) 100%);
+      box-shadow: 0 25px 50px rgba(0,0,0,0.7), 0 0 30px rgba(255,255,255,0.03) inset;
     }
-    .result-card-pro:hover {
-      transform: translateY(-12px) scale(1.01);
-      border-color: rgba(0,245,212,0.2);
-      box-shadow: 0 30px 60px -16px rgba(0,0,0,0.7);
-    }
-    .result-card-pro .card-image {
+
+    .card-img-wrapper {
       position: relative;
       aspect-ratio: 1;
-      background: #0a0a14;
+      background: #0a0a0f;
+      overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
-      overflow: hidden;
     }
-    .result-card-pro .card-image img {
-      width: 100%;
-      height: 100%;
+    .card-img-wrapper::after {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 40%);
+      pointer-events: none;
+    }
+    .card-img-wrapper img {
+      width: 100%; height: 100%;
       object-fit: cover;
       transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    .result-card-pro:hover .card-image img {
-      transform: scale(1.08);
-    }
-    .result-card-pro .card-image .fallback-icon {
-      font-size: 3.2rem;
-      color: var(--exp-primary);
-      opacity: 0.2;
-    }
-    .result-card-pro .card-play-overlay {
+    .track-card:hover .card-img-wrapper img { transform: scale(1.08); }
+    .fallback-icon { font-size: 5rem; color: rgba(255,255,255,0.05); }
+
+    .card-overlay {
       position: absolute;
       inset: 0;
-      background: rgba(0,0,0,0.5);
-      backdrop-filter: blur(6px);
+      background: rgba(0,0,0,0.3);
+      backdrop-filter: blur(3px);
       display: flex;
       align-items: center;
       justify-content: center;
       opacity: 0;
-      transition: opacity 0.35s ease;
+      transition: 0.4s ease;
+      z-index: 2;
     }
-    .result-card-pro:hover .card-play-overlay {
-      opacity: 1;
-    }
-    .result-card-pro .card-play-btn {
-      width: 68px;
-      height: 68px;
-      background: linear-gradient(135deg, var(--exp-primary), #00c9a7);
+    .track-card:hover .card-overlay { opacity: 1; }
+    
+    .btn-play-circle {
+      width: 72px; height: 72px;
       border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #07070e;
-      font-size: 1.6rem;
-      transform: scale(0.7);
-      transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s;
-      box-shadow: 0 8px 30px rgba(0,245,212,0.15);
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(15px);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.8rem;
+      transform: scale(0.6) translateY(30px);
+      transition: var(--transition-bounce);
+      cursor: pointer;
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
+      padding-left: 6px;
     }
-    .result-card-pro:hover .card-play-btn {
-      transform: scale(1);
-      box-shadow: 0 12px 44px rgba(0,245,212,0.3);
+    .track-card:hover .btn-play-circle { transform: scale(1) translateY(0); }
+    .btn-play-circle:hover { 
+      background: var(--primary); 
+      color: #000;
+      border-color: var(--primary);
+      box-shadow: 0 10px 40px var(--primary-glow);
+      transform: scale(1.1) translateY(0) !important; 
     }
-    .result-card-pro .card-info {
-      padding: 18px 20px 20px;
+
+    .card-content { 
+      padding: 24px; 
+      flex: 1; 
+      display: flex; 
+      flex-direction: column; 
+      gap: 10px; 
+      text-align: right; 
+      position: relative;
+      z-index: 2;
+    }
+    .card-title { 
+      font-size: 1.25rem; 
+      font-weight: 800; 
+      color: var(--text-main); 
+      white-space: nowrap; 
+      overflow: hidden; 
+      text-overflow: ellipsis;
+      letter-spacing: -0.5px;
+    }
+    .card-subtitle { 
+      font-size: 0.95rem; 
+      color: var(--text-muted); 
+      white-space: nowrap; 
+      overflow: hidden; 
+      text-overflow: ellipsis; 
+      font-weight: 500;
+    }
+    
+    .card-badges { 
+      display: flex; 
+      gap: 8px; 
+      margin-top: auto; 
+      padding-top: 16px; 
+      flex-wrap: wrap; 
+    }
+    .badge {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.05);
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .card-actions {
+      display: flex; gap: 12px; margin-top: 20px; border-top: 1px solid var(--glass-border); padding-top: 20px;
+    }
+    .action-btn {
+      flex: 1;
+      padding: 12px;
+      border-radius: var(--radius-sm);
+      border: none;
+      font-size: 0.9rem;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: var(--transition-bounce);
+      display: inline-flex; justify-content: center; align-items: center; gap: 8px;
+    }
+    
+    .btn-like { 
+      background: rgba(255, 255, 255, 0.05); 
+      color: var(--text-main); 
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .btn-like:hover { background: rgba(255, 42, 95, 0.15); border-color: rgba(255, 42, 95, 0.3); color: var(--accent); transform: translateY(-2px); }
+    .btn-like.liked { 
+      background: linear-gradient(135deg, #ff2a5f, #ff6b4a); 
+      color: #fff; 
+      border: none;
+      box-shadow: 0 4px 15px var(--accent-glow);
+    }
+    .btn-like.liked:hover { transform: translateY(-2px); box-shadow: 0 6px 20px var(--accent-glow); }
+    
+    .btn-import { 
+      background: linear-gradient(135deg, rgba(0, 240, 255, 0.1), rgba(157, 0, 255, 0.1));
+      color: var(--primary);
+      border: 1px solid rgba(0, 240, 255, 0.3);
+    }
+    .btn-import:hover:not(:disabled) { 
+      background: linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(157, 0, 255, 0.2));
+      border-color: rgba(0, 240, 255, 0.5);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 15px var(--primary-glow);
+    }
+    .btn-import:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
+
+    /* =========================================
+       7. SKELETON LOADERS & EMPTY STATES
+       ========================================= */
+    .skeleton-grid { display: none; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 28px; width: 100%; }
+    .skeleton-card {
+      background: rgba(20,20,30,0.5); border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--glass-border);
+    }
+    .shimmer {
+      background: rgba(255,255,255,0.03);
+      background-image: linear-gradient(90deg, rgba(255,255,255,0) 0, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0) 100%);
+      background-size: 200% 100%;
+      animation: shimmer 2s infinite linear;
+    }
+    @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+    .sk-img { height: 260px; width: 100%; background: rgba(0,0,0,0.2); }
+    .sk-body { padding: 24px; }
+    .sk-title { height: 20px; width: 75%; border-radius: 6px; margin-bottom: 14px; }
+    .sk-sub { height: 14px; width: 50%; border-radius: 6px; margin-bottom: 30px; }
+    .sk-btn { height: 44px; width: 100%; border-radius: var(--radius-sm); }
+
+    .empty-state {
+      text-align: center; 
+      padding: 100px 20px; 
+      color: var(--text-muted); 
+      grid-column: 1/-1;
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      flex: 1;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
     }
-    .result-card-pro .card-info .title {
-      font-size: 0.95rem;
-      font-weight: 700;
-      white-space: nowrap;
+    .empty-state i { 
+      font-size: 5rem; 
+      margin-bottom: 30px; 
+      color: var(--text-dim);
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.05);
+      width: 140px; height: 140px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 50%;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5), inset 0 0 20px rgba(0,0,0,0.5);
+    }
+    .empty-state.liked i { color: var(--accent); background: rgba(255, 42, 95, 0.05); border-color: rgba(255, 42, 95, 0.1); box-shadow: 0 10px 40px var(--accent-glow); }
+    .empty-state.search i { color: var(--primary); background: rgba(0, 240, 255, 0.05); border-color: rgba(0, 240, 255, 0.1); box-shadow: 0 10px 40px var(--primary-glow); }
+    
+    .empty-state h3 { font-size: 2rem; color: var(--text-main); margin-bottom: 12px; font-weight: 800; letter-spacing: -0.5px; }
+    .empty-state p { font-size: 1.15rem; max-width: 450px; line-height: 1.6; color: var(--text-muted); }
+
+    /* =========================================
+       8. MUSICDEL MODAL (DASHBOARD STYLE)
+       ========================================= */
+    .musicdel-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 5, 10, 0.7);
+      backdrop-filter: blur(25px);
+      z-index: 10000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 30px;
+    }
+    .musicdel-modal-overlay.active {
+      display: flex;
+      animation: modalFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: scale(0.95) translateY(20px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .musicdel-modal {
+      background: linear-gradient(180deg, #161622 0%, #0a0a0f 100%);
+      border: 1px solid rgba(255, 107, 74, 0.2);
+      border-top: 1px solid rgba(255, 107, 74, 0.4);
+      border-radius: var(--radius-xl);
+      max-width: 1400px;
+      width: 100%;
+      height: 85vh;
       overflow: hidden;
-      text-overflow: ellipsis;
-      color: var(--exp-text);
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 40px 100px rgba(0,0,0,0.9), 0 0 50px rgba(255, 107, 74, 0.1);
     }
-    .result-card-pro .card-info .subtitle {
-      font-size: 0.8rem;
-      color: var(--exp-text2);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .result-card-pro .card-info .card-meta-row {
+
+    .musicdel-modal-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px solid rgba(255,255,255,0.03);
-    }
-    .result-card-pro .card-info .type-badge {
-      font-size: 0.6rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      padding: 4px 14px;
-      border-radius: 40px;
-      background: rgba(0,245,212,0.06);
-      color: var(--exp-primary);
-      border: 1px solid rgba(0,245,212,0.06);
-      letter-spacing: 0.5px;
-    }
-    .result-card-pro .card-info .duration-badge {
-      font-size: 0.7rem;
-      color: var(--exp-text3);
-      font-family: 'Inter', monospace;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .result-card-pro .card-actions-row {
-      display: flex;
-      gap: 10px;
-      margin-top: 12px;
-      padding-top: 12px;
-      border-top: 1px solid rgba(255,255,255,0.03);
-      align-items: center;
-    }
-    .card-action-btn {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.04);
-      border-radius: 30px;
-      padding: 6px 14px;
-      font-size: 0.7rem;
-      font-weight: 600;
-      color: var(--exp-text2);
-      cursor: pointer;
-      transition: all 0.25s ease;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      backdrop-filter: blur(4px);
-    }
-    .card-action-btn:hover {
-      background: rgba(255,255,255,0.06);
-      border-color: rgba(255,255,255,0.1);
-      color: var(--exp-text);
-    }
-    .card-action-btn.liked {
-      background: rgba(244, 63, 94, 0.15);
-      border-color: rgba(244, 63, 94, 0.3);
-      color: var(--exp-accent);
-    }
-    .card-action-btn.liked i { color: var(--exp-accent); }
-    .card-action-btn.import-btn {
-      background: rgba(0,245,212,0.05);
-      border-color: rgba(0,245,212,0.1);
-      color: var(--exp-primary);
-    }
-    .card-action-btn.import-btn:hover {
-      background: rgba(0,245,212,0.12);
-      border-color: var(--exp-primary);
-      box-shadow: 0 0 12px rgba(0,245,212,0.1);
-    }
-    .explorer-results-grid.list-mode .result-card-pro {
-      flex-direction: row;
-      align-items: center;
-      padding: 8px;
-      gap: 18px;
-    }
-    .explorer-results-grid.list-mode .result-card-pro .card-image {
-      width: 90px;
-      height: 90px;
-      aspect-ratio: 1;
-      border-radius: 16px;
+      padding: 24px 32px;
+      background: rgba(0,0,0,0.2);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
       flex-shrink: 0;
     }
-    .explorer-results-grid.list-mode .result-card-pro .card-info {
-      padding: 0 16px 0 0;
-      flex: 1;
-      flex-direction: row;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 8px 20px;
-    }
-    .explorer-results-grid.list-mode .result-card-pro .card-info .title {
-      flex: 1;
-      min-width: 140px;
-    }
-    .explorer-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 80px 20px;
-      text-align: center;
-      color: var(--exp-text2);
-      animation: heroIn 0.5s ease both;
-      grid-column: 1 / -1;
-    }
-    .explorer-state i {
-      font-size: 4.5rem;
-      color: var(--exp-primary);
-      opacity: 0.2;
-      margin-bottom: 28px;
-    }
-    .explorer-state h3 {
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: var(--exp-text);
-      margin-bottom: 10px;
-    }
-    .explorer-state p {
-      max-width: 420px;
-      line-height: 1.7;
-    }
-    .explorer-state .retry-btn {
-      margin-top: 24px;
-      padding: 12px 32px;
-      border-radius: 60px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.06);
-      color: var(--exp-text);
-      font-weight: 600;
-      cursor: pointer;
-      transition: var(--exp-transition);
-    }
-    .explorer-state .retry-btn:hover {
-      background: rgba(0,245,212,0.06);
-      border-color: var(--exp-primary);
-      color: var(--exp-primary);
-    }
-    .loading-bar-container {
-      width: 100%;
-      height: 4px;
-      background: rgba(255,255,255,0.05);
-      border-radius: 10px;
-      overflow: hidden;
-      margin: 16px 0 8px;
-      grid-column: 1 / -1;
-      position: relative;
-    }
-    .loading-bar-fill {
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, var(--exp-primary), var(--exp-secondary), var(--exp-primary));
-      background-size: 200% 100%;
-      border-radius: 10px;
-      transition: width 0.3s ease-out;
-      animation: shimmer 2s linear infinite;
-      box-shadow: 0 0 20px rgba(0,245,212,0.4);
-    }
-    .loading-bar-text {
-      font-size: 0.75rem;
-      color: var(--exp-text2);
-      text-align: center;
-      margin-top: 6px;
-      grid-column: 1 / -1;
-      font-weight: 500;
-      letter-spacing: 0.3px;
-    }
-    @keyframes shimmer {
-      0% { background-position: -200% 0; }
-      100% { background-position: 200% 0; }
-    }
-    .explorer-toast {
-      position: fixed;
-      bottom: 140px;
-      right: 32px;
-      background: rgba(12, 12, 24, 0.92);
-      backdrop-filter: blur(24px);
-      border: 1px solid rgba(255,255,255,0.05);
-      border-left: 5px solid var(--exp-primary);
-      padding: 16px 28px;
-      border-radius: 20px;
-      color: var(--exp-text);
-      z-index: 9999;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
-      animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-      max-width: 440px;
-      font-size: 0.95rem;
+    .musicdel-modal-header h3 {
+      font-size: 1.4rem;
+      font-weight: 800;
       display: flex;
       align-items: center;
       gap: 14px;
+      color: #fff;
     }
-    .explorer-toast i {
-      font-size: 1.4rem;
-      color: var(--exp-primary);
+    .musicdel-modal-header h3 i {
+      color: var(--musicdel);
+      filter: drop-shadow(0 0 10px var(--musicdel-glow));
+      font-size: 1.6rem;
     }
-    @keyframes slideInRight {
-      from { transform: translateX(70px); opacity: 0; }
-      to { transform: translateX(0); opacity: 1; }
+    .musicdel-modal-header .modal-subtitle {
+      font-size: 0.95rem;
+      color: var(--text-dim);
+      font-weight: 500;
+      margin-right: 16px;
+      border-right: 1px solid rgba(255,255,255,0.1);
+      padding-right: 16px;
     }
-    .tab-content { display: block; }
-    .tab-content.hidden { display: none !important; }
-    @media (max-width: 1024px) {
-      .new-releases-hero h2 { font-size: 1.6rem; }
+    .musicdel-modal-close {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: var(--text-muted);
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      font-size: 1.2rem;
+      cursor: pointer;
+      transition: var(--transition-bounce);
+      display: flex; align-items: center; justify-content: center;
     }
+    .musicdel-modal-close:hover {
+      background: rgba(255, 42, 95, 0.2);
+      border-color: rgba(255, 42, 95, 0.5);
+      color: var(--accent);
+      transform: rotate(90deg);
+    }
+
+    .musicdel-modal-body {
+      padding: 32px;
+      overflow-y: hidden;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 3-Column Grid */
+    .musicdel-columns {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      height: 100%;
+    }
+
+    .musicdel-column {
+      background: rgba(20,20,30,0.4);
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(255,255,255,0.03);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: inset 0 0 30px rgba(0,0,0,0.5);
+    }
+    .musicdel-column-header {
+      padding: 16px 20px;
+      background: rgba(0,0,0,0.3);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    .musicdel-column-header div { display: flex; align-items: center; gap: 10px; }
+    .musicdel-column-header .query-badge {
+      background: linear-gradient(90deg, rgba(255, 107, 74, 0.15), rgba(255, 42, 95, 0.15));
+      color: var(--musicdel);
+      border: 1px solid rgba(255, 107, 74, 0.3);
+      padding: 4px 12px;
+      border-radius: 100px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .musicdel-column-results {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .musicdel-column-results .loading-spinner-small {
+      text-align: center;
+      padding: 50px 20px;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .musicdel-column-results .loading-spinner-small i {
+      font-size: 2.5rem;
+      color: var(--musicdel);
+      animation: spinSlow 1.5s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+      margin-bottom: 16px;
+      filter: drop-shadow(0 0 10px var(--musicdel-glow));
+    }
+    @keyframes spinSlow { 100% { transform: rotate(360deg); } }
+
+    .musicdel-column-results .empty-column {
+      text-align: center;
+      padding: 50px 20px;
+      color: var(--text-dim);
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    /* Mini result card */
+    .md-result-mini {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 16px;
+      background: rgba(255,255,255,0.02);
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(255,255,255,0.03);
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .md-result-mini:hover {
+      background: linear-gradient(90deg, rgba(255, 107, 74, 0.08), transparent);
+      border-color: rgba(255, 107, 74, 0.3);
+      transform: translateX(-5px);
+      box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+    body.ltr .md-result-mini:hover { transform: translateX(5px); }
+    
+    .md-result-mini .mini-thumb {
+      width: 56px;
+      height: 56px;
+      border-radius: 12px;
+      overflow: hidden;
+      flex-shrink: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .md-result-mini .mini-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .md-result-mini .mini-thumb i { font-size: 1.5rem; color: var(--text-dim); }
+    
+    .md-result-mini .mini-info { flex: 1; min-width: 0; }
+    .md-result-mini .mini-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 4px;
+    }
+    .md-result-mini .mini-artist {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .md-result-mini .mini-download-btn {
+      padding: 8px 18px;
+      border-radius: 100px;
+      background: var(--musicdel);
+      background: linear-gradient(135deg, var(--musicdel), var(--accent));
+      border: none;
+      font-weight: 800;
+      font-size: 0.8rem;
+      color: #fff;
+      cursor: pointer;
+      transition: var(--transition-bounce);
+      flex-shrink: 0;
+      box-shadow: 0 4px 15px rgba(255, 42, 95, 0.3);
+    }
+    .md-result-mini .mini-download-btn:hover {
+      transform: scale(1.08);
+      box-shadow: 0 6px 20px rgba(255, 42, 95, 0.5);
+    }
+    .md-result-mini .mini-download-btn:disabled {
+      background: rgba(255,255,255,0.1);
+      color: var(--text-muted);
+      box-shadow: none;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+    .md-result-mini .mini-download-btn.done {
+      background: #10b981;
+      box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+    }
+
+    /* =========================================
+       9. TOAST NOTIFICATIONS
+       ========================================= */
+    .toast-container {
+      position: fixed; bottom: 40px; right: 40px; z-index: 9999; display: flex; flex-direction: column; gap: 16px;
+    }
+    .toast {
+      background: rgba(15, 15, 20, 0.8); 
+      backdrop-filter: blur(20px); 
+      border: 1px solid var(--glass-border);
+      border-left: 4px solid var(--primary);
+      padding: 16px 24px; border-radius: var(--radius-md); color: #fff;
+      display: flex; align-items: center; gap: 16px; font-weight: 600; font-size: 1rem;
+      box-shadow: 0 15px 40px rgba(0,0,0,0.6);
+      animation: slideInRight 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .toast i { font-size: 1.5rem; }
+    .toast.success { border-left-color: #10b981; }
+    .toast.success i { color: #10b981; }
+    .toast.error { border-left-color: #ff2a5f; }
+    .toast.error i { color: #ff2a5f; }
+    .toast.info { border-left-color: var(--primary); }
+    .toast.info i { color: var(--primary); }
+    @keyframes slideInRight { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+    /* =========================================
+       10. RESPONSIVE
+       ========================================= */
+    @media (max-width: 1200px) {
+      .musicdel-columns { grid-template-columns: repeat(2, 1fr); }
+      #md-col-2 { grid-column: 1 / -1; }
+    }
+
     @media (max-width: 768px) {
-      .explorer-pro-container { padding: 12px 16px 100px; }
-      .explorer-tabs { width: 100%; justify-content: center; }
-      .explorer-tab { padding: 10px 20px; font-size: 0.8rem; }
-      .explorer-search-premium { flex-wrap: wrap; padding: 8px 14px; border-radius: 40px; }
-      .explorer-search-premium input { padding: 12px 6px; font-size: 0.9rem; }
-      .explorer-search-premium .search-btn { padding: 12px 22px; font-size: 0.8rem; }
-      .explorer-search-premium .search-shortcut { display: none; }
-      .explorer-results-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 18px; }
-      .filter-chip-pro { padding: 8px 18px; font-size: 0.7rem; }
-      .explorer-top-bar .back-btn span { display: none; }
-      .new-releases-hero { padding: 24px 18px; }
-      .new-releases-hero h2 { font-size: 1.3rem; }
+      .app-container { padding: 24px 16px 100px; }
+      .section-hero h2 { font-size: 2.2rem; flex-direction: column; gap: 8px; }
+      .search-box { flex-direction: column; border-radius: var(--radius-lg); padding: 12px; gap: 12px; }
+      .search-input-wrap { padding: 8px 12px; }
+      .btn-search { width: 100%; padding: 16px; border-radius: var(--radius-md); }
+      
+      .tabs-wrapper { justify-content: flex-start; overflow-x: auto; padding-bottom: 10px; margin-bottom: 32px; }
+      .tabs-container { border-radius: var(--radius-lg); padding: 6px; flex-wrap: nowrap; }
+      .tab-btn { padding: 10px 20px; font-size: 0.9rem; white-space: nowrap; }
+      
+      .results-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
+      .card-content { padding: 16px; }
+      .sk-img { height: 180px; }
+      
+      .toast-container { bottom: 20px; right: 20px; left: 20px; }
+
+      .musicdel-modal { max-height: 90vh; border-radius: var(--radius-lg); }
+      .musicdel-modal-header { padding: 16px 20px; flex-direction: column; align-items: flex-start; gap: 12px; }
+      .musicdel-modal-header .modal-subtitle { border: none; padding: 0; }
+      .musicdel-modal-close { position: absolute; left: 20px; top: 20px; }
+      
+      .musicdel-modal-body { padding: 16px; }
+      .musicdel-columns { grid-template-columns: 1fr; gap: 16px; }
+      #md-col-2 { grid-column: auto; }
+      
+      .md-result-mini { padding: 10px; gap: 12px; }
+      .md-result-mini .mini-thumb { width: 48px; height: 48px; }
     }
+
     @media (max-width: 480px) {
-      .explorer-results-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
-      .result-card-pro .card-info .title { font-size: 0.8rem; }
-      .result-card-pro .card-info .subtitle { font-size: 0.7rem; }
-    }
-    .card-action-btn.import-btn:disabled,
-    .card-action-btn.import-btn[disabled] {
-    opacity: 0.4;
-    cursor: not-allowed;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    color: var(--exp-text3);
-    filter: grayscale(0.8);
-    transform: none !important;
-    box-shadow: none !important;
-    pointer-events: none;
-    user-select: none;
+      .results-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+      .card-title { font-size: 1.05rem; }
+      .action-btn { font-size: 0.8rem; padding: 10px 8px; }
+      .empty-state i { width: 100px; height: 100px; font-size: 3.5rem; }
+      .empty-state h3 { font-size: 1.5rem; }
+      .brand-attribution { display: none; }
     }
   </style>
 </head>
 <body>
+  <!-- Ambient Floating Orbs & Noise -->
   <div class="ambient-orbs">
     <span></span><span></span><span></span>
   </div>
 
-  <div class="explorer-pro-container" id="explorerProApp">
-    <div class="explorer-top-bar">
-      <button class="back-btn" id="explorerBackBtn" aria-label="Back to Player">
-        <i class="fa-solid fa-arrow-left"></i>
-        <span>Back to Player</span>
-      </button>
-      <div class="brand-badge">
+  <div class="app-container">
+    <!-- Header -->
+    <header class="top-bar">
+      <div class="brand-logo">
         <i class="fa-solid fa-compass"></i>
-        <span>Music Explorer</span>
-        <span class="live-dot"></span>
+        <span>Korai Explore</span>
+        <span class="brand-attribution">Downloads sourced from MusicDel websites.</span>
       </div>
-    </div>
+      <button class="btn-back" onclick="history.back()">
+        <i class="fa-solid fa-arrow-left"></i> Back to Player
+      </button>
+    </header>
 
-    <div class="explorer-tabs" id="explorerTabs">
-      <button class="explorer-tab" data-tab="search" id="tabSearch">
-        <i class="fa-solid fa-magnifying-glass"></i> Search
-      </button>
-      <button class="explorer-tab active" data-tab="newreleases" id="tabNewReleases">
-        <i class="fa-solid fa-fire"></i> New Releases
-      </button>
-      <!-- NEW TAB: Liked -->
-      <button class="explorer-tab" data-tab="liked" id="tabLiked">
-        <i class="fa-solid fa-heart" style="color: var(--exp-accent);"></i> Liked
-      </button>
-    </div>
-
-    <div class="tab-content hidden" id="searchTabContent">
-      <div class="explorer-search-premium" id="explorerSearchBar">
-        <i class="fa-solid fa-magnifying-glass search-icon"></i>
-        <input type="text" id="explorerSearchInput" placeholder="Search for songs, artists, albums..." autocomplete="off" spellcheck="false">
-        <span class="search-shortcut">⌘K</span>
-        <button class="search-btn" id="explorerSearchBtn">
-          <i class="fa-solid fa-arrow-right"></i>
-          Search
+    <!-- Navigation Tabs -->
+    <nav class="tabs-wrapper">
+      <div class="tabs-container">
+        <button class="tab-btn active" data-tab="search">
+          <i class="fa-solid fa-magnifying-glass"></i> Explore
+        </button>
+        <button class="tab-btn" data-tab="newreleases">
+          <i class="fa-solid fa-bolt"></i> Discover
+        </button>
+        <button class="tab-btn" data-tab="liked">
+          <i class="fa-solid fa-heart"></i> Favorites
         </button>
       </div>
+    </nav>
 
-      <div class="explorer-filters" id="explorerFilterContainer"></div>
-
-      <div class="explorer-meta-bar" id="explorerMetaBar">
-        <div class="result-stats" id="explorerResultStats"><span>Ready to explore</span></div>
-        <div class="view-toggles">
-          <button class="active" data-view="grid" aria-label="Grid view">
-            <i class="fa-solid fa-grid-2"></i> Grid
-          </button>
-          <button data-view="list" aria-label="List view">
-            <i class="fa-solid fa-list"></i> List
-          </button>
+    <!-- Tab 1: Global Search -->
+    <main class="tab-content active" id="tab-search">
+      <div class="section-hero">
+        <h2><i class="fa-solid fa-sparkles" style="color:var(--primary); font-size: 3rem; filter:drop-shadow(0 0 15px var(--primary-glow))"></i> Search the Universe</h2>
+        <p>Find your favorite tracks, artists, albums, and curated playlists in absolute quality.</p>
+      </div>
+      <div class="search-box">
+        <div class="search-input-wrap">
+          <i class="fa-solid fa-search"></i>
+          <input type="text" id="searchInput" placeholder="Type a song, artist or album name..." autocomplete="off">
         </div>
+        <button class="btn-search" id="searchBtn">Search</button>
       </div>
-
-      <div class="explorer-results-grid" id="explorerResultsGrid"></div>
-      <div id="searchLoadingWrapper" style="display: none; grid-column: 1 / -1;">
-        <div class="loading-bar-container">
-          <div class="loading-bar-fill" id="searchLoadingFill"></div>
-        </div>
-        <div class="loading-bar-text" id="searchLoadingText">Connecting...</div>
+      <div class="filters-container" id="filtersContainer">
+        <!-- Dynamically injected via JS -->
       </div>
-    </div>
+      
+      <div class="meta-bar" id="searchMeta"><span>Ready to explore new sounds.</span></div>
+      <div class="results-grid" id="searchGrid"></div>
+      <div class="skeleton-grid" id="searchSkeleton"></div>
+    </main>
 
-    <div class="tab-content" id="newReleasesTabContent">
-      <div class="new-releases-hero">
-        <h2><i class="fa-solid fa-bolt"></i> Fresh &amp; New</h2>
-        <p>Discover the latest tracks, albums and artists — updated daily.</p>
+    <!-- Tab 2: New Releases -->
+    <main class="tab-content" id="tab-newreleases">
+      <div class="section-hero">
+        <h2><i class="fa-solid fa-bolt" style="color:var(--primary); font-size: 3rem;"></i> Fresh Drops</h2>
+        <p>The hottest new releases and trending albums updated daily.</p>
       </div>
+      <div class="meta-bar" id="nrMeta"><span>Fetching latest hits...</span></div>
+      <div class="results-grid" id="nrGrid"></div>
+      <div class="skeleton-grid" id="nrSkeleton"></div>
+    </main>
 
-      <div class="explorer-meta-bar" id="newReleasesMetaBar">
-        <div class="result-stats" id="newReleasesStats"><span>Loading fresh picks...</span></div>
-        <div class="view-toggles">
-          <button class="active" data-view="grid" aria-label="Grid view">
-            <i class="fa-solid fa-grid-2"></i> Grid
-          </button>
-          <button data-view="list" aria-label="List view">
-            <i class="fa-solid fa-list"></i> List
-          </button>
-        </div>
+    <!-- Tab 3: Favorites -->
+    <main class="tab-content" id="tab-liked">
+      <div class="section-hero">
+        <h2><i class="fa-solid fa-heart" style="color:var(--accent); font-size: 3rem; filter:drop-shadow(0 0 15px var(--accent-glow))"></i> Your Collection</h2>
+        <p>All the tracks you've loved and saved in one beautiful place.</p>
       </div>
+      <div class="meta-bar" id="likedMeta"><span>0 saved tracks</span></div>
+      <div class="results-grid" id="likedGrid"></div>
+    </main>
 
-      <div class="explorer-results-grid" id="newReleasesGrid"></div>
-      <div id="nrLoadingWrapper" style="display: none; grid-column: 1 / -1;">
-        <div class="loading-bar-container">
-          <div class="loading-bar-fill" id="nrLoadingFill"></div>
-        </div>
-        <div class="loading-bar-text" id="nrLoadingText">Connecting...</div>
+  </div>
+
+  <!-- MUSICDEL MODAL (3-COLUMN DASHBOARD) -->
+  <div class="musicdel-modal-overlay" id="musicdelModal">
+    <div class="musicdel-modal">
+      <div class="musicdel-modal-header">
+        <h3>
+          <i class="fa-solid fa-music"></i>
+          MusicDel Engine
+          <span class="modal-subtitle">Advanced Multi-Strategy Search</span>
+        </h3>
+        <button class="musicdel-modal-close" id="musicdelModalClose">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
       </div>
-    </div>
-
-    <!-- NEW TAB CONTENT: Liked -->
-    <div class="tab-content hidden" id="likedTabContent">
-      <div class="new-releases-hero" style="border-color: rgba(244,63,94,0.2);">
-        <h2><i class="fa-solid fa-heart" style="color: var(--exp-accent);"></i> Your Liked Tracks</h2>
-        <p>All the tracks you've liked. They are stored locally and synced with KORAI.</p>
+      <div class="musicdel-modal-body" id="musicdelModalBody">
+        <!-- Columns will be rendered by JS -->
       </div>
-
-      <div class="explorer-meta-bar" id="likedMetaBar">
-        <div class="result-stats" id="likedStats"><span>0 liked tracks</span></div>
-        <div class="view-toggles">
-          <button class="active" data-view="grid" aria-label="Grid view">
-            <i class="fa-solid fa-grid-2"></i> Grid
-          </button>
-          <button data-view="list" aria-label="List view">
-            <i class="fa-solid fa-list"></i> List
-          </button>
-        </div>
-      </div>
-
-      <div class="explorer-results-grid" id="likedGrid"></div>
-      <!-- No loading wrapper needed for liked tab -->
     </div>
   </div>
+
+  <div class="toast-container" id="toastContainer"></div>
 
   <script>
     (function() {
       'use strict';
 
-      // ============================================================
-      // CONFIGURATION
-      // ============================================================
-      
+      // ==========================================
+      // Configuration & State Variables
+      // ==========================================
       const CLOUD_API = 'http://music.korai.ir';
       const LOCAL_API = 'http://127.0.0.1:3000';
+      const LIKED_DATA_KEY = 'korai_liked_items';
+      const LIKED_IDS_KEY = 'korai_explorer_likes';
+      const ITEMS_PER_PAGE = 24;
 
       const FILTERS = [
-        { id: 'songs', label: '🎵 Songs', icon: 'fa-music' },
-        { id: 'albums', label: '💿 Albums', icon: 'fa-compact-disc' },
-        { id: 'artists', label: '🎤 Artists', icon: 'fa-microphone' },
-        { id: 'playlists', label: '📋 Playlists', icon: 'fa-list' },
+        { id: 'songs', label: 'Songs', icon: 'fa-music' },
+        { id: 'albums', label: 'Albums', icon: 'fa-compact-disc' },
+        { id: 'artists', label: 'Artists', icon: 'fa-microphone' },
+        { id: 'playlists', label: 'Playlists', icon: 'fa-list' },
       ];
-      const DEFAULT_FILTER = 'songs';
-      const ITEMS_PER_PAGE = 24;
-      const REQUEST_TIMEOUT = 25000;
 
-      let currentTab = 'newreleases';
-      let currentQuery = '';
-      let currentFilter = DEFAULT_FILTER;
-      let currentView = 'grid';
-      let currentPage = 1;
-      let isLoading = false;
-      let hasMore = true;
-      let totalResults = 0;
-      let allResults = [];
-      let useMockData = false;
+      let state = {
+        activeTab: 'search',
+        filter: 'songs',
+        likedSet: new Set(JSON.parse(localStorage.getItem(LIKED_IDS_KEY) || '[]')),
+        likedItems: JSON.parse(localStorage.getItem(LIKED_DATA_KEY) || '[]'),
+        mockMode: false,
+        lastSearchQuery: ''  
+      };
 
-      let nrPage = 1;
-      let nrHasMore = true;
-      let nrIsLoading = false;
-      let nrAllResults = [];
-      let nrTotal = 0;
-      let nrUseMockData = false;
+      // Clean up invalid liked items 
+      state.likedItems = state.likedItems.filter(item => state.likedSet.has(item.id));
 
-      // liked items are stored in localStorage, but we also keep a separate array
-      // that holds the full item objects for rendering.
-      let likedItems = [];
+      // ==========================================
+      // Utility Functions
+      // ==========================================
+      const escapeHtml = (text) => String(text || '').replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m] || m));
+      const formatDuration = (sec) => sec ? `${Math.floor(sec/60)}:${Math.floor(sec%60).toString().padStart(2,'0')}` : '';
 
-      const searchInput = document.getElementById('explorerSearchInput');
-      const searchBtn = document.getElementById('explorerSearchBtn');
-      const resultsGrid = document.getElementById('explorerResultsGrid');
-      const resultStats = document.getElementById('explorerResultStats');
-      const filterContainer = document.getElementById('explorerFilterContainer');
-      const searchLoadingWrapper = document.getElementById('searchLoadingWrapper');
-      const searchLoadingFill = document.getElementById('searchLoadingFill');
-      const searchLoadingText = document.getElementById('searchLoadingText');
-      const nrGrid = document.getElementById('newReleasesGrid');
-      const nrStats = document.getElementById('newReleasesStats');
-      const nrLoadingWrapper = document.getElementById('nrLoadingWrapper');
-      const nrLoadingFill = document.getElementById('nrLoadingFill');
-      const nrLoadingText = document.getElementById('nrLoadingText');
-      const likedGrid = document.getElementById('likedGrid');
-      const likedStats = document.getElementById('likedStats');
-
-      const tabSearch = document.getElementById('tabSearch');
-      const tabNewReleases = document.getElementById('tabNewReleases');
-      const tabLiked = document.getElementById('tabLiked');
-      const searchContent = document.getElementById('searchTabContent');
-      const nrContent = document.getElementById('newReleasesTabContent');
-      const likedContent = document.getElementById('likedTabContent');
-      const backBtn = document.getElementById('explorerBackBtn');
-
-      function escapeHtml(text) {
-        if (!text) return '';
-        return String(text).replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m] || m));
-      }
-      function formatDuration(sec) {
-        if (!sec || sec < 0) return '0:00';
-        const m = Math.floor(sec / 60);
-        const s = Math.floor(sec % 60);
-        return `${m}:${s.toString().padStart(2, '0')}`;
-      }
-      function showToast(msg, type = 'info') {
-        document.querySelectorAll('.explorer-toast').forEach(el => el.remove());
+      const showToast = (msg, type = 'info') => {
+        const container = document.getElementById('toastContainer');
         const toast = document.createElement('div');
-        toast.className = 'explorer-toast';
-        const icon = type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-circle-exclamation' : 'fa-info-circle';
-        toast.innerHTML = `<i class="fa-solid ${icon}"></i><span>${escapeHtml(msg)}</span>`;
-        document.body.appendChild(toast);
+        toast.className = `toast ${type}`;
+        const icon = { success: 'fa-check-circle', error: 'fa-circle-exclamation', info: 'fa-info-circle' }[type];
+        toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${escapeHtml(msg)}</span>`;
+        container.appendChild(toast);
+        
         setTimeout(() => {
-          toast.style.opacity = '0';
-          toast.style.transform = 'translateX(70px)';
+          toast.style.animation = 'slideOutRight 0.4s forwards';
           setTimeout(() => toast.remove(), 400);
-        }, 3200);
-      }
-      function debounce(fn, delay = 350) {
-        let timer;
-        return function(...args) {
-          clearTimeout(timer);
-          timer = setTimeout(() => fn.apply(this, args), delay);
-        };
-      }
+        }, 3500);
+      };
 
-      function updateLoadingBar(fillElement, textElement, percent, statusText) {
-        if (fillElement) fillElement.style.width = Math.min(100, Math.max(0, percent)) + '%';
-        if (textElement && statusText) textElement.textContent = statusText;
-      }
-
-      // ============================================================
-      // FETCH WITH PROGRESS
-      // ============================================================
-      async function fetchWithProgress(url, fillElement, textElement, timeout = REQUEST_TIMEOUT) {
-        updateLoadingBar(fillElement, textElement, 5, 'Connecting...');
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
-        try {
-          updateLoadingBar(fillElement, textElement, 15, 'Waiting for response...');
-          const response = await fetch(url, {
-            signal: controller.signal,
-            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-            mode: 'cors',
-            credentials: 'omit'
-          });
-          clearTimeout(timeoutId);
-          updateLoadingBar(fillElement, textElement, 25, `Server responded: ${response.status}`);
-          if (!response.ok) {
-            const errorText = await response.text().catch(() => 'Unknown error');
-            console.error(`Server error ${response.status}:`, errorText);
-            throw new Error(`Server error ${response.status}. Please try again later.`);
-          }
-          const contentLength = response.headers.get('content-length');
-          const total = contentLength ? parseInt(contentLength, 10) : 0;
-          const reader = response.body.getReader();
-          const chunks = [];
-          let receivedLength = 0;
-          updateLoadingBar(fillElement, textElement, 30, 'Downloading data...');
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            chunks.push(value);
-            receivedLength += value.length;
-            if (total > 0) {
-              const percent = 30 + (receivedLength / total) * 65;
-              const kbReceived = Math.round(receivedLength / 1024);
-              const kbTotal = Math.round(total / 1024);
-              updateLoadingBar(fillElement, textElement, percent, `Downloading ${kbReceived}KB / ${kbTotal}KB`);
-            } else {
-              const kbReceived = Math.round(receivedLength / 1024);
-              const simulatedPercent = Math.min(90, 30 + (receivedLength / 50000) * 60);
-              updateLoadingBar(fillElement, textElement, simulatedPercent, `Received ${kbReceived}KB`);
-            }
-          }
-          updateLoadingBar(fillElement, textElement, 95, 'Processing data...');
-          const allChunks = new Uint8Array(receivedLength);
-          let position = 0;
-          for (const chunk of chunks) {
-            allChunks.set(chunk, position);
-            position += chunk.length;
-          }
-          const text = new TextDecoder('utf-8').decode(allChunks);
-          let data;
-          try { data = JSON.parse(text); } catch (parseErr) {
-            console.error('JSON parse error:', parseErr, 'Raw text:', text.substring(0, 200));
-            throw new Error('Invalid response format from server');
-          }
-          updateLoadingBar(fillElement, textElement, 100, 'Complete');
-          return data;
-        } catch (err) {
-          clearTimeout(timeoutId);
-          if (err.name === 'AbortError') {
-            updateLoadingBar(fillElement, textElement, 100, 'Request timed out');
-            throw new Error('Request timed out. Please check your connection.');
-          }
-          updateLoadingBar(fillElement, textElement, 100, 'Failed');
-          throw err;
+      const toggleSkeleton = (gridId, skeletonId, show) => {
+        const grid = document.getElementById(gridId);
+        const skel = document.getElementById(skeletonId);
+        if(!skel) return;
+        
+        if (show) {
+          grid.style.display = 'none';
+          skel.style.display = 'grid';
+          skel.innerHTML = Array(8).fill(`
+            <div class="skeleton-card shimmer">
+              <div class="sk-img"></div>
+              <div class="sk-body">
+                <div class="sk-title shimmer" style="background:rgba(255,255,255,0.1)"></div>
+                <div class="sk-sub shimmer" style="background:rgba(255,255,255,0.05)"></div>
+                <div class="sk-btn shimmer" style="background:rgba(255,255,255,0.05); margin-top:20px"></div>
+              </div>
+            </div>
+          `).join('');
+        } else {
+          skel.style.display = 'none';
+          grid.style.display = 'grid';
         }
-      }
+      };
 
-      // ============================================================
-      // SEARCH
-      // ============================================================
-      async function fetchMusic(query, filter = 'songs', page = 1) {
-        if (!query || query.trim() === '') return { results: [], totalCount: 0 };
-        if (useMockData) {
-          updateLoadingBar(searchLoadingFill, searchLoadingText, 50, 'Loading demo data...');
-          await new Promise(resolve => setTimeout(resolve, 400));
-          updateLoadingBar(searchLoadingFill, searchLoadingText, 100, 'Demo ready');
-          return getMockResults(query, filter, page);
-        }
-        const q = encodeURIComponent(query.trim());
-        const url = `${CLOUD_API}/?action=search&q=${q}&filter=${filter}&page=${page}&limit=${ITEMS_PER_PAGE}`;
-        try {
-          const data = await fetchWithProgress(url, searchLoadingFill, searchLoadingText);
-          let results = data.results || data.items || data.data || [];
-          let totalCount = data.totalCount || data.total || data.total_results || results.length;
-          results = results.map(item => ({
-            id: item.id || item.videoId || item.trackId || 'unknown',
-            title: item.title || item.name || 'Untitled',
-            subtitle: item.subtitle || item.artist || item.album || '',
-            thumbnail: item.thumbnail || item.cover || item.coverUrl || null,
-            type: item.type || filter,
-            duration: item.duration || 0,
-            artist: item.artist || item.subtitle || '',
-            album: item.album || '',
-            url: item.url || null,
-            serverTrackId: null
-          }));
-          return { results, totalCount };
-        } catch (err) {
-          console.error('Search API error:', err);
-          useMockData = true;
-          showToast('Server unavailable. Using demo data.', 'error');
-          return getMockResults(query, filter, page);
-        }
-      }
+      // ==========================================
+      // Like Management
+      // ==========================================
+      const saveLikes = () => {
+        localStorage.setItem(LIKED_IDS_KEY, JSON.stringify([...state.likedSet]));
+        localStorage.setItem(LIKED_DATA_KEY, JSON.stringify(state.likedItems));
+        const metaEl = document.getElementById('likedMeta');
+        if(metaEl) metaEl.innerHTML = `<span><strong>${state.likedItems.length}</strong> saved tracks</span>`;
+      };
 
-      // ============================================================
-      // NEW RELEASES
-      // ============================================================
-      async function fetchNewReleases(page = 1) {
-        if (nrUseMockData) {
-          updateLoadingBar(nrLoadingFill, nrLoadingText, 50, 'Loading demo data...');
-          await new Promise(resolve => setTimeout(resolve, 400));
-          updateLoadingBar(nrLoadingFill, nrLoadingText, 100, 'Demo ready');
-          return getMockResults('new', 'new_releases', page);
-        }
-        const url = `${CLOUD_API}/`;
-        console.log('Fetching new releases from:', url);
-        try {
-          const data = await fetchWithProgress(url, nrLoadingFill, nrLoadingText);
-          let results = data.releases || data.results || data.items || data.data || [];
-          let totalCount = data.totalCount || 0;
-          if (!results || results.length === 0) {
-            console.warn('Empty results from new_releases API, using demo data');
-            throw new Error('No results from server');
-          }
-          results = results.map(item => ({
-            id: item.playlistId || item.videoId || item.id || 'unknown',
-            title: item.title || 'Untitled',
-            subtitle: item.subtitle || item.artist || item.album || '',
-            thumbnail: item.thumbnail || null,
-            type: item.type || 'new_release',
-            duration: item.duration || 0,
-            artist: item.artist || '',
-            album: item.album || '',
-            url: item.url || null,
-            serverTrackId: null
-          }));
-          return { results, totalCount };
-        } catch (err) {
-          console.error('New releases API error:', err);
-          nrUseMockData = true;
-          showToast('New releases unavailable. Using demo data.', 'error');
-          return getMockResults('new', 'new_releases', page);
-        }
-      }
-
-      function getMockResults(query, filter = 'songs', page = 1) {
-        const mockArtists = ['The Weeknd', 'Dua Lipa', 'Drake', 'Taylor Swift', 'Ed Sheeran', 'Ariana Grande', 'Post Malone', 'Billie Eilish', 'Bruno Mars', 'Rihanna'];
-        const mockTitles = ['Blinding Lights', 'Levitating', 'God\'s Plan', 'Shake It Off', 'Shape of You', '7 rings', 'Circles', 'bad guy', 'Leave The Door Open', 'Diamonds'];
-        const mockAlbums = ['After Hours', 'Future Nostalgia', 'Scorpion', '1989', '÷', 'thank u, next', 'Hollywood\'s Bleeding', 'WHEN WE ALL FALL ASLEEP', 'An Evening With Silk Sonic', 'Anti'];
-        const count = Math.min(ITEMS_PER_PAGE, 12);
-        const results = [];
-        const startIdx = (page - 1) * 12;
-        for (let i = 0; i < count; i++) {
-          const idx = (startIdx + i) % mockArtists.length;
-          const titleIdx = (startIdx + i * 2) % mockTitles.length;
-          const albumIdx = (startIdx + i * 3) % mockAlbums.length;
-          const type = filter === 'artists' ? 'artist' :
-                      filter === 'albums' ? 'album' :
-                      filter === 'playlists' ? 'playlist' :
-                      filter === 'new_releases' ? 'new_release' : 'song';
-          results.push({
-            id: `mock_${Date.now()}_${i}`,
-            title: type === 'artist' ? mockArtists[idx] :
-                   type === 'album' ? mockAlbums[albumIdx] :
-                   mockTitles[titleIdx] + (query && query !== 'new' ? ` (${query})` : ''),
-            subtitle: type === 'artist' ? 'Popular Artist' :
-                      type === 'album' ? mockArtists[idx] :
-                      mockArtists[idx],
-            thumbnail: null,
-            type: type,
-            duration: Math.floor(120 + Math.random() * 180),
-            artist: type === 'artist' ? '' : mockArtists[idx],
-            album: type === 'album' ? mockAlbums[albumIdx] : '',
-            url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-            serverTrackId: null
-          });
-        }
-        return { results, totalCount: 48 };
-      }
-
-      // ============================================================
-      // LIKES MANAGEMENT
-      // ============================================================
-      const likedKey = 'korai_explorer_likes';
-      let likedSet = new Set(JSON.parse(localStorage.getItem(likedKey) || '[]'));
-
-      function saveLikes() {
-        localStorage.setItem(likedKey, JSON.stringify([...likedSet]));
-        // update liked items array from allResults and nrAllResults
-        rebuildLikedItems();
-        renderLikedTab();
-      }
-
-      function rebuildLikedItems() {
-        const allItems = [...allResults, ...nrAllResults];
-        likedItems = allItems.filter(item => likedSet.has(item.id));
-        // Also include items that might be only in localStorage but not in current results?
-        // We keep them as they are, but they won't have full metadata. That's fine.
-      }
-
-      // ============================================================
-      // TOGGLE LIKE (optimistic + server sync)
-      // ============================================================
-      function toggleLike(itemId) {
-        const isLiked = likedSet.has(itemId);
-        const newLiked = !isLiked;
-
-        if (newLiked) {
-          likedSet.add(itemId);
+      const toggleLike = async (item, btnEl) => {
+        const isLiked = state.likedSet.has(item.id);
+        if (!isLiked) {
+          state.likedSet.add(item.id);
+          if(!state.likedItems.some(i => i.id === item.id)) state.likedItems.push(item);
+          btnEl.classList.add('liked');
+          btnEl.innerHTML = `<i class="fa-solid fa-heart"></i> Saved`;
           showToast('Added to favorites', 'success');
         } else {
-          likedSet.delete(itemId);
+          state.likedSet.delete(item.id);
+          state.likedItems = state.likedItems.filter(i => i.id !== item.id);
+          btnEl.classList.remove('liked');
+          btnEl.innerHTML = `<i class="fa-regular fa-heart"></i> Save`;
           showToast('Removed from favorites', 'info');
+          if(state.activeTab === 'liked') renderLiked();
         }
         saveLikes();
-        renderAllResults();
-        renderLikedTab();
 
-        // Sync with KORAI server in background
-        (async () => {
-          try {
-            const allItems = [...allResults, ...nrAllResults];
-            const item = allItems.find(i => i.id === itemId);
-            let serverId = itemId;
-            if (item && item.serverTrackId) {
-              serverId = item.serverTrackId;
-            }
-            const method = newLiked ? 'POST' : 'DELETE';
-            const url = `${LOCAL_API}/api/tracks/${serverId}/like`;
-            const res = await fetch(url, { method });
-            if (!res.ok) {
-              console.error('Failed to sync like with server:', await res.text());
-            }
-          } catch (err) {
-            console.error('Error syncing like with server:', err);
-          }
-        })();
-      }
+        try {
+          const sid = item.serverTrackId || item.id;
+          await fetch(`${LOCAL_API}/api/tracks/${sid}/like`, { method: !isLiked ? 'POST' : 'DELETE' });
+        } catch(e) {}
+      };
 
-      // ============================================================
-      // RENDER CARD
-      // ============================================================
-      function renderCard(item) {
+      // ==========================================
+      // UI Rendering (Cards & Empty States)
+      // ==========================================
+      const renderCard = (item) => {
         const card = document.createElement('div');
-        card.className = 'result-card-pro';
-        card.dataset.id = item.id;
-        const thumb = item.thumbnail || '';
-        const title = escapeHtml(item.title);
-        const subtitle = escapeHtml(item.subtitle);
-        const typeLabel = item.type || 'track';
-        const duration = item.duration || 0;
-        const iconMap = { album:'fa-compact-disc', artist:'fa-microphone', playlist:'fa-list', track:'fa-music', song:'fa-music', new_release:'fa-bolt' };
-        const fallbackIcon = iconMap[typeLabel] || 'fa-music';
-        const colors = ['#1a1a2e', '#16213e', '#0f3460', '#533483', '#e94560', '#f5a623'];
-        const bgColor = colors[Math.floor(Math.random() * colors.length)];
-        const isLiked = likedSet.has(item.id);
+        card.className = 'track-card';
+        const isLiked = state.likedSet.has(item.id);
+        
         card.innerHTML = `
-          <div class="card-image" style="background: ${bgColor};">
-            ${thumb ? `<img src="${thumb}" alt="${title}" loading="lazy" onerror="this.style.display='none'">` : `<i class="fa-solid ${fallbackIcon} fallback-icon" style="font-size: 4rem; opacity: 0.4;"></i>`}
-            <div class="card-play-overlay">
-              <div class="card-play-btn" data-action="open" data-url="${escapeHtml(item.url || '')}">
-                <i class="fa-solid fa-arrow-up-right-from-square"></i>
+          <div class="card-img-wrapper">
+            ${item.thumbnail ? `<img src="${item.thumbnail}" alt="${escapeHtml(item.title)}" loading="lazy">` 
+                             : `<i class="fa-solid fa-music fallback-icon"></i>`}
+            <div class="card-overlay">
+              <div class="btn-play-circle" data-url="${escapeHtml(item.url || '')}" title="Play / Preview">
+                <i class="fa-solid fa-play"></i>
               </div>
             </div>
           </div>
-          <div class="card-info">
-            <div class="title" title="${title}">${title}</div>
-            <div class="subtitle" title="${subtitle}">${subtitle}</div>
-            <div class="card-meta-row">
-              <span class="type-badge">${escapeHtml(typeLabel)}</span>
-              ${duration > 0 ? `<span class="duration-badge"><i class="fa-regular fa-clock"></i> ${formatDuration(duration)}</span>` : ''}
+          <div class="card-content">
+            <div class="card-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
+            <div class="card-subtitle" title="${escapeHtml(item.subtitle)}">${escapeHtml(item.subtitle)}</div>
+            <div class="card-badges">
+              <span class="badge">${item.type || 'track'}</span>
+              ${item.duration ? `<span class="badge"><i class="fa-regular fa-clock"></i> ${formatDuration(item.duration)}</span>` : ''}
             </div>
-            <div class="card-actions-row">
-              <button class="card-action-btn like-btn ${isLiked ? 'liked' : ''}" data-id="${item.id}">
-                <i class="fa-solid ${isLiked ? 'fa-heart' : 'fa-heart'}"></i>
-                ${isLiked ? 'Liked' : 'Like'}
+            <div class="card-actions">
+              <button class="action-btn btn-like ${isLiked ? 'liked' : ''}">
+                <i class="fa-solid ${isLiked ? 'fa-heart' : 'fa-heart'}"></i> ${isLiked ? 'Saved' : 'Save'}
               </button>
-              <button disabled class="card-action-btn import-btn" data-action="import" data-id="${item.id}" data-title="${title}" data-url="${escapeHtml(item.url || '')}">
+              <button class="action-btn btn-import" 
+                      data-track-title="${escapeHtml(item.title)}" 
+                      data-track-artist="${escapeHtml(item.subtitle)}">
                 <i class="fa-solid fa-cloud-arrow-down"></i> Import
               </button>
             </div>
           </div>
         `;
-        card.addEventListener('click', (e) => {
-          if (e.target.closest('[data-action]') || e.target.closest('.like-btn')) return;
-          if (item.url) {
-            window.open(item.url, '_blank');
-          } else {
-            showToast('No URL available for this track', 'warning');
-          }
-        });
-        card.querySelector('.card-play-btn').addEventListener('click', (e) => {
-          e.stopPropagation();
-          const url = e.currentTarget.dataset.url;
-          if (url) window.open(url, '_blank');
-          else showToast('No URL available', 'warning');
-        });
-        card.querySelector('.like-btn').addEventListener('click', (e) => {
-          e.stopPropagation();
-          toggleLike(item.id);
+
+        // Play/Preview
+        card.querySelector('.btn-play-circle').addEventListener('click', () => {
+          if(item.url) window.open(item.url, '_blank');
         });
 
-        // Import button
-        card.querySelector('.import-btn').addEventListener('click', async (e) => {
-          e.stopPropagation();
-          const id = e.currentTarget.dataset.id;
-          const title = e.currentTarget.dataset.title;
-          const url = e.currentTarget.dataset.url;
-          if (!url) { showToast('No URL to import', 'error'); return; }
+        // Like button
+        const likeBtn = card.querySelector('.btn-like');
+        if(likeBtn) likeBtn.addEventListener('click', () => toggleLike(item, likeBtn));
+
+        // Import button - open MusicDel modal with 3 search strategies
+        const importBtn = card.querySelector('.btn-import');
+        importBtn.addEventListener('click', () => {
+          const title = importBtn.dataset.trackTitle;
+          const artist = importBtn.dataset.trackArtist || '';
           
-          const originalContent = e.currentTarget.innerHTML;
+          // Build 3 search queries
+          const firstWord = title.split(' ')[0] || title;
+          const fullQuery = title + (artist ? ' ' + artist : '');
           
-          try {
-            e.currentTarget.disabled = true;
-            e.currentTarget.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Downloading...';
-            showToast('⏳ Downloading track... This may take a moment.', 'info');
-            
-            const res = await fetch(`${LOCAL_API}/api/tracks/import-from-url`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ url, title: title || undefined })
-            });
-            
-            if (!res.ok) {
-              let errorMessage = 'Import failed';
-              try {
-                const err = await res.json();
-                errorMessage = err.error || errorMessage;
-              } catch (e) {}
-              throw new Error(errorMessage);
-            }
-            
-            const data = await res.json();
-            showToast(`✅ Imported: ${data.track.title}`, 'success');
-            
-            // Update serverTrackId
-            const allItems = [...allResults, ...nrAllResults];
-            const targetItem = allItems.find(i => i.id === id);
-            if (targetItem) {
-              targetItem.serverTrackId = data.track.id;
-              if (likedSet.has(id)) {
-                try {
-                  await fetch(`${LOCAL_API}/api/tracks/${data.track.id}/like`, { method: 'POST' });
-                } catch (likeErr) {
-                  console.warn('Could not sync like for imported track:', likeErr);
-                }
-              }
-              renderAllResults();
-              renderLikedTab();
-            }
-            
-            e.currentTarget.disabled = true;
-            e.currentTarget.innerHTML = '<i class="fa-solid fa-check-circle"></i> Imported';
-            e.currentTarget.style.opacity = '0.6';
-            e.currentTarget.style.cursor = 'default';
-            
-          } catch (err) {
-            console.error('Import error:', err);
-            showToast('❌ Import failed: ' + err.message, 'error');
-            e.currentTarget.disabled = false;
-            e.currentTarget.innerHTML = originalContent;
-          }
+          // Use the user's last search query for the middle column
+          const userQuery = state.lastSearchQuery || title;
+          
+          const queries = [
+            { label: 'First Word', query: firstWord, icon: 'fa-bold' },
+            { label: 'Your Search', query: userQuery, icon: 'fa-magnifying-glass' },
+            { label: 'Full Title', query: fullQuery, icon: 'fa-compact-disc' }
+          ];
+          
+          openMusicDelModal(queries);
         });
+
         return card;
-      }
+      };
 
-      function renderResultsInto(grid, results, append = false, viewMode = 'grid') {
-        if (!append) grid.innerHTML = '';
-        if (!results || results.length === 0) {
-          if (!append && grid.children.length === 0) {
-            grid.innerHTML = `
-              <div class="explorer-state">
-                <i class="fa-solid fa-music"></i>
-                <h3>No results found</h3>
-                <p>Try a different search term or filter.</p>
-              </div>
-            `;
-          }
+      const renderEmptyState = (gridId, icon, title, desc, cssClass='') => {
+        document.getElementById(gridId).innerHTML = `
+          <div class="empty-state ${cssClass}">
+            <i class="fa-solid ${icon}"></i>
+            <h3>${title}</h3>
+            <p>${desc}</p>
+          </div>
+        `;
+      };
+
+      // ==========================================
+      // MUSICDEL MODAL (3 Columns)
+      // ==========================================
+      const modal = document.getElementById('musicdelModal');
+      const modalBody = document.getElementById('musicdelModalBody');
+      const modalClose = document.getElementById('musicdelModalClose');
+
+      const openMusicDelModal = (queries) => {
+        if (!queries || queries.length === 0) {
+          showToast('No search queries available.', 'error');
           return;
         }
-        const fragment = document.createDocumentFragment();
-        results.forEach(item => {
-          fragment.appendChild(renderCard(item));
+
+        modal.classList.add('active');
+        
+        // Build column layout
+        let html = `<div class="musicdel-columns">`;
+        
+        queries.forEach((q, index) => {
+          const colId = `md-col-${index}`;
+          html += `
+            <div class="musicdel-column" id="${colId}">
+              <div class="musicdel-column-header">
+                <div><i class="fa-solid ${q.icon}"></i> ${q.label}</div>
+                <span class="query-badge" title="${escapeHtml(q.query)}">${escapeHtml(q.query)}</span>
+              </div>
+              <div class="musicdel-column-results" id="${colId}-results">
+                <div class="loading-spinner-small">
+                  <i class="fa-solid fa-circle-notch"></i>
+                  <div>Searching database...</div>
+                </div>
+              </div>
+            </div>
+          `;
         });
-        grid.appendChild(fragment);
-        grid.classList.toggle('list-mode', viewMode === 'list');
-      }
+        
+        html += `</div>`;
+        modalBody.innerHTML = html;
 
-      function renderAllResults() {
-        if (currentTab === 'search') {
-          renderResultsInto(resultsGrid, allResults, false, currentView);
-        } else if (currentTab === 'newreleases') {
-          renderResultsInto(nrGrid, nrAllResults, false, currentView);
-        }
-      }
+        // Perform searches for each column
+        queries.forEach((q, index) => {
+          const colId = `md-col-${index}`;
+          const resultsContainer = document.getElementById(`${colId}-results`);
+          searchMusicDelForColumn(q.query, resultsContainer, q.label);
+        });
+      };
 
-      // ============================================================
-      // LIKED TAB RENDER
-      // ============================================================
-      function renderLikedTab() {
-        rebuildLikedItems();
-        const count = likedItems.length;
-        likedStats.innerHTML = `<span><strong>${count}</strong> liked tracks</span>`;
-        if (count === 0) {
-          likedGrid.innerHTML = `
-            <div class="explorer-state">
-              <i class="fa-solid fa-heart" style="color: var(--exp-accent); opacity:0.4;"></i>
-              <h3>No liked tracks yet</h3>
-              <p>Start exploring and hit the like button on tracks you love.</p>
-            </div>
-          `;
-        } else {
-          renderResultsInto(likedGrid, likedItems, false, currentView);
-        }
-      }
+      const closeMusicDelModal = () => {
+        modal.classList.remove('active');
+      };
 
-      // ============================================================
-      // SEARCH LOGIC
-      // ============================================================
-      async function performSearch(resetPagination = true) {
-        const query = searchInput.value.trim();
-        if (!query) {
-          resultsGrid.innerHTML = `
-            <div class="explorer-state">
-              <i class="fa-solid fa-compass"></i>
-              <h3>Explore New Music</h3>
-              <p>Search for your favorite artists, songs, or albums to get started.</p>
-            </div>
-          `;
-          resultStats.innerHTML = `<span>Enter a search term to discover music</span>`;
-          searchLoadingWrapper.style.display = 'none';
-          hasMore = false;
-          allResults = [];
-          return;
-        }
-        if (resetPagination) {
-          currentPage = 1;
-          hasMore = true;
-          allResults = [];
-          resultsGrid.innerHTML = '';
-        }
-        if (isLoading) return;
-        isLoading = true;
-        searchLoadingWrapper.style.display = 'block';
-        updateLoadingBar(searchLoadingFill, searchLoadingText, 0, 'Starting search...');
+      modalClose.addEventListener('click', closeMusicDelModal);
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeMusicDelModal();
+      });
+
+      /**
+       * Search MusicDel for a single query and populate a column
+       */
+      async function searchMusicDelForColumn(query, container, label) {
         try {
-          const data = await fetchMusic(query, currentFilter, currentPage);
-          const newResults = data.results || [];
-          const total = data.totalCount || 0;
-          if (resetPagination) {
-            allResults = newResults;
-            totalResults = total;
-            renderResultsInto(resultsGrid, allResults, false, currentView);
-            resultStats.innerHTML = `
-              <span>
-                <strong>${total.toLocaleString()}</strong> results for
-                "<strong>${escapeHtml(query)}</strong>"
-                <span style="color: var(--exp-text3); margin-left: 10px; font-size:0.8rem;">
-                  ${currentFilter !== 'all' ? `· ${FILTERS.find(f => f.id === currentFilter)?.label || currentFilter}` : ''}
-                  ${useMockData ? ' · 📡 demo' : ''}
-                </span>
-              </span>
-            `;
-          } else {
-            allResults = [...allResults, ...newResults];
-            renderResultsInto(resultsGrid, newResults, true, currentView);
-          }
-          hasMore = allResults.length < total;
-          setTimeout(() => {
-            if (!hasMore || allResults.length >= totalResults) {
-              searchLoadingWrapper.style.display = 'none';
-            }
-          }, 600);
-          if (hasMore) currentPage++;
-        } catch (err) {
-          showToast('Search failed: ' + err.message, 'error');
-          if (resetPagination) {
-            resultsGrid.innerHTML = `
-              <div class="explorer-state">
-                <i class="fa-solid fa-triangle-exclamation"></i>
-                <h3>Something went wrong</h3>
-                <p>${escapeHtml(err.message || 'Please try again.')}</p>
-                <button class="retry-btn" id="explorerRetryBtn">Retry</button>
-              </div>
-            `;
-            document.getElementById('explorerRetryBtn')?.addEventListener('click', () => {
-              useMockData = false;
-              performSearch(true);
-            });
-          }
-          setTimeout(() => { searchLoadingWrapper.style.display = 'none'; }, 800);
-        } finally {
-          isLoading = false;
-        }
-      }
+          const res = await fetch(`${LOCAL_API}/api/search/musicdel`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: query })
+          });
 
-      // ============================================================
-      // NEW RELEASES
-      // ============================================================
-      async function loadNewReleases(reset = true) {
-        if (reset) {
-          nrPage = 1;
-          nrHasMore = true;
-          nrAllResults = [];
-          nrGrid.innerHTML = '';
-          nrStats.innerHTML = `<span>Loading fresh picks...</span>`;
-        }
-        if (nrIsLoading) return;
-        nrIsLoading = true;
-        nrLoadingWrapper.style.display = 'block';
-        updateLoadingBar(nrLoadingFill, nrLoadingText, 0, 'Starting...');
-        try {
-          const data = await fetchNewReleases(nrPage);
+          if (!res.ok) {
+            throw new Error(`Server responded with status: ${res.status}`);
+          }
+
+          const data = await res.json();
           const results = data.results || [];
-          const total = data.totalCount || 0;
-          nrTotal = total;
-          if (reset) {
-            nrAllResults = results;
-            renderResultsInto(nrGrid, nrAllResults, false, currentView);
-            nrStats.innerHTML = `<span><strong>${total.toLocaleString()}</strong> fresh releases ${nrUseMockData ? '· 📡 demo' : ''}</span>`;
-          } else {
-            nrAllResults = [...nrAllResults, ...results];
-            renderResultsInto(nrGrid, results, true, currentView);
-          }
-          nrHasMore = nrAllResults.length < total;
-          setTimeout(() => {
-            if (!nrHasMore || nrAllResults.length >= nrTotal) {
-              nrLoadingWrapper.style.display = 'none';
-            }
-          }, 600);
-          if (nrHasMore) nrPage++;
-        } catch (err) {
-          console.error('New releases load error:', err);
-          const errorMsg = err.message || 'Failed to load new releases';
-          if (reset) {
-            nrGrid.innerHTML = `
-              <div class="explorer-state">
-                <i class="fa-solid fa-triangle-exclamation"></i>
-                <h3>Could not load new releases</h3>
-                <p>${escapeHtml(errorMsg)}</p>
-                <button class="retry-btn" id="nrRetryBtn">Retry</button>
+
+          if (results.length === 0) {
+            container.innerHTML = `
+              <div class="empty-column">
+                <i class="fa-solid fa-ghost" style="display:block; font-size:2rem; margin-bottom:12px; opacity:0.2;"></i>
+                No results found
               </div>
             `;
-            document.getElementById('nrRetryBtn')?.addEventListener('click', () => {
-              nrUseMockData = false;
-              loadNewReleases(true);
+            return;
+          }
+
+          // Render results in column
+          let html = '';
+          results.slice(0, 12).forEach(item => {
+            const thumb = item.thumbnail || '';
+            html += `
+              <div class="md-result-mini" data-url="${escapeHtml(item.url)}" data-title="${escapeHtml(item.title)}" data-artist="${escapeHtml(item.subtitle)}">
+                <div class="mini-thumb">
+                  ${thumb ? `<img src="${thumb}" alt="${escapeHtml(item.title)}" loading="lazy">` : `<i class="fa-solid fa-music"></i>`}
+                </div>
+                <div class="mini-info">
+                  <div class="mini-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
+                  <div class="mini-artist" title="${escapeHtml(item.subtitle)}">${escapeHtml(item.subtitle)}</div>
+                </div>
+                <button class="mini-download-btn">Import</button>
+              </div>
+            `;
+          });
+          container.innerHTML = html;
+
+          // Attach download handlers
+          container.querySelectorAll('.md-result-mini').forEach(card => {
+            const downloadBtn = card.querySelector('.mini-download-btn');
+            const url = card.dataset.url;
+            const title = card.dataset.title;
+            const artist = card.dataset.artist;
+
+            downloadBtn.addEventListener('click', async (e) => {
+              e.stopPropagation();
+              await downloadFromMusicDel(url, title, artist, downloadBtn);
             });
+          });
+
+        } catch (err) {
+          console.error(`MusicDel search error for "${query}":`, err);
+          container.innerHTML = `
+            <div class="empty-column">
+              <i class="fa-solid fa-triangle-exclamation" style="display:block; font-size:2rem; margin-bottom:12px; color:var(--accent);"></i>
+              Search failed
+              <div style="font-size:0.8rem; margin-top:8px; color:var(--text-dim);">${escapeHtml(err.message || 'Unknown error')}</div>
+            </div>
+          `;
+        }
+      }
+
+      /**
+       * Download track from MusicDel and import to library
+       */
+      async function downloadFromMusicDel(trackUrl, title, artist, btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+        try {
+          // Step 1: Fetch track page via proxy to get download link
+          const proxyRes = await fetch(`${LOCAL_API}/api/proxy/musicdel`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: trackUrl })
+          });
+
+          if (!proxyRes.ok) {
+            throw new Error(`Failed to fetch track page: ${proxyRes.status}`);
           }
-          setTimeout(() => { nrLoadingWrapper.style.display = 'none'; }, 800);
+
+          const html = await proxyRes.text();
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+
+          // Find download links in the .dls section
+          const downloadLinks = Array.from(doc.querySelectorAll('.dls a[href*=".mp3"]'));
+
+          let dlUrl = null;
+          // Prioritize 320kbps (عالی), then 128kbps (خوب)
+          const highQuality = downloadLinks.find(a => 
+            a.textContent.includes('320') || 
+            a.textContent.includes('عالی') ||
+            a.href.includes('320')
+          );
+          const midQuality = downloadLinks.find(a => 
+            a.textContent.includes('128') || 
+            a.textContent.includes('خوب') ||
+            a.href.includes('128')
+          );
+          
+          dlUrl = highQuality?.href || midQuality?.href || downloadLinks[0]?.href;
+
+          if (!dlUrl) {
+            throw new Error('Download link not found on the track page.');
+          }
+
+          // Fix relative URLs
+          if (dlUrl.startsWith('/')) {
+            dlUrl = 'https://musicdel.ir' + dlUrl;
+          }
+
+          btn.innerHTML = 'DL...';
+
+          // Step 2: Import directly using the download URL
+          const importRes = await fetch(`${LOCAL_API}/api/tracks/import-from-url`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              url: dlUrl,
+              title: `${title} - ${artist}`
+            })
+          });
+
+          if (!importRes.ok) {
+            const errorData = await importRes.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Failed to add track to library.');
+          }
+
+          const importData = await importRes.json();
+
+          btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+          btn.classList.add('done');
+          btn.disabled = true;
+
+          showToast(`"${importData.track?.title || title}" added to library.`, 'success');
+
+          // Refresh library if function exists (from app.js)
+          if (typeof window.loadTracks === 'function') {
+            window.loadTracks();
+          }
+
+        } catch (err) {
+          console.error('MusicDel import error:', err);
+          btn.disabled = false;
+          btn.textContent = 'Retry';
+          btn.classList.remove('done');
+          showToast(err.message || 'An error occurred during import.', 'error');
+        }
+      }
+
+      // ==========================================
+      // API Fetch Requests
+      // ==========================================
+      const fetchGlobalSearch = async (query) => {
+        // Store the user's search query
+        state.lastSearchQuery = query;
+        
+        toggleSkeleton('searchGrid', 'searchSkeleton', true);
+        const grid = document.getElementById('searchGrid');
+        const meta = document.getElementById('searchMeta');
+        
+        try {
+          const res = await fetch(`${CLOUD_API}/?action=search&q=${encodeURIComponent(query)}&filter=${state.filter}&limit=${ITEMS_PER_PAGE}`);
+          if(!res.ok) throw new Error('Server communication failed');
+          const data = await res.json();
+          const results = data.results || data.items || [];
+          
+          grid.innerHTML = '';
+          if(results.length === 0) {
+            renderEmptyState('searchGrid', 'fa-ghost', 'No results found', 'Please check the spelling or try a different keyword.', 'search');
+          } else {
+            results.forEach(r => grid.appendChild(renderCard({
+              id: r.id || r.videoId, title: r.title, subtitle: r.artist || r.subtitle,
+              thumbnail: r.thumbnail, url: r.url, type: r.type, duration: r.duration
+            })));
+          }
+          meta.innerHTML = `<span><strong>${results.length}</strong> results found</span>`;
+        } catch(e) {
+          showToast('Search failed, using offline mock data (Demo)', 'error');
+          grid.innerHTML = '';
+          [1,2,3,4,5,6].forEach(i => grid.appendChild(renderCard({
+            id: `m${i}`, title: `Demo Track ${i}`, subtitle: 'Unknown Artist', type: 'song', url:'#'
+          })));
         } finally {
-          nrIsLoading = false;
+          toggleSkeleton('searchGrid', 'searchSkeleton', false);
         }
-      }
+      };
 
-      let searchObserver = null;
-      function setupSearchInfiniteScroll() {
-        if (searchObserver) searchObserver.disconnect();
-        searchObserver = new IntersectionObserver((entries) => {
-          if (entries[0].isIntersecting && !isLoading && hasMore && searchInput.value.trim() !== '') {
-            performSearch(false);
-          }
-        }, { rootMargin: '200px' });
-        const sentinel = document.createElement('div');
-        sentinel.id = 'searchSentinel';
-        sentinel.style.height = '1px';
-        sentinel.style.width = '100%';
-        sentinel.style.gridColumn = '1 / -1';
-        resultsGrid.appendChild(sentinel);
-        searchObserver.observe(sentinel);
-      }
-
-      let nrObserver = null;
-      function setupNrInfiniteScroll() {
-        if (nrObserver) nrObserver.disconnect();
-        nrObserver = new IntersectionObserver((entries) => {
-          if (entries[0].isIntersecting && !nrIsLoading && nrHasMore) {
-            loadNewReleases(false);
-          }
-        }, { rootMargin: '200px' });
-        const sentinel = document.createElement('div');
-        sentinel.id = 'nrSentinel';
-        sentinel.style.height = '1px';
-        sentinel.style.width = '100%';
-        sentinel.style.gridColumn = '1 / -1';
-        nrGrid.appendChild(sentinel);
-        nrObserver.observe(sentinel);
-      }
-
-      function setView(view) {
-        currentView = view;
-        document.querySelectorAll('.view-toggles').forEach(group => {
-          group.querySelectorAll('button').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.view === view);
-          });
-        });
-        resultsGrid.classList.toggle('list-mode', view === 'list');
-        nrGrid.classList.toggle('list-mode', view === 'list');
-        likedGrid.classList.toggle('list-mode', view === 'list');
-        if (allResults.length > 0) renderResultsInto(resultsGrid, allResults, false, view);
-        if (nrAllResults.length > 0) renderResultsInto(nrGrid, nrAllResults, false, view);
-        if (likedItems.length > 0) renderResultsInto(likedGrid, likedItems, false, view);
-      }
-
-      function switchTab(tab) {
-        currentTab = tab;
-        tabSearch.classList.toggle('active', tab === 'search');
-        tabNewReleases.classList.toggle('active', tab === 'newreleases');
-        tabLiked.classList.toggle('active', tab === 'liked');
-        searchContent.classList.toggle('hidden', tab !== 'search');
-        nrContent.classList.toggle('hidden', tab !== 'newreleases');
-        likedContent.classList.toggle('hidden', tab !== 'liked');
-        if (tab === 'newreleases' && nrAllResults.length === 0) {
-          loadNewReleases(true);
+      // ==========================================
+      // Initialization & Tab Logic
+      // ==========================================
+      const renderLiked = () => {
+        const grid = document.getElementById('likedGrid');
+        grid.innerHTML = '';
+        if(state.likedItems.length === 0) {
+          renderEmptyState('likedGrid', 'fa-heart-crack', 'Your collection is empty', 'Start exploring and save tracks you love.', 'liked');
+        } else {
+          state.likedItems.forEach(i => grid.appendChild(renderCard(i)));
         }
-        if (tab === 'liked') {
-          renderLikedTab();
-        }
-        // re-apply view
-        setView(currentView);
-      }
+        document.getElementById('likedMeta').innerHTML = `<span><strong>${state.likedItems.length}</strong> saved tracks</span>`;
+      };
 
-      function renderFilters() {
-        filterContainer.innerHTML = FILTERS.map(f => `
-          <button class="filter-chip-pro ${f.id === currentFilter ? 'active' : ''}"
-                  data-filter="${f.id}" aria-pressed="${f.id === currentFilter}">
+      const switchTab = (tabId) => {
+        state.activeTab = tabId;
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === `tab-${tabId}`));
+        
+        if(tabId === 'liked') renderLiked();
+      };
+
+      const setupFilters = () => {
+        const container = document.getElementById('filtersContainer');
+        container.innerHTML = FILTERS.map(f => `
+          <div class="filter-chip ${f.id === state.filter ? 'active' : ''}" data-id="${f.id}">
             <i class="fa-solid ${f.icon}"></i> ${f.label}
-          </button>
+          </div>
         `).join('');
-        filterContainer.querySelectorAll('.filter-chip-pro').forEach(btn => {
-          btn.addEventListener('click', () => {
-            const filter = btn.dataset.filter;
-            if (filter === currentFilter) return;
-            currentFilter = filter;
-            currentPage = 1;
-            hasMore = true;
-            allResults = [];
-            resultsGrid.innerHTML = '';
-            renderFilters();
-            performSearch(false);
+        
+        container.querySelectorAll('.filter-chip').forEach(chip => {
+          chip.addEventListener('click', () => {
+            container.querySelector('.active').classList.remove('active');
+            chip.classList.add('active');
+            state.filter = chip.dataset.id;
+            const q = document.getElementById('searchInput').value;
+            if(q) fetchGlobalSearch(q);
           });
         });
-      }
+      };
 
-      function init() {
-        renderFilters();
-        renderResultsInto(resultsGrid, [], false, currentView);
-        resultStats.innerHTML = `<span>Ready to explore</span>`;
-        nrStats.innerHTML = `<span>Loading fresh picks...</span>`;
-        likedStats.innerHTML = `<span>0 liked tracks</span>`;
-        renderLikedTab();
-
-        searchBtn.addEventListener('click', () => performSearch(true));
-        const debouncedSearch = debounce(() => performSearch(true), 400);
-        searchInput.addEventListener('input', debouncedSearch);
-        searchInput.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') { e.preventDefault(); performSearch(true); }
+      const init = () => {
+        setupFilters();
+        
+        // Tab Listeners
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+          btn.addEventListener('click', () => switchTab(btn.dataset.tab));
         });
 
-        document.querySelectorAll('.view-toggles').forEach(group => {
-          group.querySelectorAll('button').forEach(btn => {
-            btn.addEventListener('click', () => setView(btn.dataset.view));
-          });
+        // Search Input Listeners
+        const sInput = document.getElementById('searchInput');
+        
+        document.getElementById('searchBtn').addEventListener('click', () => { 
+          if(sInput.value) fetchGlobalSearch(sInput.value);
+        });
+        sInput.addEventListener('keypress', e => { 
+          if(e.key==='Enter' && sInput.value) fetchGlobalSearch(sInput.value);
         });
 
-        tabSearch.addEventListener('click', () => switchTab('search'));
-        tabNewReleases.addEventListener('click', () => switchTab('newreleases'));
-        tabLiked.addEventListener('click', () => switchTab('liked'));
+        // Placeholder Empty State for New Releases
+        renderEmptyState('nrGrid', 'fa-bolt', 'Coming Soon', 'This section will be populated with live top charts shortly.', 'search');
+        
+        // Finalize setup
+        saveLikes();
+        switchTab('search');
+      };
 
-        backBtn.addEventListener('click', () => {
-          if (window.history.length > 1) window.history.back();
-          else window.location.href = 'index.html';
-        });
-
-        document.addEventListener('keydown', (e) => {
-          if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-            if (currentTab === 'search') {
-              e.preventDefault();
-              searchInput.focus();
-              searchInput.select();
-            }
-          }
-          if (e.key === 'Escape') searchInput.blur();
-        });
-
-        setupSearchInfiniteScroll();
-        setupNrInfiniteScroll();
-
-        const mo1 = new MutationObserver(() => {
-          if (!document.getElementById('searchSentinel')) setupSearchInfiniteScroll();
-        });
-        mo1.observe(resultsGrid, { childList: true });
-
-        const mo2 = new MutationObserver(() => {
-          if (!document.getElementById('nrSentinel')) setupNrInfiniteScroll();
-        });
-        mo2.observe(nrGrid, { childList: true });
-
-        setTimeout(() => {
-          loadNewReleases(true);
-        }, 200);
-
-        console.log('🚀 Explorer Pro — with Liked tab');
-        console.log('📡 Cloud API:', CLOUD_API);
-        console.log('🏠 Local API (for imports):', LOCAL_API);
-      }
-
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-      } else {
-        init();
-      }
+      // Launch App
+      document.addEventListener('DOMContentLoaded', init);
     })();
   </script>
 </body>

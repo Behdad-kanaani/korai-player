@@ -1,6 +1,6 @@
 {
   "name": "korai-player",
-  "version": "1.5.2",
+  "version": "1.5.0",
   "description": "KORAI Advanced Music Player - Professional Audio Experience",
   "main": "main.js",
   "scripts": {

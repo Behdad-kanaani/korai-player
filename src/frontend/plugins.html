@@ -6,6 +6,9 @@
     <title>KORAI | Plugin Studio</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
+        /* =========================================
+           PLUGIN STUDIO STYLES
+           ========================================= */
         * {
             margin: 0;
             padding: 0;
@@ -63,6 +66,7 @@
             backdrop-filter: blur(2px);
         }
 
+        /* ===== SIDEBAR ===== */
         .studio-sidebar {
             width: 280px;
             background: rgba(18, 18, 26, 0.75);
@@ -168,6 +172,7 @@
             padding-top: 24px;
         }
 
+        /* ===== MAIN CONTENT ===== */
         .main-content {
             flex: 1;
             overflow-y: auto;
@@ -338,6 +343,7 @@
             margin-top: 16px;
         }
 
+        /* ===== PLUGIN CARD ===== */
         .plugin-card {
             background: rgba(22, 22, 30, 0.7);
             backdrop-filter: blur(12px);
@@ -447,6 +453,12 @@
         @keyframes pulseGlow {
             0%, 100% { opacity: 0.7; }
             50% { opacity: 1; text-shadow: 0 0 4px var(--primary-glow); }
+        }
+
+        .badge-builtin {
+            background: linear-gradient(90deg, #ffd966, #ffb84d);
+            color: #2b1500;
+            border: 1px solid rgba(0,0,0,0.08);
         }
 
         .plugin-description {
@@ -604,89 +616,149 @@
     </style>
 </head>
 <body>
+    <!-- ===== AMBIENT BACKGROUND ===== -->
     <div class="ambient-bg">
         <div class="bg-blob bg-blob-1"></div>
         <div class="bg-blob bg-blob-2"></div>
         <div class="bg-blob bg-blob-3"></div>
     </div>
 
+    <!-- ===== APP WRAPPER ===== -->
     <div class="app-wrapper">
+        <!-- ===== SIDEBAR ===== -->
         <aside class="studio-sidebar">
             <div class="logo-area">
                 <i class="fa-solid fa-bolt logo-icon"></i>
                 <div>
                     <span class="logo-text">KORAI</span>
-                    <span class="logo-badge">PLUGINS</span>
+                    <span class="logo-badge" data-translate="pluginStudio">PLUGINS</span>
                 </div>
             </div>
 
             <div class="nav-section">
-                <div class="nav-title">MANAGEMENT</div>
+                <div class="nav-title" data-translate="pluginManagement">MANAGEMENT</div>
                 <button class="nav-item active" data-tab="installed">
                     <i class="fa-solid fa-puzzle-piece"></i>
-                    <span>Installed Plugins</span>
+                    <span data-translate="pluginInstalled">Installed Plugins</span>
                 </button>
-                <!-- Developer Kit removed per UX decision -->
                 <button class="nav-item" data-tab="performance">
                     <i class="fa-solid fa-chart-line"></i>
-                    <span>Performance</span>
+                    <span data-translate="pluginPerformance">Performance</span>
                 </button>
             </div>
 
             <div class="nav-section exit-btn">
                 <button id="backToPlayerBtn" class="nav-item">
                     <i class="fa-solid fa-arrow-left"></i>
-                    <span>Exit to Player</span>
+                    <span data-translate="pluginExit">Exit to Player</span>
                 </button>
             </div>
         </aside>
 
+        <!-- ===== MAIN CONTENT ===== -->
         <main class="main-content" id="mainContent">
+            <!-- Page Header -->
             <div class="page-header">
-                <h1 class="page-title">Plugin Studio</h1>
-                <p class="page-subtitle">Extend KORAI with powerful modules and custom integrations</p>
+                <h1 class="page-title" data-translate="pluginStudio">Plugin Studio</h1>
+                <p class="page-subtitle" data-translate="pluginSubtitle">Extend KORAI with powerful modules and custom integrations</p>
             </div>
 
+            <!-- Stats Grid -->
             <div class="stats-grid" id="statsGrid">
                 <div class="stat-card">
-                    <div class="stat-label">Total Plugins</div>
+                    <div class="stat-label" data-translate="pluginTotal">Total Plugins</div>
                     <div class="stat-value" id="statTotal">0</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-label">Active</div>
+                    <div class="stat-label" data-translate="pluginActive">Active</div>
                     <div class="stat-value" id="statActive">0</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-label">Running</div>
+                    <div class="stat-label" data-translate="pluginRunning">Running</div>
                     <div class="stat-value" id="statRunning">0</div>
                 </div>
             </div>
 
+            <!-- Toolbar -->
             <div class="toolbar">
                 <div class="search-container">
                     <i class="fa-solid fa-search"></i>
-                    <input type="text" id="pluginSearch" placeholder="Search plugins by name or ID...">
+                    <input type="text" id="pluginSearch" data-translate-placeholder="pluginSearch" placeholder="Search plugins by name or ID...">
                 </div>
                 <div class="filter-group">
-                    <button class="filter-chip active" data-filter="all">All</button>
-                    <button class="filter-chip" data-filter="enabled">Active</button>
-                    <button class="filter-chip" data-filter="disabled">Inactive</button>
+                    <button class="filter-chip active" data-filter="all" data-translate="all">All</button>
+                    <button class="filter-chip" data-filter="enabled" data-translate="pluginEnabled">Active</button>
+                    <button class="filter-chip" data-filter="disabled" data-translate="pluginDisabled">Inactive</button>
                 </div>
-                <button class="install-btn" id="installPluginBtn">
-                    <i class="fa-solid fa-cloud-arrow-up"></i>
-                    Install Plugin
+                <button class="install-btn" id="installPluginBtn" data-translate="pluginInstall">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> Install Plugin
                 </button>
             </div>
 
+            <!-- Plugin Grid -->
             <div id="pluginContainer" class="plugin-grid">
                 <!-- Dynamic content -->
             </div>
         </main>
     </div>
 
+    <!-- ===== MODAL ROOT ===== -->
     <div id="modalRoot"></div>
 
+    <!-- ============================================================ -->
+    <!-- JAVASCRIPT - Plugin Manager Logic with Translation Support -->
+    <!-- ============================================================ -->
     <script>
+        // ============================================================
+        // TRANSLATION HELPER
+        // ============================================================
+        
+        /**
+         * Get translated text for a key
+         * Uses the global translations object from lang.js
+         */
+        function t(key) {
+            if (typeof window !== 'undefined' && window.translations) {
+                const lang = localStorage.getItem('user_lang') || 'en';
+                if (window.translations[lang] && window.translations[lang][key]) {
+                    return window.translations[lang][key];
+                }
+                if (window.translations.en && window.translations.en[key]) {
+                    return window.translations.en[key];
+                }
+            }
+            return key;
+        }
+
+        /**
+         * Translate all elements with data-translate attribute
+         */
+        function translatePage() {
+            document.querySelectorAll('[data-translate]').forEach(el => {
+                const key = el.getAttribute('data-translate');
+                const translated = t(key);
+                if (translated && translated !== key) {
+                    const icon = el.querySelector('i');
+                    if (icon && el.childNodes.length === 1) {
+                        el.innerHTML = '';
+                        el.appendChild(icon);
+                        el.appendChild(document.createTextNode(' ' + translated));
+                    } else if (el.childNodes.length === 0 || el.childNodes[0].nodeType === Node.TEXT_NODE) {
+                        el.textContent = translated;
+                    }
+                }
+            });
+
+            document.querySelectorAll('[data-translate-placeholder]').forEach(el => {
+                const key = el.getAttribute('data-translate-placeholder');
+                el.placeholder = t(key);
+            });
+        }
+
+        // ============================================================
+        // API CONFIGURATION
+        // ============================================================
+        
         let apiBase = '';
 
         async function resolveApiBase() {
@@ -697,7 +769,6 @@
                 } catch (e) {}
             }
             if (location.protocol.startsWith('http')) return location.origin;
-            // Try common local ports quickly (3000..3010) in case server uses a dynamic port
             const ports = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010];
             for (const p of ports) {
                 try {
@@ -713,6 +784,10 @@
             return fetch(url, opts);
         }
 
+        // ============================================================
+        // STATE
+        // ============================================================
+        
         let plugins = [];
         let searchQuery = '';
         let filterStatus = 'all';
@@ -726,6 +801,10 @@
         const installBtn = document.getElementById('installPluginBtn');
         const backBtn = document.getElementById('backToPlayerBtn');
 
+        // ============================================================
+        // UTILITY FUNCTIONS
+        // ============================================================
+        
         function escapeHtml(str) {
             if (!str) return '';
             return String(str).replace(/[&<>]/g, m => {
@@ -752,7 +831,6 @@
             setTimeout(() => toast.remove(), 3000);
         }
 
-        // Small page-level overlay used for long-running plugin actions
         function showActionOverlay(message) {
             let o = document.getElementById('plugin-action-overlay');
             if (!o) {
@@ -766,7 +844,7 @@
                 document.body.appendChild(o);
             }
             const inner = document.getElementById('plugin-action-overlay-inner');
-            if (inner) inner.textContent = message || 'Working...';
+            if (inner) inner.textContent = message || t('pluginWorking') || 'Working...';
             o.style.display = 'flex';
         }
 
@@ -775,6 +853,10 @@
             if (o) o.style.display = 'none';
         }
 
+        // ============================================================
+        // PLUGIN CRUD OPERATIONS
+        // ============================================================
+        
         async function loadPlugins() {
             try {
                 const res = await apiFetch('/api/plugins');
@@ -785,7 +867,7 @@
                 renderPlugins();
             } catch (err) {
                 console.error('Load plugins error:', err);
-                showNotification('Failed to load plugins', 'error');
+                showNotification(t('pluginLoadingFailed') || 'Failed to load plugins', 'error');
                 plugins = [];
                 renderPlugins();
             }
@@ -818,20 +900,19 @@
                 if (!res.ok) {
                     const errData = await res.json().catch(() => ({}));
                     if (errData.error === 'missing_permissions' && errData.missing) {
-                        showNotification(`Missing permissions: ${errData.missing.join(', ')}`, 'error');
+                        showNotification(`${t('pluginMissingPermissions') || 'Missing permissions'}: ${errData.missing.join(', ')}`, 'error');
                     } else {
                         throw new Error(errData.error || 'Toggle failed');
                     }
                     return;
                 }
-                showNotification(enable ? `Plugin disabled` : `Plugin enabled`, 'success');
+                showNotification(enable ? t('pluginDisabled') || 'Plugin disabled' : t('pluginEnabled') || 'Plugin enabled', 'success');
                 await loadPlugins();
             } catch (err) {
-                showNotification(`Failed: ${err.message}`, 'error');
+                showNotification(`${t('pluginToggleFailed') || 'Failed to toggle'}: ${err.message}`, 'error');
             }
         }
 
-        // Performs uninstall request; caller should handle confirmation and UI state
         async function uninstallPlugin(id) {
             try {
                 const res = await apiFetch(`/api/plugins/${id}`, { method: 'DELETE' });
@@ -839,10 +920,10 @@
                     const err = await res.json().catch(() => ({}));
                     throw new Error(err.message || err.error || 'Uninstall failed');
                 }
-                showNotification('Plugin uninstalled successfully', 'success');
+                showNotification(t('pluginUninstallSuccess') || 'Plugin uninstalled successfully', 'success');
                 await loadPlugins();
             } catch (err) {
-                showNotification(`Uninstall failed: ${err.message}`, 'error');
+                showNotification(`${t('pluginUninstallFailed') || 'Uninstall failed'}: ${err.message}`, 'error');
                 throw err;
             }
         }
@@ -851,16 +932,16 @@
             const formData = new FormData();
             formData.append('file', file);
             try {
-                showNotification('Installing plugin...', 'info');
+                showNotification(t('pluginInstalling') || 'Installing plugin...', 'info');
                 const res = await apiFetch('/api/plugins/install', { method: 'POST', body: formData });
                 if (!res.ok) {
                     const err = await res.json().catch(() => ({}));
                     throw new Error(err.error || 'Installation failed');
                 }
-                showNotification('Plugin installed successfully!', 'success');
+                showNotification(t('pluginInstallSuccess') || 'Plugin installed successfully!', 'success');
                 await loadPlugins();
             } catch (err) {
-                showNotification(`Installation failed: ${err.message}`, 'error');
+                showNotification(`${t('pluginInstallFailed') || 'Installation failed'}: ${err.message}`, 'error');
             }
         }
 
@@ -876,6 +957,10 @@
             input.click();
         }
 
+        // ============================================================
+        // PERFORMANCE DASHBOARD
+        // ============================================================
+        
         async function showPerformanceDashboard() {
             try {
                 const res = await apiFetch('/api/plugins/performance');
@@ -887,16 +972,16 @@
                 modal.className = 'modal-overlay';
                 modal.innerHTML = `
                     <div class="modal-container" style="max-width: 700px; max-height: 80vh; overflow-y: auto;">
-                        <div class="modal-header">Performance Dashboard</div>
+                        <div class="modal-header" data-translate="pluginPerfDashboard">Performance Dashboard</div>
                         <div class="modal-body">
                             <div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
-                                <div><strong>Total Hooks:</strong> ${summary.totalHooksCalled || 0}</div>
-                                <div><strong>Errors:</strong> ${summary.totalErrors || 0}</div>
-                                <div><strong>Avg Time/Hook:</strong> ${summary.avgTimePerHook || 0}ms</div>
+                                <div><strong>${t('pluginTotalHooks') || 'Total Hooks'}:</strong> ${summary.totalHooksCalled || 0}</div>
+                                <div><strong>${t('pluginErrors') || 'Errors'}:</strong> ${summary.totalErrors || 0}</div>
+                                <div><strong>${t('pluginAvgTime') || 'Avg Time/Hook'}:</strong> ${summary.avgTimePerHook || 0}ms</div>
                             </div>
-                            <h4 style="margin-bottom: 12px;">Plugin Statistics</h4>
+                            <h4 style="margin-bottom: 12px;">${t('pluginStats') || 'Plugin Statistics'}</h4>
                             <table style="width: 100%; border-collapse: collapse;">
-                                <thead><tr style="border-bottom: 1px solid rgba(255,255,255,0.1);"><th>Plugin</th><th>Calls</th><th>Errors</th><th>Avg(ms)</th></tr></thead>
+                                <thead><tr style="border-bottom: 1px solid rgba(255,255,255,0.1);"><th>${t('pluginName') || 'Plugin'}</th><th>${t('pluginCalls') || 'Calls'}</th><th>${t('pluginErrors') || 'Errors'}</th><th>${t('pluginAvg') || 'Avg(ms)'}</th></tr></thead>
                                 <tbody>
                                     ${pluginStats.map(s => `
                                         <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
@@ -910,7 +995,7 @@
                             </table>
                         </div>
                         <div class="modal-footer">
-                            <button class="action-btn" id="closePerfModal">Close</button>
+                            <button class="action-btn" id="closePerfModal" data-translate="close">Close</button>
                         </div>
                     </div>
                 `;
@@ -918,20 +1003,22 @@
                 modal.querySelector('#closePerfModal').addEventListener('click', () => modal.remove());
                 modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
             } catch (err) {
-                showNotification('Failed to load performance data', 'error');
+                showNotification(t('pluginPerfFailed') || 'Failed to load performance data', 'error');
             }
         }
 
-        // Developer Kit removed — simplified UX
-
+        // ============================================================
+        // RENDER PLUGINS
+        // ============================================================
+        
         function renderPlugins() {
             const filtered = getFilteredPlugins();
             if (filtered.length === 0) {
                 container.innerHTML = `
                     <div class="empty-state">
                         <i class="fa-solid fa-puzzle-piece"></i>
-                        <h3>No plugins found</h3>
-                        <p>Install a plugin to extend KORAI's capabilities</p>
+                        <h3 data-translate="pluginNoPlugins">No plugins found</h3>
+                        <p data-translate="pluginInstallHint">Install a plugin to extend KORAI's capabilities</p>
                     </div>
                 `;
                 return;
@@ -951,29 +1038,30 @@
                     </div>
                     <div class="plugin-badges">
                         <span class="badge ${p.enabled ? 'badge-enabled' : 'badge-disabled'}">
-                            ${p.enabled ? 'Active' : 'Inactive'}
+                            ${p.enabled ? t('pluginEnabled') : t('pluginDisabled')}
                         </span>
-                        ${p.running ? '<span class="badge badge-running">Running</span>' : ''}
-                        ${p.builtin ? '<span class="badge badge-builtin">★ Built-in</span>' : ''}
+                        ${p.running ? `<span class="badge badge-running" data-translate="pluginRunningBadge">Running</span>` : ''}
+                        ${p.builtin ? `<span class="badge badge-builtin" data-translate="pluginBuiltin">★ Built-in</span>` : ''}
                     </div>
                     <div class="plugin-description">
-                        ${escapeHtml(p.description || 'No description provided.')}
+                        ${escapeHtml(p.description || t('pluginNoDescription') || 'No description provided.')}
                     </div>
                     <div class="plugin-actions">
                         <button class="action-btn action-primary" data-action="toggle" data-id="${p.id}" data-enabled="${p.enabled}" data-builtin="${p.builtin ? '1' : '0'}" ${p.builtin ? 'disabled title="Built-in plugin cannot be disabled"' : ''}>
                             <i class="fa-solid ${p.enabled ? 'fa-toggle-on' : 'fa-toggle-off'}"></i>
-                            ${p.enabled ? (p.builtin ? 'Enabled' : 'Disable') : (p.builtin ? 'Disabled' : 'Enable')}
+                            ${p.enabled ? (p.builtin ? t('pluginEnabled') : t('pluginDisable')) : (p.builtin ? t('pluginDisabled') : t('pluginEnable'))}
                         </button>
                         <button class="action-btn" data-action="details" data-id="${p.id}">
-                            <i class="fa-solid fa-info-circle"></i> Details
+                            <i class="fa-solid fa-info-circle"></i> <span data-translate="pluginDetails">Details</span>
                         </button>
                         <button class="action-btn action-danger" data-action="uninstall" data-id="${p.id}" data-builtin="${p.builtin ? '1' : '0'}" ${p.builtin ? 'disabled title="Built-in plugin cannot be uninstalled"' : ''}>
-                            <i class="fa-solid fa-trash"></i> Uninstall
+                            <i class="fa-solid fa-trash"></i> <span data-translate="pluginUninstall">Uninstall</span>
                         </button>
                     </div>
                 </div>
             `).join('');
 
+            // --- Attach event listeners ---
             container.querySelectorAll('[data-action="toggle"]').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
                     e.stopPropagation();
@@ -982,24 +1070,25 @@
                     await togglePlugin(id, enabled);
                 });
             });
+
             container.querySelectorAll('[data-action="uninstall"]').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
                     e.stopPropagation();
                     const id = btn.dataset.id;
                     const isBuiltin = btn.dataset.builtin === '1' || btn.dataset.builtin === 'true';
                     if (isBuiltin) {
-                        showNotification('این پلاگین پیشفرض است و نمی‌توان آن را حذف کرد', 'error');
+                        showNotification(t('pluginBuiltinCantUninstall') || 'This plugin is built-in and cannot be uninstalled', 'error');
                         return;
                     }
-                    if (!confirm('Are you sure you want to uninstall this plugin? This action cannot be undone.')) return;
+                    if (!confirm(t('pluginUninstallConfirm') || 'Are you sure you want to uninstall this plugin?')) return;
                     const prev = btn.innerHTML;
                     try {
                         btn.disabled = true;
-                        btn.innerHTML = '⏳ در حال حذف...';
-                        showActionOverlay('در حال حذف...');
+                        btn.innerHTML = '⏳ ' + (t('pluginUninstalling') || 'Uninstalling...');
+                        showActionOverlay(t('pluginUninstalling') || 'Uninstalling...');
                         await uninstallPlugin(id);
                     } catch (err) {
-                        // error notification already shown by uninstallPlugin
+                        // error notification already shown
                     } finally {
                         hideActionOverlay();
                         btn.disabled = false;
@@ -1007,32 +1096,37 @@
                     }
                 });
             });
+
             container.querySelectorAll('[data-action="details"]').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const id = btn.dataset.id;
                     const plugin = plugins.find(p => p.id === id);
                     if (plugin) {
-                        alert(`Name: ${plugin.name}\nID: ${plugin.id}\nVersion: ${plugin.version}\nPath: ${plugin.path || 'N/A'}`);
+                        alert(`${t('pluginName')}: ${plugin.name}\n${t('pluginId')}: ${plugin.id}\n${t('pluginVersion')}: ${plugin.version}\n${t('pluginPath')}: ${plugin.path || 'N/A'}`);
                     }
                 });
             });
         }
 
+        // ============================================================
+        // TAB SWITCHING
+        // ============================================================
+        
         function switchTab(tab) {
             document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
             const activeBtn = document.querySelector(`.nav-item[data-tab="${tab}"]`);
             if (activeBtn) activeBtn.classList.add('active');
             if (tab === 'installed') {
-                document.querySelector('.page-title').innerHTML = 'Plugin Studio';
-                document.querySelector('.page-subtitle').innerHTML = 'Extend KORAI with powerful modules and custom integrations';
+                document.querySelector('.page-title').textContent = t('pluginStudio');
+                document.querySelector('.page-subtitle').textContent = t('pluginSubtitle');
                 document.getElementById('statsGrid').style.display = 'flex';
                 document.querySelector('.toolbar').style.display = 'flex';
                 loadPlugins();
             } else if (tab === 'performance') {
                 document.getElementById('statsGrid').style.display = 'none';
                 document.querySelector('.toolbar').style.display = 'none';
-                container.innerHTML = `<div class="empty-state"><i class="fa-solid fa-chart-line"></i><h3>Loading performance data...</h3></div>`;
+                container.innerHTML = `<div class="empty-state"><i class="fa-solid fa-chart-line"></i><h3>${t('pluginLoadingPerf') || 'Loading performance data...'}</h3></div>`;
                 showPerformanceDashboard();
                 setTimeout(() => {
                     const checkModal = setInterval(() => {
@@ -1045,10 +1139,15 @@
             }
         }
 
+        // ============================================================
+        // EVENT LISTENERS
+        // ============================================================
+        
         searchInput.addEventListener('input', (e) => {
             searchQuery = e.target.value;
             renderPlugins();
         });
+
         filterChips.forEach(chip => {
             chip.addEventListener('click', () => {
                 filterChips.forEach(c => c.classList.remove('active'));
@@ -1057,7 +1156,9 @@
                 renderPlugins();
             });
         });
+
         installBtn.addEventListener('click', triggerFileUpload);
+
         backBtn.addEventListener('click', () => {
             if (window.history.length > 1) window.history.back();
             else window.close();
@@ -1067,8 +1168,21 @@
             btn.addEventListener('click', () => switchTab(btn.dataset.tab));
         });
 
+        // Language change listener
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'user_lang') {
+                translatePage();
+                renderPlugins();
+            }
+        });
+
+        // ============================================================
+        // INIT
+        // ============================================================
+        
         (async () => {
             apiBase = await resolveApiBase();
+            translatePage();
             loadPlugins();
         })();
     </script>

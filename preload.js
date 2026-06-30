@@ -34,17 +34,20 @@ const _executeControlHandlers = new Map();
 // Expose safe APIs to renderer
 contextBridge.exposeInMainWorld('electronAPI', {
 
-
+    // =========================================================================
+    // SYSTEM INFO
+    // =========================================================================
+    
     // Get data directory path
     getDataPath: () => ipcRenderer.invoke('get-data-path'),
 
     // Get app version
     getAppVersion: () => ipcRenderer.invoke('get-app-version'),
-
     
     // =========================================================================
     // SERVER AND FILE OPERATIONS
     // =========================================================================
+    
     getServerPort: getServerPort,
     selectAudioFiles: () => ipcRenderer.invoke('select-audio-files'),
     selectAudioFolder: () => ipcRenderer.invoke('select-audio-folder'),
@@ -52,9 +55,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // =========================================================================
     // FILE ASSOCIATION - receive files opened from system
     // =========================================================================
+    
     onFilesOpened: (callback) => {
         ipcRenderer.on('files-opened', (event, files) => callback(files));
     },
+    
     // Receive folder scan results (array of file paths)
     onFolderScanResults: (callback) => {
         ipcRenderer.on('scan-results', (event, files) => callback(files));
@@ -63,6 +68,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // =========================================================================
     // GLOBAL SHORTCUT HANDLER
     // =========================================================================
+    
     onGlobalShortcut: (callback) => {
         ipcRenderer.on('global-shortcut', (event, command) => callback(command));
     },
@@ -70,6 +76,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // =========================================================================
     // WINDOW CONTROLS
     // =========================================================================
+    
     minimizeWindow: () => ipcRenderer.send('minimize-window'),
     maximizeWindow: () => ipcRenderer.send('maximize-window'),
     closeWindow: () => ipcRenderer.send('close-window'),
@@ -77,14 +84,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // =========================================================================
     // MINI-PLAYER CONTROLS
     // =========================================================================
+    
     openMiniPlayer: (track, playing) => ipcRenderer.send('open-mini-player', track, playing),
     closeMiniPlayer: () => ipcRenderer.send('close-mini-player'),
     syncStateToMini: (data) => ipcRenderer.send('sync-state-to-mini', data),
     controlFromMini: (command) => ipcRenderer.send('control-from-mini', command),
     
+    openFolder: (path) => ipcRenderer.send('open-folder', path),
+
     // =========================================================================
     // TRAY MENU SYNC
     // =========================================================================
+    
     syncTrayState: (data) => ipcRenderer.send('tray-update-state', data),
     onTrayOpenMiniPlayer: (callback) => ipcRenderer.on('tray-open-mini-player', (event, track, playing) => callback(track, playing)),
     onTrayCinematicMode: (callback) => ipcRenderer.on('tray-cinematic-mode', () => callback()),
@@ -97,6 +108,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // =========================================================================
     // STATE SYNCHRONIZATION
     // =========================================================================
+    
     // Register for 'state-updated' and return a token that can be used to remove the listener.
     onStateUpdated: (callback) => {
         const token = Math.random().toString(36).slice(2);
@@ -105,6 +117,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('state-updated', wrapper);
         return token;
     },
+    
     removeStateUpdatedListener: (token) => {
         const wrapper = _stateUpdatedHandlers.get(token);
         if (wrapper) {
@@ -112,6 +125,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
             _stateUpdatedHandlers.delete(token);
         }
     },
+    
     // Register for 'execute-control' (returns token) and allow removal
     onExecuteControl: (callback) => {
         const token = Math.random().toString(36).slice(2);
@@ -120,6 +134,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('execute-control', wrapper);
         return token;
     },
+    
     removeExecuteControlListener: (token) => {
         const wrapper = _executeControlHandlers.get(token);
         if (wrapper) {
@@ -131,25 +146,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // =========================================================================
     // EXTERNAL LINKS
     // =========================================================================
+    
     openExternalLink: (url) => ipcRenderer.send('open-external', url),
+
+    // =========================================================================
+    // SCAN EVENTS
+    // =========================================================================
+    
+    onScanNoFilesFound: (callback) => {
+        ipcRenderer.on('scan-no-files-found', (event, folderPath) => callback(folderPath));
+    },
+    
+    onScanStarted: (callback) => {
+        ipcRenderer.on('scan-started', (event, folderPath) => callback(folderPath));
+    },
+    
+    onScanComplete: (callback) => {
+        ipcRenderer.on('scan-complete', (event, count) => callback(count));
+    },
 
     // =========================================================================
     // VERSION AND UPDATE MANAGEMENT
     // =========================================================================
+    
     /**
      * Listen for initial app version from main process
      */
     onAppVersion: (callback) => ipcRenderer.on('app-version', (event, data) => callback(data)),
     
-    onScanNoFilesFound: (callback) => {
-        ipcRenderer.on('scan-no-files-found', (event, folderPath) => callback(folderPath));
-    },
-    onScanStarted: (callback) => {
-        ipcRenderer.on('scan-started', (event, folderPath) => callback(folderPath));
-    },
-    onScanComplete: (callback) => {
-        ipcRenderer.on('scan-complete', (event, count) => callback(count));
-    },
     /**
      * Listen for update status changes (update available or not)
      */
@@ -160,50 +184,84 @@ contextBridge.exposeInMainWorld('electronAPI', {
      * Returns: { hasUpdate: boolean, currentVersion: string, latestVersion: string|null, url: string|null, error: string|null }
      */
     checkUpdateStatus: () => ipcRenderer.invoke('check-update-status'),
+    
+    /**
+     * Apply the update
+     */
+    applyUpdate: (updateInfo) => ipcRenderer.send('apply-update', updateInfo),
+    
+    /**
+     * Listen for update progress events
+     */
+    onUpdateProgress: (callback) => {
+        ipcRenderer.on('update-progress', (event, progress) => callback(progress));
+    },
+    
+    /**
+     * Restart the application after update
+     */
+    restartApp: () => ipcRenderer.send('restart-app'),
+    
+    /**
+     * Get current update progress
+     */
+    getUpdateProgress: () => ipcRenderer.invoke('get-update-progress'),
 
     // =========================================================================
     // TAG EDITOR
     // =========================================================================
+    
     onOpenTagEditor: (callback) => ipcRenderer.on('open-tag-editor', (event, trackId) => callback(trackId)),
     
     // =========================================================================
     // PLAYLIST EXPORT/IMPORT
     // =========================================================================
+    
     exportPlaylist: (playlistId, format) => ipcRenderer.invoke('export-playlist', playlistId, format),
     importPlaylist: (filePath, format) => ipcRenderer.invoke('import-playlist', filePath, format),
     
     // =========================================================================
     // LIBRARY EXPORT
     // =========================================================================
+    
     exportLibrary: () => ipcRenderer.invoke('export-library'),
     
     // =========================================================================
     // CUE SHEET
     // =========================================================================
+    
     parseCueSheet: (cuePath) => ipcRenderer.invoke('parse-cue', cuePath),
     
     // =========================================================================
     // PLAYBACK SETTINGS
     // =========================================================================
+    
     getPlaybackSettings: () => ipcRenderer.invoke('get-playback-settings'),
     setPlaybackSettings: (settings) => ipcRenderer.invoke('set-playback-settings', settings),
     
     // =========================================================================
     // CROSSFADE
     // =========================================================================
+    
     setCrossfade: (duration) => ipcRenderer.send('set-crossfade', duration),
     onCrossfadeChanged: (callback) => ipcRenderer.on('crossfade-changed', (event, duration) => callback(duration)),
     
     // =========================================================================
     // REAL BPM DETECTION
     // =========================================================================
+    
     detectRealBPM: (trackId) => ipcRenderer.invoke('detect-real-bpm', trackId),
 
-
     // =========================================================================
-    // REAL BPM DETECTION
+    // PLAYLIST AUTO IMPORT
     // =========================================================================
+    
     importPlaylistAuto: (filePath) => ipcRenderer.invoke('import-playlist-auto', filePath),
+    
+    // =========================================================================
+    // OPEN DIALOG
+    // =========================================================================
+    
     showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
 });
 
@@ -212,14 +270,18 @@ console.debug('✅ Preload script loaded');
 // ---- Plugin UI Bridge ----
 // Expose a minimal, secure API for renderer to create sandboxed plugin iframes
 contextBridge.exposeInMainWorld('koraiPlugins', {
-    // Create a sandboxed iframe for a plugin inside a container selector.
-    // pluginId: string identifier
-    // containerSelector: CSS selector for the container element in renderer DOM
-    // options: { srcdoc?: string } - HTML string to load inside iframe (optional)
+    /**
+     * Create a sandboxed iframe for a plugin inside a container selector.
+     * @param {string} pluginId - Plugin identifier
+     * @param {string} containerSelector - CSS selector for the container element
+     * @param {Object} options - { srcdoc?: string } - HTML string to load inside iframe (optional)
+     * @returns {Object} { send: function, iframe: Element }
+     */
     createPluginIframe: (pluginId, containerSelector, options = {}) => {
         const container = document.querySelector(containerSelector);
         if (!container) throw new Error('container not found: ' + containerSelector);
-        // remove existing iframe for this plugin if present
+        
+        // Remove existing iframe for this plugin if present
         const existing = container.querySelector(`iframe[data-plugin-id="${pluginId}"]`);
         if (existing) existing.remove();
 
@@ -234,20 +296,22 @@ contextBridge.exposeInMainWorld('koraiPlugins', {
             // Use srcdoc to avoid loading remote resources
             iframe.srcdoc = options.srcdoc;
         } else {
-            // blank isolated iframe
+            // Blank isolated iframe
             iframe.srcdoc = '<!doctype html><meta charset="utf-8"><title>Plugin UI</title><div id="korai-root"></div>';
         }
 
-        // forward messages from iframe to renderer via window events
+        // Forward messages from iframe to renderer via window events
         const msgHandler = (ev) => {
             if (ev.source !== iframe.contentWindow) return;
-            // re-dispatch a CustomEvent for renderer code to handle
-            window.dispatchEvent(new CustomEvent('korai-plugin-message', { detail: { pluginId, message: ev.data } }));
+            // Re-dispatch a CustomEvent for renderer code to handle
+            window.dispatchEvent(new CustomEvent('korai-plugin-message', { 
+                detail: { pluginId, message: ev.data } 
+            }));
         };
 
         window.addEventListener('message', msgHandler);
 
-        // cleanup when iframe removed
+        // Cleanup when iframe removed
         const observer = new MutationObserver((records) => {
             for (const r of records) {
                 for (const n of r.removedNodes) {
@@ -266,17 +330,32 @@ contextBridge.exposeInMainWorld('koraiPlugins', {
             send: (msg) => {
                 try {
                     iframe.contentWindow.postMessage(msg, '*');
-                } catch (e) { console.warn('postMessage failed', e); }
+                } catch (e) { 
+                    console.warn('postMessage failed', e); 
+                }
             },
             iframe
         };
     },
-    // Send a message to all plugin iframes
+    
+    /**
+     * Send a message to all plugin iframes
+     */
     broadcast: (msg) => {
         const iframes = document.querySelectorAll('iframe[data-plugin-id]');
         iframes.forEach(f => {
-            try { f.contentWindow.postMessage(msg, '*'); } catch (e) {}
+            try { 
+                f.contentWindow.postMessage(msg, '*'); 
+            } catch (e) {}
         });
     },
-    // Listen for plugin messages (renderer can addEventListener on window for 'korai-plugin-message')
+    
+    /**
+     * Listen for plugin messages (renderer can addEventListener on window for 'korai-plugin-message')
+     */
+    onPluginMessage: (callback) => {
+        window.addEventListener('korai-plugin-message', (event) => {
+            callback(event.detail);
+        });
+    }
 });

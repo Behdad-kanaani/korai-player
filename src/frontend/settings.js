@@ -1,14 +1,70 @@
 /**
  * settings.js - KORAI Settings Page Logic
- * 
- * Fully functional settings manager with:
- * - Load/Save to backend API using global settingsStore
- * - Real-time UI updates
- * - Tray behavior control
- * - EQ presets
- * - Theme switching
- * - Keyboard shortcuts (Ctrl+S, Escape)
  */
+
+// ============================================================
+// TRANSLATION HELPER
+// ============================================================
+
+function t(key) {
+    try {
+        if (typeof window !== 'undefined' && window.translations) {
+            const lang = localStorage.getItem('user_lang') || 'en';
+            if (window.translations[lang] && window.translations[lang][key]) {
+                return window.translations[lang][key];
+            }
+            if (window.translations.en && window.translations.en[key]) {
+                return window.translations.en[key];
+            }
+        }
+    } catch (e) {
+        console.warn('Translation error:', e);
+    }
+    return key;
+}
+
+function translatePage() {
+    console.debug('🔄 Translating settings page...');
+    
+    if (!window.translations) {
+        console.warn('⚠️ window.translations not found! Make sure lang.js is loaded.');
+        return;
+    }
+    
+    const lang = localStorage.getItem('user_lang') || 'en';
+    console.debug(`📝 Current language: ${lang}`);
+    
+    // Translate elements with data-translate
+    document.querySelectorAll('[data-translate]').forEach(el => {
+        const key = el.getAttribute('data-translate');
+        const translated = t(key);
+        if (translated && translated !== key) {
+            // Preserve icons
+            const icon = el.querySelector('i');
+            if (icon && el.childNodes.length === 1) {
+                el.innerHTML = '';
+                el.appendChild(icon);
+                el.appendChild(document.createTextNode(' ' + translated));
+            } else if (el.childNodes.length === 0 || el.childNodes[0].nodeType === Node.TEXT_NODE) {
+                el.textContent = translated;
+            }
+        }
+    });
+
+    // Translate placeholders
+    document.querySelectorAll('[data-translate-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-translate-placeholder');
+        el.placeholder = t(key);
+    });
+
+    // Translate titles
+    document.querySelectorAll('[data-translate-title]').forEach(el => {
+        const key = el.getAttribute('data-translate-title');
+        el.title = t(key);
+    });
+    
+    console.debug('✅ Translation complete');
+}
 
 // ============================================================
 // STATE
@@ -29,7 +85,6 @@ async function resolveApiPort() {
             if (port) return port;
         } catch (e) {}
     }
-    // Try common ports
     for (const p of [3000, 3001, 3002, 3003, 3004]) {
         try {
             const res = await fetch(`http://127.0.0.1:${p}/api/health`);
@@ -51,7 +106,6 @@ async function apiFetch(path, opts = {}) {
 function showToast(message, type = 'info') {
     const container = document.getElementById('toastContainer');
     if (!container) {
-        // Fallback: create container if not exists
         const newContainer = document.createElement('div');
         newContainer.id = 'toastContainer';
         newContainer.className = 'toast-container';
@@ -72,64 +126,28 @@ function showToast(message, type = 'info') {
 // SETTINGS LOAD / SAVE
 // ============================================================
 
-async function loadSettings() {
-    try {
-        // Try to use settingsStore first
-        if (window.settingsStore && window.settingsStore.initialized) {
-            settingsData = window.settingsStore.getAll();
-            applySettingsToUI(settingsData);
-            showToast('Settings loaded', 'success');
-            return;
-        }
-
-        // Fallback: load directly from API
-        const res = await apiFetch('/api/settings');
-        if (!res.ok) throw new Error('Failed to load settings');
-        settingsData = await res.json();
-        applySettingsToUI(settingsData);
-        showToast('Settings loaded', 'success');
-    } catch (err) {
-        console.error('Load settings error:', err);
-        // Use defaults
-        settingsData = getDefaultSettings();
-        applySettingsToUI(settingsData);
-        showToast('Using default settings', 'info');
-    }
-}
-
 function getDefaultSettings() {
     return {
-        // Playback
         gaplessEnabled: true,
         crossfadeDuration: 0,
         repeatMode: 'off',
         shuffleDefault: false,
         resumeOnStart: false,
-
-        // Audio
         defaultVolume: 70,
         audioOutput: 'stereo',
         eq: [0, 0, 0, 0, 0],
-
-        // Appearance
         theme: 'default',
         direction: 'ltr',
         fontSize: 'medium',
         showAlbumArt: true,
-
-        // Library
         scanPath: '',
         formats: ['mp3', 'wav', 'flac', 'ogg', 'm4a'],
         autoScan: false,
         maxScanDepth: 100,
-
-        // Plugins
         autoActivatePlugins: true,
         hotReload: false,
         hookTimeout: 5000,
         pluginMemory: 64,
-
-        // AI
         aiRecommendations: true,
         discoveryMode: true,
         weightLike: 0.40,
@@ -138,23 +156,40 @@ function getDefaultSettings() {
         weightRepeat: 0.25,
         weightPlaylistAdd: 0.15,
         diversityBoost: 0.85,
-
-        // System & Tray
         stayInTray: true,
         trayNotification: true,
         autoUpdate: true,
         updateInterval: 24,
-
-        // Advanced
         performanceMode: false,
         debugLogs: false,
         isFirstLaunch: true
     };
 }
 
+async function loadSettings() {
+    try {
+        if (window.settingsStore && window.settingsStore.initialized) {
+            settingsData = window.settingsStore.getAll();
+            applySettingsToUI(settingsData);
+            showToast(t('settingsLoaded'), 'success');
+            return;
+        }
+
+        const res = await apiFetch('/api/settings');
+        if (!res.ok) throw new Error('Failed to load settings');
+        settingsData = await res.json();
+        applySettingsToUI(settingsData);
+        showToast(t('settingsLoaded'), 'success');
+    } catch (err) {
+        console.error('Load settings error:', err);
+        settingsData = getDefaultSettings();
+        applySettingsToUI(settingsData);
+        showToast(t('settingsDefaultLoading'), 'info');
+    }
+}
+
 async function saveSettings() {
     try {
-        // Gather all values from UI
         const updates = {
             gaplessEnabled: document.getElementById('gaplessToggle')?.checked ?? true,
             crossfadeDuration: parseFloat(document.getElementById('crossfadeSlider')?.value ?? 0),
@@ -198,12 +233,10 @@ async function saveSettings() {
             ]
         };
 
-        // Use settingsStore if available
         if (window.settingsStore && window.settingsStore.initialized) {
             window.settingsStore.setMultiple(updates);
             await window.settingsStore.save();
         } else {
-            // Fallback: direct API save
             const res = await apiFetch('/api/settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -213,46 +246,36 @@ async function saveSettings() {
             settingsData = updates;
         }
 
-        showToast('Settings saved successfully!', 'success');
+        showToast(t('settingsToastSuccess'), 'success');
         applySettingsToUI(updates);
-
-        // Apply theme immediately
         applyTheme(updates.theme);
         applyDirection(updates.direction);
 
-        // Notify main process about language change
         if (window.electronAPI && window.electronAPI.trayLanguageChanged) {
             const lang = updates.direction === 'rtl' ? 'fa' : 'en';
             window.electronAPI.trayLanguageChanged(lang);
         }
 
-        // Apply performance mode
         if (updates.performanceMode) {
             document.body.classList.add('performance-mode');
         } else {
             document.body.classList.remove('performance-mode');
         }
 
-        // Apply debug logs
         if (updates.debugLogs) {
             localStorage.setItem('korai_debug', 'true');
         } else {
             localStorage.removeItem('korai_debug');
         }
 
-        // Sync with DSP panel if open
         syncEQToDSP(updates.eq);
-
-        // Sync with playback settings
         syncPlaybackSettings(updates);
-
-        // Update save status
-        updateSaveStatus('Saved!', 'success');
+        updateSaveStatus(t('settingsSaveStatus'), 'success');
 
     } catch (err) {
         console.error('Save settings error:', err);
-        showToast('Failed to save: ' + err.message, 'error');
-        updateSaveStatus('Failed: ' + err.message, 'error');
+        showToast(t('settingsToastError') + err.message, 'error');
+        updateSaveStatus(t('settingsSaveFailed') + ': ' + err.message, 'error');
     }
 }
 
@@ -275,7 +298,6 @@ function updateSaveStatus(message, type = 'info') {
 function applySettingsToUI(s) {
     if (!s) return;
 
-    // Playback
     setCheckbox('gaplessToggle', s.gaplessEnabled);
     setSlider('crossfadeSlider', s.crossfadeDuration || 0);
     const crossfadeLabel = document.getElementById('crossfadeValueLabel');
@@ -287,7 +309,6 @@ function applySettingsToUI(s) {
     setCheckbox('shuffleDefaultToggle', s.shuffleDefault);
     setCheckbox('resumeOnStartToggle', s.resumeOnStart);
 
-    // Audio
     setSlider('defaultVolumeSlider', s.defaultVolume || 70);
     const volumeLabel = document.getElementById('defaultVolumeLabel');
     if (volumeLabel) volumeLabel.textContent = (s.defaultVolume || 70) + '%';
@@ -295,7 +316,6 @@ function applySettingsToUI(s) {
     const audioOutput = document.getElementById('audioOutputSelect');
     if (audioOutput) audioOutput.value = s.audioOutput || 'stereo';
 
-    // EQ
     const eq = s.eq || [0, 0, 0, 0, 0];
     for (let i = 0; i < 5; i++) {
         const slider = document.getElementById(`eqSlider${i}`);
@@ -306,7 +326,6 @@ function applySettingsToUI(s) {
         }
     }
 
-    // Appearance
     document.querySelectorAll('.theme-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.theme === (s.theme || 'default'));
     });
@@ -319,9 +338,8 @@ function applySettingsToUI(s) {
     
     setCheckbox('showAlbumArtToggle', s.showAlbumArt !== false);
 
-    // Library
     const scanPathDisplay = document.getElementById('defaultScanPathDisplay');
-    if (scanPathDisplay) scanPathDisplay.textContent = s.scanPath || 'Not set';
+    if (scanPathDisplay) scanPathDisplay.textContent = s.scanPath || t('libraryScanPathNotSet');
     
     document.querySelectorAll('.format-tag').forEach(tag => {
         const fmt = tag.dataset.format;
@@ -333,7 +351,6 @@ function applySettingsToUI(s) {
     const maxDepthLabel = document.getElementById('maxScanDepthLabel');
     if (maxDepthLabel) maxDepthLabel.textContent = s.maxScanDepth || 100;
 
-    // Plugins
     setCheckbox('autoActivatePluginsToggle', s.autoActivatePlugins !== false);
     setCheckbox('hotReloadToggle', s.hotReload);
     setSlider('hookTimeoutSlider', s.hookTimeout || 5000);
@@ -344,7 +361,6 @@ function applySettingsToUI(s) {
     const pluginMemoryLabel = document.getElementById('pluginMemoryLabel');
     if (pluginMemoryLabel) pluginMemoryLabel.textContent = (s.pluginMemory || 64) + ' MB';
 
-    // AI
     setCheckbox('aiRecommendationsToggle', s.aiRecommendations !== false);
     setCheckbox('discoveryModeToggle', s.discoveryMode !== false);
     setSlider('weightLike', s.weightLike || 0.40);
@@ -371,7 +387,6 @@ function applySettingsToUI(s) {
     const diversityLabel = document.getElementById('diversityBoostLabel');
     if (diversityLabel) diversityLabel.textContent = (s.diversityBoost || 0.85).toFixed(2);
 
-    // System & Tray
     setCheckbox('stayInTrayToggle', s.stayInTray !== false);
     setCheckbox('trayNotificationToggle', s.trayNotification !== false);
     setCheckbox('autoUpdateToggle', s.autoUpdate !== false);
@@ -388,35 +403,28 @@ function applySettingsToUI(s) {
     const dataPathDisplay = document.getElementById('dataPathDisplay');
     if (dataPathDisplay) dataPathDisplay.textContent = s.dataPath || 'Loading...';
 
-    // Advanced
     setCheckbox('performanceModeToggle', s.performanceMode);
     setCheckbox('debugLogsToggle', s.debugLogs);
     
     const serverPortDisplay = document.getElementById('serverPortDisplay');
     if (serverPortDisplay) serverPortDisplay.textContent = apiPort || '3000';
 
-    // Apply theme/direction immediately
     applyTheme(s.theme || 'default');
     applyDirection(s.direction || 'ltr');
 
-    // Apply performance mode
     if (s.performanceMode) {
         document.body.classList.add('performance-mode');
     } else {
         document.body.classList.remove('performance-mode');
     }
 
-    // Apply debug logs
     if (s.debugLogs) {
         localStorage.setItem('korai_debug', 'true');
     } else {
         localStorage.removeItem('korai_debug');
     }
 
-    // Apply font size
     applyFontSize(s.fontSize || 'medium');
-
-    // Apply show album art
     applyShowAlbumArt(s.showAlbumArt !== false);
 }
 
@@ -431,7 +439,7 @@ function setSlider(id, value) {
 }
 
 // ============================================================
-// APPLY FUNCTIONS (for real-time updates)
+// APPLY FUNCTIONS
 // ============================================================
 
 function applyTheme(theme) {
@@ -442,7 +450,6 @@ function applyTheme(theme) {
         btn.classList.toggle('active', btn.dataset.theme === theme);
     });
 
-    // Update skin selector in sidebar if it exists (when settings is embedded)
     document.querySelectorAll('.skin-btn').forEach(btn => {
         const skinValue = btn.dataset.skin;
         let targetSkin = skinValue;
@@ -457,12 +464,14 @@ function applyDirection(direction) {
     document.body.classList.toggle('rtl', direction === 'rtl');
     document.body.classList.toggle('ltr', direction !== 'rtl');
 
-    // Update language button if exists
     const langBtn = document.getElementById('langToggleBtn');
     if (langBtn) {
         const span = langBtn.querySelector('span');
         if (span) span.textContent = direction === 'rtl' ? 'EN' : 'FA';
     }
+    
+    // Re-translate after direction change
+    setTimeout(translatePage, 50);
 }
 
 function applyFontSize(size) {
@@ -484,7 +493,6 @@ function applyShowAlbumArt(show) {
 // ============================================================
 
 function syncEQToDSP(eq) {
-    // If DSP panel exists in main window, sync EQ values
     if (window.parent && window.parent.postMessage) {
         window.parent.postMessage({
             type: 'sync-eq',
@@ -492,7 +500,6 @@ function syncEQToDSP(eq) {
         }, '*');
     }
     
-    // Also update local DSP if function exists
     if (typeof window.updateEqualizerBand === 'function') {
         for (let i = 0; i < 5; i++) {
             window.updateEqualizerBand(i, eq[i] || 0);
@@ -501,7 +508,6 @@ function syncEQToDSP(eq) {
 }
 
 function syncPlaybackSettings(settings) {
-    // Sync with playback settings in main window
     if (window.parent && window.parent.postMessage) {
         window.parent.postMessage({
             type: 'sync-playback',
@@ -512,7 +518,6 @@ function syncPlaybackSettings(settings) {
         }, '*');
     }
 
-    // Update Electron settings
     if (window.electronAPI && window.electronAPI.setPlaybackSettings) {
         window.electronAPI.setPlaybackSettings({
             gapless: settings.gaplessEnabled,
@@ -528,17 +533,14 @@ function syncPlaybackSettings(settings) {
 function switchSection(sectionId) {
     currentSection = sectionId;
 
-    // Update nav
     document.querySelectorAll('.nav-item').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.section === sectionId);
     });
 
-    // Update sections
     document.querySelectorAll('.settings-section').forEach(section => {
         section.classList.toggle('active', section.id === 'section-' + sectionId);
     });
 
-    // Scroll to top
     const content = document.querySelector('.settings-content');
     if (content) content.scrollTop = 0;
 }
@@ -571,12 +573,10 @@ function applyEQPreset(presetName) {
         }
     }
 
-    // Update active preset button
     document.querySelectorAll('.eq-preset-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.preset === presetName);
     });
 
-    // Sync with DSP
     syncEQToDSP(values);
 }
 
@@ -596,34 +596,49 @@ async function getDataPath() {
 }
 
 function openDataDirectory() {
-    if (window.electronAPI && window.electronAPI.openExternalLink) {
-        const path = document.getElementById('dataPathDisplay')?.textContent;
-        if (path && path !== 'Loading...' && path !== 'User Data' && !path.includes('Loading')) {
-            window.electronAPI.openExternalLink('file://' + path);
+    const pathDisplay = document.getElementById('dataPathDisplay');
+    if (!pathDisplay) return;
+    
+    const dataPath = pathDisplay.textContent;
+    if (!dataPath || dataPath === 'Loading...' || dataPath === 'User Data') {
+        showToast('Data directory path is not available', 'error');
+        return;
+    }
+
+    // استفاده از electronAPI برای باز کردن پوشه
+    if (window.electronAPI && window.electronAPI.openFolder) {
+        window.electronAPI.openFolder(dataPath);
+    } else if (window.electronAPI && window.electronAPI.openExternalLink) {
+        // fallback
+        let formattedPath = dataPath;
+        if (process.platform === 'win32') {
+            formattedPath = 'file:///' + dataPath.replace(/\\/g, '/');
         } else {
-            showToast('Data path not available', 'error');
+            formattedPath = 'file://' + dataPath;
         }
+        window.electronAPI.openExternalLink(formattedPath);
     } else {
-        showToast('Cannot open directory in this environment', 'error');
+        showToast('Cannot open directory', 'error');
     }
 }
+
 
 // ============================================================
 // CLEAR CACHE
 // ============================================================
 
 async function clearCache() {
-    if (!confirm('Are you sure you want to clear cache and telemetry data?\nThis action cannot be undone.')) return;
+    if (!confirm(t('systemClearCache') + '?\n' + t('settingsResetConfirm2'))) return;
 
     try {
         const res = await apiFetch('/api/settings/clear-cache', { method: 'POST' });
         if (res.ok) {
-            showToast('Cache cleared successfully!', 'success');
+            showToast(t('systemClearCache') + ' cleared successfully!', 'success');
         } else {
             throw new Error('Failed to clear cache');
         }
     } catch (err) {
-        showToast('Failed to clear cache: ' + err.message, 'error');
+        showToast(t('systemClearCache') + ' failed: ' + err.message, 'error');
     }
 }
 
@@ -632,27 +647,26 @@ async function clearCache() {
 // ============================================================
 
 async function checkForUpdates() {
-    showToast('Checking for updates...', 'info');
+    showToast(t('systemCheckUpdates') + '...', 'info');
     try {
         if (window.electronAPI && window.electronAPI.checkUpdateStatus) {
             const status = await window.electronAPI.checkUpdateStatus();
             if (status && status.hasUpdate) {
-                showToast(`🎉 Update available: v${status.latestVersion}`, 'success');
-                // Also show in status bar
+                showToast(`🎉 ${t('updateAvailable')}: v${status.latestVersion}`, 'success');
                 const versionDisplay = document.getElementById('currentVersionDisplay');
                 if (versionDisplay) {
                     versionDisplay.innerHTML = `v${status.currentVersion} → <strong style="color: #1db954;">v${status.latestVersion}</strong>`;
                 }
             } else if (status && status.currentVersion) {
-                showToast(`✅ You are using the latest version (v${status.currentVersion})`, 'success');
+                showToast(`✅ ${t('noUpdates')} (v${status.currentVersion})`, 'success');
             } else {
-                showToast('✅ You are using the latest version', 'success');
+                showToast(`✅ ${t('noUpdates')}`, 'success');
             }
         } else {
-            showToast('Update check not available', 'error');
+            showToast(t('systemCheckUpdates') + ' not available', 'error');
         }
     } catch (err) {
-        showToast('Failed to check updates: ' + err.message, 'error');
+        showToast(t('systemCheckUpdates') + ' failed: ' + err.message, 'error');
     }
 }
 
@@ -661,15 +675,14 @@ async function checkForUpdates() {
 // ============================================================
 
 async function resetAllSettings() {
-    if (!confirm('⚠️ Are you sure you want to reset ALL settings to defaults?\nThis action cannot be undone!')) return;
-    if (!confirm('Really? This will reset theme, EQ, playback, and all preferences.')) return;
+    if (!confirm(t('settingsResetConfirm'))) return;
+    if (!confirm(t('settingsResetConfirm2'))) return;
 
     try {
-        // Use settingsStore if available
         if (window.settingsStore && window.settingsStore.initialized) {
             const success = await window.settingsStore.reset();
             if (success) {
-                showToast('All settings have been reset!', 'success');
+                showToast(t('settingsResetSuccess'), 'success');
                 await loadSettings();
             } else {
                 throw new Error('Reset failed');
@@ -677,18 +690,17 @@ async function resetAllSettings() {
             return;
         }
 
-        // Fallback: direct API call
         const res = await apiFetch('/api/settings/reset', { method: 'POST' });
         if (res.ok) {
             const data = await res.json();
             settingsData = data.settings || getDefaultSettings();
             applySettingsToUI(settingsData);
-            showToast('All settings have been reset!', 'success');
+            showToast(t('settingsResetSuccess'), 'success');
         } else {
             throw new Error('Failed to reset settings');
         }
     } catch (err) {
-        showToast('Failed to reset settings: ' + err.message, 'error');
+        showToast(t('settingsResetFailed') + ': ' + err.message, 'error');
     }
 }
 
@@ -712,13 +724,13 @@ async function selectScanPath() {
                 settingsData.scanPath = paths[0];
                 const display = document.getElementById('defaultScanPathDisplay');
                 if (display) display.textContent = paths[0];
-                showToast('Scan path updated', 'success');
+                showToast(t('libraryScanPath') + ' updated', 'success');
             }
         } catch (err) {
-            showToast('Failed to select folder: ' + err.message, 'error');
+            showToast(t('libraryScanPath') + ' failed: ' + err.message, 'error');
         }
     } else {
-        showToast('File dialog not available', 'error');
+        showToast(t('librarySelectFolder') + ' not available', 'error');
     }
 }
 
@@ -727,14 +739,12 @@ async function selectScanPath() {
 // ============================================================
 
 function setupEventListeners() {
-    // ---- Navigation ----
     document.querySelectorAll('.nav-item').forEach(btn => {
         btn.addEventListener('click', () => {
             switchSection(btn.dataset.section);
         });
     });
 
-    // ---- Back to Player ----
     const backBtn = document.getElementById('backToPlayerBtn');
     if (backBtn) {
         backBtn.addEventListener('click', () => {
@@ -746,13 +756,11 @@ function setupEventListeners() {
         });
     }
 
-    // ---- Save ----
     const saveBtn = document.getElementById('saveSettingsBtn');
     if (saveBtn) {
         saveBtn.addEventListener('click', saveSettings);
     }
 
-    // ---- Slider value displays ----
     const crossfadeSlider = document.getElementById('crossfadeSlider');
     if (crossfadeSlider) {
         crossfadeSlider.addEventListener('input', (e) => {
@@ -812,7 +820,6 @@ function setupEventListeners() {
         });
     }
 
-    // ---- Weight sliders ----
     ['weightLike', 'weightPlay', 'weightSkip', 'weightRepeat', 'weightPlaylistAdd'].forEach(id => {
         const slider = document.getElementById(id);
         if (slider) {
@@ -823,16 +830,13 @@ function setupEventListeners() {
         }
     });
 
-    // ---- EQ sliders ----
     for (let i = 0; i < 5; i++) {
         const slider = document.getElementById(`eqSlider${i}`);
         if (slider) {
             slider.addEventListener('input', (e) => {
                 const valEl = document.getElementById(`eqVal${i}`);
                 if (valEl) valEl.textContent = e.target.value + 'dB';
-                // Remove active preset when manually adjusting
                 document.querySelectorAll('.eq-preset-btn').forEach(btn => btn.classList.remove('active'));
-                // Sync in real-time
                 syncEQToDSP([
                     parseInt(document.getElementById('eqSlider0')?.value ?? 0),
                     parseInt(document.getElementById('eqSlider1')?.value ?? 0),
@@ -844,87 +848,91 @@ function setupEventListeners() {
         }
     }
 
-    // ---- EQ Presets ----
     document.querySelectorAll('.eq-preset-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             applyEQPreset(btn.dataset.preset);
         });
     });
 
-    // ---- Theme buttons ----
     document.querySelectorAll('.theme-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            // Apply theme immediately
             applyTheme(btn.dataset.theme);
         });
     });
 
-    // ---- Format tags ----
     document.querySelectorAll('.format-tag').forEach(tag => {
         tag.addEventListener('click', () => {
             tag.classList.toggle('active');
         });
     });
 
-    // ---- Select Scan Path ----
     const selectPathBtn = document.getElementById('selectScanPathBtn');
     if (selectPathBtn) {
         selectPathBtn.addEventListener('click', selectScanPath);
     }
 
-    // ---- Open Data Directory ----
     const openDataBtn = document.getElementById('openDataDirBtn');
     if (openDataBtn) {
         openDataBtn.addEventListener('click', openDataDirectory);
     }
 
-    // ---- Clear Cache ----
     const clearCacheBtn = document.getElementById('clearCacheBtn');
     if (clearCacheBtn) {
         clearCacheBtn.addEventListener('click', clearCache);
     }
 
-    // ---- Check Updates ----
     const checkUpdateBtn = document.getElementById('checkUpdateBtn');
     if (checkUpdateBtn) {
         checkUpdateBtn.addEventListener('click', checkForUpdates);
     }
 
-    // ---- Reset All ----
     const resetBtn = document.getElementById('resetAllBtn');
     if (resetBtn) {
         resetBtn.addEventListener('click', resetAllSettings);
     }
 
-    // ---- Keyboard shortcuts ----
     document.addEventListener('keydown', (e) => {
-        // Ctrl+S to save
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
             e.preventDefault();
             saveSettings();
         }
-        // Escape to go back
         if (e.key === 'Escape') {
             const backBtn = document.getElementById('backToPlayerBtn');
             if (backBtn) backBtn.click();
         }
     });
 
-    // ---- Listen for settings changes from other sources ----
     if (window.settingsStore) {
         window.settingsStore.subscribeAll((key, value) => {
-            // Update UI elements when settings change from elsewhere
             updateUIElement(key, value);
         });
     }
 
-    // ---- Listen for settings-loaded event ----
     window.addEventListener('settings-loaded', (e) => {
         if (e.detail && e.detail.settings) {
             applySettingsToUI(e.detail.settings);
         }
+    });
+
+    window.addEventListener('storage', (e) => {
+        if (e.key === 'user_lang') {
+            console.debug('🔄 Language changed via storage:', e.newValue);
+            translatePage();
+            // Update direction
+            const direction = e.newValue === 'fa' ? 'rtl' : 'ltr';
+            document.documentElement.dir = direction;
+            document.body.dir = direction;
+            document.body.classList.toggle('rtl', direction === 'rtl');
+            document.body.classList.toggle('ltr', direction !== 'rtl');
+        }
+    });
+
+    // Listen for custom language change event
+    window.addEventListener('language-changed', (e) => {
+        console.debug('🔄 Language changed via event:', e.detail?.lang);
+        setTimeout(translatePage, 100);
     });
 }
 
@@ -1008,15 +1016,17 @@ function updateUIElement(key, value) {
 async function init() {
     if (isInitialized) return;
 
-    // Show loading state
+    console.debug('🚀 Initializing settings page...');
+
     const dataPathDisplay = document.getElementById('dataPathDisplay');
     if (dataPathDisplay) dataPathDisplay.textContent = 'Loading...';
 
-    // Resolve API port
+    // Translate page immediately
+    translatePage();
+
     apiPort = await resolveApiPort();
     console.debug('📡 Settings page using API port:', apiPort);
 
-    // Get data path
     try {
         const path = await getDataPath();
         const display = document.getElementById('dataPathDisplay');
@@ -1026,14 +1036,11 @@ async function init() {
         if (display) display.textContent = 'User Data';
     }
 
-    // Set server port display
     const portDisplay = document.getElementById('serverPortDisplay');
     if (portDisplay) portDisplay.textContent = apiPort || '3000';
 
-    // Load settings
     await loadSettings();
 
-    // Set version
     const versionEl = document.getElementById('currentVersionDisplay');
     const versionBadge = document.getElementById('settingsVersion');
     try {
@@ -1044,15 +1051,16 @@ async function init() {
                 if (versionBadge) versionBadge.textContent = 'v' + v;
             }
         }
-    } catch (e) {
-        // Use default
-    }
+    } catch (e) {}
 
-    // Setup events
     setupEventListeners();
-
-    // Set default section
     switchSection('playback');
+
+    // Re-translate after DOM is fully rendered
+    setTimeout(() => {
+        translatePage();
+        console.debug('🔄 Re-translation after DOM render');
+    }, 200);
 
     isInitialized = true;
     console.debug('✅ Settings page initialized');
@@ -1063,6 +1071,11 @@ async function init() {
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', init);
+
+// Also try to translate after window load for safety
+window.addEventListener('load', () => {
+    setTimeout(translatePage, 300);
+});
 
 // ============================================================
 // EXPOSE FOR DEBUGGING
@@ -1078,7 +1091,9 @@ window.__settings = {
     clearCache,
     checkForUpdates,
     settingsData: () => settingsData,
-    getDefaultSettings
+    getDefaultSettings,
+    t: t,
+    translatePage: translatePage
 };
 
 console.debug('🔧 Settings page loaded. Use window.__settings for debugging.');

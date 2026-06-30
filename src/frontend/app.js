@@ -5224,7 +5224,7 @@ async function initVersionStatus() {
                 versionBadge.classList.remove('update-available');
                 versionBadge.onclick = null;
             } else {
-                versionBadge.textContent = 'v1.3.0'; // fallback
+                versionBadge.textContent = 'v1.5.0'; // fallback
             }
         });
     }
@@ -5482,3 +5482,13 @@ if (window.electronAPI) {
 }
 
 setTimeout(() => { syncTrayPlaybackState(); }, 1000);
+
+setInterval(() => {
+    if (window.electronAPI && window.electronAPI.checkUpdateStatus) {
+        window.electronAPI.checkUpdateStatus().then(result => {
+            if (result && result.hasUpdate) {
+                console.log('[App] Update available:', result.latestVersion);
+            }
+        }).catch(err => console.warn('[App] Update check failed:', err));
+    }
+}, 60 * 60 * 1000);

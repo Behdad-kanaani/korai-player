@@ -8,6 +8,7 @@
     <title>KORAI Music Player</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="update.css">
     <link rel="stylesheet" href="additional.css">
 </head>
 <body class="theme-default rtl">
@@ -166,7 +167,7 @@
                 </div>
                 <div class="nav-item" id="navSettings" onclick="window.location.href='settings.html'">
                     <i class="fa-solid fa-gear"></i>
-                    <span id="navSettingsText">Settings</span>
+                    <span data-translate="navSettingsText" id="navSettingsText">Settings</span>
                 </div>
 
             </nav>
@@ -537,5 +538,7 @@
         <script src="libraryMasonry.js"></script>
     <script src="settingsStore.js"></script>
     <script src="settingsSync.js"></script>
+    <script src="updateUI.js"></script>
+
 </body>
 </html>

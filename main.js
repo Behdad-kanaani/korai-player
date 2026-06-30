@@ -6,6 +6,7 @@
  * 
  * FIXED: Deep directory scanning with improved recursive traversal
  * FIXED: File path extraction in second-instance handler
+ * ADDED: Auto-update system with hot reload capability
  */
 
 const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, shell, screen, powerMonitor, session } = require('electron');
@@ -13,7 +14,17 @@ const path = require('path');
 const fs = require('fs');
 const findFreePort = require('find-free-port');
 
-// Optional: electron-optimize helpers
+// ============================================================================
+// UPDATE SYSTEM IMPORTS
+// ============================================================================
+
+const updater = require('./src/backend/updater');
+const updateManager = require('./src/backend/updateManager');
+
+// ============================================================================
+// OPTIONAL OPTIMIZATIONS
+// ============================================================================
+
 let cleanupTempFiles, clearCacheOnUpdate, validateWindowBounds, createStartupTimer, managePowerState;
 try {
     ({ cleanupTempFiles, clearCacheOnUpdate, validateWindowBounds, createStartupTimer, managePowerState } = require('@yawlabs/electron-optimize'));
@@ -21,7 +32,10 @@ try {
     console.warn('⚠️ @yawlabs/electron-optimize not installed');
 }
 
-// Performance optimizations
+// ============================================================================
+// PERFORMANCE OPTIMIZATIONS
+// ============================================================================
+
 try {
     app.commandLine.appendSwitch('enable-gpu-rasterization');
     app.commandLine.appendSwitch('enable-zero-copy');
@@ -31,14 +45,15 @@ try {
     app.commandLine.appendSwitch('max_old_space_size', '4096');
 } catch (e) {}
 
-// =============================================================================
+// ============================================================================
 // AUTO-UPDATER
-// =============================================================================
+// ============================================================================
+
 const { startUpdateChecker, onUpdateCheck, getCurrentVersion, fetchLatestVersion } = require('./src/backend/updater');
 
-// =============================================================================
+// ============================================================================
 // GLOBAL ERROR HANDLERS
-// =============================================================================
+// ============================================================================
 
 process.on('unhandledRejection', (reason, promise) => {
     console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
@@ -48,9 +63,10 @@ process.on('uncaughtException', (error) => {
     console.error('❌ Uncaught Exception:', error);
 });
 
-// =============================================================================
+// ============================================================================
 // SINGLE INSTANCE LOCK
-// =============================================================================
+// ============================================================================
+
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
@@ -59,9 +75,10 @@ if (!gotTheLock) {
     process.exit(0);
 }
 
-// =============================================================================
+// ============================================================================
 // GLOBAL REFERENCES
-// =============================================================================
+// ============================================================================
+
 let mainWindow;
 let miniPlayerWindow = null;
 let httpServer;
@@ -84,9 +101,9 @@ let currentTrayState = {
 
 let currentLanguage = 'en';
 
-// =============================================================================
+// ============================================================================
 // FILE ASSOCIATION HANDLING
-// =============================================================================
+// ============================================================================
 
 async function processPendingFiles() {
     if (pendingFiles.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
@@ -161,9 +178,9 @@ app.on('second-instance', (event, commandLine, workingDirectory) => {
     }
 });
 
-// =============================================================================
+// ============================================================================
 // TRAY ICON PATH HELPER
-// =============================================================================
+// ============================================================================
 
 function getTrayIconPath() {
     const possiblePaths = [
@@ -188,9 +205,9 @@ function getTrayIconPath() {
     return null;
 }
 
-// =============================================================================
+// ============================================================================
 // TRAY MENU FUNCTIONS
-// =============================================================================
+// ============================================================================
 
 async function loadTrayLanguage() {
     try {
@@ -454,9 +471,9 @@ async function createSystemTray() {
     }
 }
 
-// =============================================================================
+// ============================================================================
 // SERVER HEALTH CHECK
-// =============================================================================
+// ============================================================================
 
 function startHealthCheck() {
     healthCheckInterval = setInterval(async () => {
@@ -480,9 +497,9 @@ function stopHealthCheck() {
     }
 }
 
-// =============================================================================
+// ============================================================================
 // SEND UPDATE STATUS TO RENDERER
-// =============================================================================
+// ============================================================================
 
 async function sendUpdateStatusToRenderer() {
     if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -543,9 +560,9 @@ async function seedBundledPlugins(appPath, userDataPath) {
     }
 }
 
-// =============================================================================
+// ============================================================================
 // DEEP DIRECTORY SCANNER FOR FOLDER IMPORT
-// =============================================================================
+// ============================================================================
 
 /**
  * Improved recursive directory scanner with depth-first search
@@ -587,9 +604,9 @@ async function scanDirectoryRecursively(dirPath, audioExtensions, files, maxDept
     }
 }
 
-// =============================================================================
+// ============================================================================
 // MAIN WINDOW CREATION
-// =============================================================================
+// ============================================================================
 
 async function createWindow() {
     try {
@@ -628,9 +645,6 @@ async function createWindow() {
                 zoomFactor: 0.4,
                 backgroundThrottling: true,
                 v8CacheOptions: 'code',
-                // Note: enableBlinkFeatures is intentionally omitted in dev
-                // to avoid Electron security warnings. If you need to enable
-                // a blink feature in production, set it when packaging.
                 enablePreferredSizeMode: true
             }
         };
@@ -644,12 +658,11 @@ async function createWindow() {
             windowOptions.backgroundMaterial = 'mica';
         }
 
-        // Enable experimental Blink features (OverlayScrollbars) — kept intentionally enabled
-        // Note: this can surface an Electron security warning during development.
-        // The user has requested this feature remain enabled.
+        // Enable experimental Blink features
         try {
             windowOptions.webPreferences.enableBlinkFeatures = 'OverlayScrollbars';
         } catch (e) {}
+        
         mainWindow = new BrowserWindow(windowOptions);
 
         const setZoom = () => {
@@ -733,15 +746,6 @@ async function createWindow() {
                 if (stayInTray) {
                     event.preventDefault();
                     mainWindow.hide();
-                    
-                    try {
-                        const settingsPath = path.join(app.getPath('userData'), 'korai_data_v2.json');
-                        if (fs.existsSync(settingsPath)) {
-                            const data = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-                            if (data.settings?.trayNotification !== false) {
-                            }
-                        }
-                    } catch (e) {}
                 }
             }
         });
@@ -765,9 +769,9 @@ async function createWindow() {
     }
 }
 
-// =============================================================================
+// ============================================================================
 // IPC HANDLERS
-// =============================================================================
+// ============================================================================
 
 ipcMain.on('tray-update-state', (event, { isPlaying, track }) => {
     updateTrayPlaybackState(isPlaying, track);
@@ -783,20 +787,73 @@ ipcMain.on('open-external', (event, url) => {
 });
 
 ipcMain.handle('check-update-status', async () => {
-    const currentVersion = getCurrentVersion();
-    const updateInfo = await fetchLatestVersion(true);
-    return {
-        hasUpdate: updateInfo.hasUpdate || false,
-        currentVersion: currentVersion || 'unknown',
-        latestVersion: updateInfo.version || null,
-        url: updateInfo.url || null,
-        error: updateInfo.error || null
-    };
+    try {
+        const result = await updateManager.checkAndPrepareUpdate();
+        return result;
+    } catch (err) {
+        console.error('[main] Update check error:', err);
+        return { hasUpdate: false, error: err.message };
+    }
 });
 
-// =============================================================================
+ipcMain.on('apply-update', async (event, updateInfo) => {
+    console.log('[main] Starting update application...');
+    
+    try {
+        // Send initial progress
+        event.sender.send('update-progress', {
+            status: 'starting',
+            progress: 0,
+            message: 'Starting update...'
+        });
+
+        // Perform the update
+        const result = await updateManager.performFullUpdate(updateInfo, (progress) => {
+            // Forward progress to renderer
+            event.sender.send('update-progress', progress);
+        });
+
+        if (result.success) {
+            console.log('[main] Update completed successfully');
+            
+            // Send completion
+            event.sender.send('update-progress', {
+                status: 'complete',
+                progress: 100,
+                message: 'Update complete! Restarting...'
+            });
+
+            // Restart after a brief delay
+            setTimeout(() => {
+                app.relaunch();
+                app.exit(0);
+            }, 1500);
+        } else {
+            throw new Error('Update failed');
+        }
+
+    } catch (err) {
+        console.error('[main] Update error:', err);
+        event.sender.send('update-progress', {
+            status: 'error',
+            progress: 0,
+            message: `Update failed: ${err.message}`
+        });
+    }
+});
+
+ipcMain.handle('get-update-progress', () => {
+    return updater.getUpdateProgress();
+});
+
+ipcMain.on('restart-app', () => {
+    app.relaunch();
+    app.exit(0);
+});
+
+// ============================================================================
 // MINI-PLAYER FUNCTIONS
-// =============================================================================
+// ============================================================================
 
 ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
     if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
@@ -938,9 +995,9 @@ ipcMain.on('control-from-mini', (event, command) => {
     }
 });
 
-// =============================================================================
+// ============================================================================
 // FILE DIALOG HANDLERS (FIXED: Deep recursive directory scanning)
-// =============================================================================
+// ============================================================================
 
 ipcMain.handle('select-audio-files', async () => {
     if (!mainWindow) return [];
@@ -982,9 +1039,9 @@ ipcMain.handle('select-audio-folder', async () => {
     return files;
 });
 
-// =============================================================================
+// ============================================================================
 // WINDOW CONTROL HANDLERS
-// =============================================================================
+// ============================================================================
 
 ipcMain.on('minimize-window', () => {
     if (mainWindow) mainWindow.minimize();
@@ -1004,9 +1061,9 @@ ipcMain.on('close-window', () => {
     if (mainWindow) mainWindow.close();
 });
 
-// =============================================================================
+// ============================================================================
 // TAG EDITOR HANDLER
-// =============================================================================
+// ============================================================================
 
 ipcMain.on('open-tag-editor', (event, trackId) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1014,9 +1071,9 @@ ipcMain.on('open-tag-editor', (event, trackId) => {
     }
 });
 
-// =============================================================================
+// ============================================================================
 // ADVANCED SEARCH HANDLER
-// =============================================================================
+// ============================================================================
 
 ipcMain.handle('advanced-search', async (event, query) => {
     try {
@@ -1034,9 +1091,9 @@ ipcMain.handle('advanced-search', async (event, query) => {
     }
 });
 
-// =============================================================================
+// ============================================================================
 // PLAYLIST EXPORT/IMPORT HANDLERS
-// =============================================================================
+// ============================================================================
 
 ipcMain.handle('export-playlist', async (event, playlistId, format) => {
     const result = await dialog.showSaveDialog(mainWindow, {
@@ -1080,9 +1137,9 @@ ipcMain.handle('import-playlist', async (event, filePath, format) => {
     }
 });
 
-// =============================================================================
+// ============================================================================
 // LIBRARY EXPORT HANDLER
-// =============================================================================
+// ============================================================================
 
 ipcMain.handle('export-library', async () => {
     const result = await dialog.showSaveDialog(mainWindow, {
@@ -1110,9 +1167,9 @@ ipcMain.handle('export-library', async () => {
     }
 });
 
-// =============================================================================
+// ============================================================================
 // CUE SHEET HANDLER
-// =============================================================================
+// ============================================================================
 
 ipcMain.handle('parse-cue', async (event, cuePath) => {
     try {
@@ -1130,9 +1187,9 @@ ipcMain.handle('parse-cue', async (event, cuePath) => {
     }
 });
 
-// =============================================================================
+// ============================================================================
 // PLAYBACK SETTINGS HANDLERS
-// =============================================================================
+// ============================================================================
 
 ipcMain.handle('get-playback-settings', async () => {
     try {
@@ -1167,9 +1224,9 @@ ipcMain.on('set-crossfade', (event, duration) => {
     }
 });
 
-// =============================================================================
+// ============================================================================
 // REAL BPM DETECTION HANDLER
-// =============================================================================
+// ============================================================================
 
 ipcMain.handle('detect-real-bpm', async (event, trackId) => {
     try {
@@ -1185,9 +1242,9 @@ ipcMain.handle('detect-real-bpm', async (event, trackId) => {
     }
 });
 
-// =============================================================================
+// ============================================================================
 // GLOBAL SHORTCUT HANDLER
-// =============================================================================
+// ============================================================================
 
 ipcMain.on('register-global-shortcut', (event, command) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1216,7 +1273,6 @@ ipcMain.handle('show-open-dialog', async (event, options) => {
     return result;
 });
 
-
 ipcMain.handle('get-data-path', () => {
     return app.getPath('userData');
 });
@@ -1225,9 +1281,13 @@ ipcMain.handle('get-app-version', () => {
     return app.getVersion();
 });
 
-// =============================================================================
+ipcMain.on('open-folder', (event, folderPath) => {
+    shell.showItemInFolder(folderPath);
+});
+
+// ============================================================================
 // APP LIFECYCLE
-// =============================================================================
+// ============================================================================
 
 handleFileOpen();
 
@@ -1289,6 +1349,39 @@ app.whenReady().then(async () => {
     }
 
     createWindow();
+
+    // Check if restart is required after update
+    const restartInfo = updateManager.isRestartRequired();
+    if (restartInfo) {
+        console.log('[main] Pending restart detected:', restartInfo);
+        updateManager.clearRestartFlag();
+        
+        setTimeout(() => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('update-status', {
+                    hasUpdate: false,
+                    currentVersion: updater.getCurrentVersion(),
+                    message: 'Update applied successfully',
+                    updated: true
+                });
+            }
+        }, 3000);
+    }
+
+    // Start periodic update checker
+    setInterval(async () => {
+        try {
+            const result = await updater.checkForUpdates();
+            if (result.hasUpdate) {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('update-status', result);
+                }
+            }
+        } catch (err) {
+            console.warn('[main] Periodic update check failed:', err);
+        }
+    }, 12 * 60 * 60 * 1000); // Check every 12 hours
+
 });
 
 app.on('activate', () => {

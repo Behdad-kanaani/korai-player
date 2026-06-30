@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
@@ -15,40 +14,40 @@
     <aside class="settings-sidebar">
         <div class="sidebar-header">
             <i class="fa-solid fa-compact-disc spin-logo"></i>
-            <span>KORAI</span>
+            <span data-translate="settingsTitle">KORAI</span>
             <span class="version-badge" id="settingsVersion">v1.4.5</span>
         </div>
 
         <nav class="settings-nav">
             <button class="nav-item active" data-section="playback">
-                <i class="fa-solid fa-play"></i> Playback
+                <i class="fa-solid fa-play"></i> <span data-translate="settingsNavPlayback">Playback</span>
             </button>
             <button class="nav-item" data-section="audio">
-                <i class="fa-solid fa-sliders"></i> Audio & EQ
+                <i class="fa-solid fa-sliders"></i> <span data-translate="settingsNavAudio">Audio & EQ</span>
             </button>
             <button class="nav-item" data-section="appearance">
-                <i class="fa-solid fa-palette"></i> Appearance
+                <i class="fa-solid fa-palette"></i> <span data-translate="settingsNavAppearance">Appearance</span>
             </button>
             <button class="nav-item" data-section="library">
-                <i class="fa-solid fa-folder-music"></i> Library
+                <i class="fa-solid fa-folder-music"></i> <span data-translate="settingsNavLibrary">Library</span>
             </button>
             <button class="nav-item" data-section="plugins">
-                <i class="fa-solid fa-puzzle-piece"></i> Plugins
+                <i class="fa-solid fa-puzzle-piece"></i> <span data-translate="settingsNavPlugins">Plugins</span>
             </button>
             <button class="nav-item" data-section="ai">
-                <i class="fa-solid fa-brain"></i> AI & Recommendations
+                <i class="fa-solid fa-brain"></i> <span data-translate="settingsNavAI">AI & Recommendations</span>
             </button>
             <button class="nav-item" data-section="system">
-                <i class="fa-solid fa-gear"></i> System & Tray
+                <i class="fa-solid fa-gear"></i> <span data-translate="settingsNavSystem">System & Tray</span>
             </button>
             <button class="nav-item" data-section="advanced">
-                <i class="fa-solid fa-code"></i> Advanced
+                <i class="fa-solid fa-code"></i> <span data-translate="settingsNavAdvanced">Advanced</span>
             </button>
         </nav>
 
         <div class="sidebar-footer">
             <button class="back-to-player-btn" id="backToPlayerBtn">
-                <i class="fa-solid fa-arrow-left"></i> Back to Player
+                <i class="fa-solid fa-arrow-left"></i> <span data-translate="settingsBackToPlayer">Back to Player</span>
             </button>
         </div>
     </aside>
@@ -56,8 +55,8 @@
     <!-- ===== MAIN CONTENT ===== -->
     <main class="settings-main">
         <header class="settings-header">
-            <h1>Settings</h1>
-            <p>Configure your KORAI experience</p>
+            <h1 data-translate="settingsTitle">Settings</h1>
+            <p data-translate="settingsSubtitle">Configure your KORAI experience</p>
         </header>
 
         <div class="settings-content" id="settingsContent">
@@ -65,13 +64,13 @@
             <!-- SECTION: Playback -->
             <!-- ============================================================ -->
             <section class="settings-section active" id="section-playback">
-                <h2><i class="fa-solid fa-play"></i> Playback</h2>
+                <h2><i class="fa-solid fa-play"></i> <span data-translate="settingsNavPlayback">Playback</span></h2>
                 
                 <div class="setting-group">
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Gapless Playback</label>
-                            <span class="setting-desc">Seamless transition between tracks</span>
+                            <label data-translate="playbackGapless">Gapless Playback</label>
+                            <span class="setting-desc" data-translate="playbackGaplessDesc">Seamless transition between tracks</span>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="gaplessToggle">
@@ -81,28 +80,28 @@
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Crossfade Duration</label>
-                            <span class="setting-desc" id="crossfadeValueLabel">0 seconds</span>
+                            <label data-translate="playbackCrossfade">Crossfade Duration</label>
+                            <span class="setting-desc" id="crossfadeValueLabel" data-translate="playbackCrossfadeDesc">Fade duration between tracks</span>
                         </div>
                         <input type="range" class="setting-slider" id="crossfadeSlider" min="0" max="12" step="0.5" value="0">
                     </div>
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Default Repeat Mode</label>
-                            <span class="setting-desc">Repeat behavior when starting playback</span>
+                            <label data-translate="playbackRepeatMode">Default Repeat Mode</label>
+                            <span class="setting-desc" data-translate="playbackRepeatModeDesc">Repeat behavior when starting playback</span>
                         </div>
                         <select class="setting-select" id="repeatModeSelect">
-                            <option value="off">Off</option>
-                            <option value="all">Repeat All</option>
-                            <option value="one">Repeat One</option>
+                            <option value="off" data-translate="off">Off</option>
+                            <option value="all" data-translate="repeatAll">Repeat All</option>
+                            <option value="one" data-translate="repeatOne">Repeat One</option>
                         </select>
                     </div>
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Default Shuffle Mode</label>
-                            <span class="setting-desc">Enable shuffle by default</span>
+                            <label data-translate="playbackShuffleDefault">Default Shuffle Mode</label>
+                            <span class="setting-desc" data-translate="playbackShuffleDefaultDesc">Enable shuffle by default</span>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="shuffleDefaultToggle">
@@ -112,8 +111,8 @@
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Resume on Start</label>
-                            <span class="setting-desc">Continue playback from last position when launching</span>
+                            <label data-translate="playbackResumeOnStart">Resume on Start</label>
+                            <span class="setting-desc" data-translate="playbackResumeOnStartDesc">Continue playback from last position when launching</span>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="resumeOnStartToggle">
@@ -127,64 +126,64 @@
             <!-- SECTION: Audio & EQ -->
             <!-- ============================================================ -->
             <section class="settings-section" id="section-audio">
-                <h2><i class="fa-solid fa-sliders"></i> Audio & EQ</h2>
+                <h2><i class="fa-solid fa-sliders"></i> <span data-translate="settingsNavAudio">Audio & EQ</span></h2>
                 
                 <div class="setting-group">
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Default Volume</label>
-                            <span class="setting-desc" id="defaultVolumeLabel">70%</span>
+                            <label data-translate="audioDefaultVolume">Default Volume</label>
+                            <span class="setting-desc" id="defaultVolumeLabel" data-translate="audioDefaultVolumeDesc">Initial volume level</span>
                         </div>
                         <input type="range" class="setting-slider" id="defaultVolumeSlider" min="0" max="100" step="1" value="70">
                     </div>
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Audio Output</label>
-                            <span class="setting-desc">Stereo or Mono output</span>
+                            <label data-translate="audioOutput">Audio Output</label>
+                            <span class="setting-desc" data-translate="audioOutputDesc">Stereo or Mono output</span>
                         </div>
                         <select class="setting-select" id="audioOutputSelect">
-                            <option value="stereo">Stereo</option>
-                            <option value="mono">Mono</option>
+                            <option value="stereo" data-translate="stereo">Stereo</option>
+                            <option value="mono" data-translate="mono">Mono</option>
                         </select>
                     </div>
 
                     <div class="setting-divider">
-                        <span>Equalizer</span>
+                        <span data-translate="audioEqPresets">Equalizer</span>
                     </div>
 
                     <div class="eq-presets-row">
-                        <button class="eq-preset-btn" data-preset="flat">Flat</button>
-                        <button class="eq-preset-btn" data-preset="rock">Rock</button>
-                        <button class="eq-preset-btn" data-preset="pop">Pop</button>
-                        <button class="eq-preset-btn" data-preset="classical">Classical</button>
-                        <button class="eq-preset-btn" data-preset="bass">Bass Boost</button>
-                        <button class="eq-preset-btn" data-preset="treble">Treble Boost</button>
+                        <button class="eq-preset-btn" data-preset="flat" data-translate="audioEqFlat">Flat</button>
+                        <button class="eq-preset-btn" data-preset="rock" data-translate="audioEqRock">Rock</button>
+                        <button class="eq-preset-btn" data-preset="pop" data-translate="audioEqPop">Pop</button>
+                        <button class="eq-preset-btn" data-preset="classical" data-translate="audioEqClassical">Classical</button>
+                        <button class="eq-preset-btn" data-preset="bass" data-translate="audioEqBass">Bass Boost</button>
+                        <button class="eq-preset-btn" data-preset="treble" data-translate="audioEqTreble">Treble Boost</button>
                     </div>
 
                     <div class="eq-sliders-row">
                         <div class="eq-slider-col">
-                            <span class="eq-freq-label">60Hz</span>
+                            <span class="eq-freq-label" data-translate="eq60Hz">60Hz</span>
                             <input type="range" class="eq-slider-vertical" id="eqSlider0" min="-12" max="12" step="1" value="0">
                             <span class="eq-value" id="eqVal0">0dB</span>
                         </div>
                         <div class="eq-slider-col">
-                            <span class="eq-freq-label">230Hz</span>
+                            <span class="eq-freq-label" data-translate="eq230Hz">230Hz</span>
                             <input type="range" class="eq-slider-vertical" id="eqSlider1" min="-12" max="12" step="1" value="0">
                             <span class="eq-value" id="eqVal1">0dB</span>
                         </div>
                         <div class="eq-slider-col">
-                            <span class="eq-freq-label">910Hz</span>
+                            <span class="eq-freq-label" data-translate="eq910Hz">910Hz</span>
                             <input type="range" class="eq-slider-vertical" id="eqSlider2" min="-12" max="12" step="1" value="0">
                             <span class="eq-value" id="eqVal2">0dB</span>
                         </div>
                         <div class="eq-slider-col">
-                            <span class="eq-freq-label">4kHz</span>
+                            <span class="eq-freq-label" data-translate="eq4kHz">4kHz</span>
                             <input type="range" class="eq-slider-vertical" id="eqSlider3" min="-12" max="12" step="1" value="0">
                             <span class="eq-value" id="eqVal3">0dB</span>
                         </div>
                         <div class="eq-slider-col">
-                            <span class="eq-freq-label">14kHz</span>
+                            <span class="eq-freq-label" data-translate="eq14kHz">14kHz</span>
                             <input type="range" class="eq-slider-vertical" id="eqSlider4" min="-12" max="12" step="1" value="0">
                             <span class="eq-value" id="eqVal4">0dB</span>
                         </div>
@@ -196,19 +195,19 @@
             <!-- SECTION: Appearance -->
             <!-- ============================================================ -->
             <section class="settings-section" id="section-appearance">
-                <h2><i class="fa-solid fa-palette"></i> Appearance</h2>
+                <h2><i class="fa-solid fa-palette"></i> <span data-translate="settingsNavAppearance">Appearance</span></h2>
                 
                 <div class="setting-group">
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Theme</label>
-                            <span class="setting-desc">Select visual theme</span>
+                            <label data-translate="appearanceTheme">Theme</label>
+                            <span class="setting-desc" data-translate="appearanceThemeDesc">Select visual theme</span>
                         </div>
                         <div class="theme-selector">
-                            <button class="theme-btn active" data-theme="default">
+                            <button class="theme-btn active" data-theme="default" data-translate="appearanceThemeDefault">
                                 <i class="fa-solid fa-circle"></i> Default
                             </button>
-                            <button class="theme-btn" data-theme="liquid-glass">
+                            <button class="theme-btn" data-theme="liquid-glass" data-translate="appearanceThemeLiquidGlass">
                                 <i class="fa-solid fa-snowflake"></i> Liquid Glass
                             </button>
                         </div>
@@ -216,31 +215,31 @@
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Direction</label>
-                            <span class="setting-desc">UI text direction</span>
+                            <label data-translate="appearanceDirection">Direction</label>
+                            <span class="setting-desc" data-translate="appearanceDirectionDesc">UI text direction</span>
                         </div>
                         <select class="setting-select" id="directionSelect">
-                            <option value="ltr">LTR (English)</option>
-                            <option value="rtl">RTL (Persian)</option>
+                            <option value="ltr" data-translate="appearanceDirectionLTR">LTR (English)</option>
+                            <option value="rtl" data-translate="appearanceDirectionRTL">RTL (Persian)</option>
                         </select>
                     </div>
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Font Size</label>
-                            <span class="setting-desc">Adjust text size</span>
+                            <label data-translate="appearanceFontSize">Font Size</label>
+                            <span class="setting-desc" data-translate="appearanceFontSizeDesc">Adjust text size</span>
                         </div>
                         <select class="setting-select" id="fontSizeSelect">
-                            <option value="small">Small</option>
-                            <option value="medium" selected>Medium</option>
-                            <option value="large">Large</option>
+                            <option value="small" data-translate="appearanceFontSizeSmall">Small</option>
+                            <option value="medium" selected data-translate="appearanceFontSizeMedium">Medium</option>
+                            <option value="large" data-translate="appearanceFontSizeLarge">Large</option>
                         </select>
                     </div>
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Show Album Art in Player</label>
-                            <span class="setting-desc">Display cover art in the playback bar</span>
+                            <label data-translate="appearanceShowAlbumArt">Show Album Art in Player</label>
+                            <span class="setting-desc" data-translate="appearanceShowAlbumArtDesc">Display cover art in the playback bar</span>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="showAlbumArtToggle" checked>
@@ -254,23 +253,23 @@
             <!-- SECTION: Library -->
             <!-- ============================================================ -->
             <section class="settings-section" id="section-library">
-                <h2><i class="fa-solid fa-folder-music"></i> Library</h2>
+                <h2><i class="fa-solid fa-folder-music"></i> <span data-translate="settingsNavLibrary">Library</span></h2>
                 
                 <div class="setting-group">
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Default Scan Path</label>
-                            <span class="setting-desc" id="defaultScanPathDisplay">Not set</span>
+                            <label data-translate="libraryScanPath">Default Scan Path</label>
+                            <span class="setting-desc" id="defaultScanPathDisplay" data-translate="libraryScanPathNotSet">Not set</span>
                         </div>
-                        <button class="setting-btn" id="selectScanPathBtn">
+                        <button class="setting-btn" id="selectScanPathBtn" data-translate="librarySelectFolder">
                             <i class="fa-solid fa-folder-open"></i> Select Folder
                         </button>
                     </div>
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Supported Formats</label>
-                            <span class="setting-desc">Audio formats to scan</span>
+                            <label data-translate="libraryFormats">Supported Formats</label>
+                            <span class="setting-desc" data-translate="libraryFormatsDesc">Audio formats to scan</span>
                         </div>
                         <div class="format-tags" id="formatTags">
                             <span class="format-tag active" data-format="mp3">MP3</span>
@@ -283,8 +282,8 @@
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Auto-Scan on Startup</label>
-                            <span class="setting-desc">Automatically scan library folder when launching</span>
+                            <label data-translate="libraryAutoScan">Auto-Scan on Startup</label>
+                            <span class="setting-desc" data-translate="libraryAutoScanDesc">Automatically scan library folder when launching</span>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="autoScanToggle">
@@ -294,8 +293,8 @@
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Max Scan Depth</label>
-                            <span class="setting-desc" id="maxScanDepthLabel">100</span>
+                            <label data-translate="libraryMaxScanDepth">Max Scan Depth</label>
+                            <span class="setting-desc" id="maxScanDepthLabel" data-translate="libraryMaxScanDepthDesc">How deep to scan subfolders</span>
                         </div>
                         <input type="range" class="setting-slider" id="maxScanDepthSlider" min="10" max="200" step="10" value="100">
                     </div>
@@ -306,13 +305,13 @@
             <!-- SECTION: Plugins -->
             <!-- ============================================================ -->
             <section class="settings-section" id="section-plugins">
-                <h2><i class="fa-solid fa-puzzle-piece"></i> Plugins</h2>
+                <h2><i class="fa-solid fa-puzzle-piece"></i> <span data-translate="settingsNavPlugins">Plugins</span></h2>
                 
                 <div class="setting-group">
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Auto-Activate Critical Plugins</label>
-                            <span class="setting-desc">Start essential plugins automatically</span>
+                            <label data-translate="pluginsAutoActivate">Auto-Activate Critical Plugins</label>
+                            <span class="setting-desc" data-translate="pluginsAutoActivateDesc">Start essential plugins automatically</span>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="autoActivatePluginsToggle" checked>
@@ -322,8 +321,8 @@
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Hot-Reload for Development</label>
-                            <span class="setting-desc">Reload plugins automatically on file change</span>
+                            <label data-translate="pluginsHotReload">Hot-Reload for Development</label>
+                            <span class="setting-desc" data-translate="pluginsHotReloadDesc">Reload plugins automatically on file change</span>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="hotReloadToggle">
@@ -333,16 +332,16 @@
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Hook Timeout</label>
-                            <span class="setting-desc" id="hookTimeoutLabel">5000 ms</span>
+                            <label data-translate="pluginsHookTimeout">Hook Timeout</label>
+                            <span class="setting-desc" id="hookTimeoutLabel" data-translate="pluginsHookTimeoutDesc">Timeout for plugin hook execution</span>
                         </div>
                         <input type="range" class="setting-slider" id="hookTimeoutSlider" min="1000" max="10000" step="500" value="5000">
                     </div>
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Max Memory per Plugin</label>
-                            <span class="setting-desc" id="pluginMemoryLabel">64 MB</span>
+                            <label data-translate="pluginsMemory">Max Memory per Plugin</label>
+                            <span class="setting-desc" id="pluginMemoryLabel" data-translate="pluginsMemoryDesc">Memory limit for each plugin</span>
                         </div>
                         <input type="range" class="setting-slider" id="pluginMemorySlider" min="16" max="256" step="8" value="64">
                     </div>
@@ -353,13 +352,13 @@
             <!-- SECTION: AI & Recommendations -->
             <!-- ============================================================ -->
             <section class="settings-section" id="section-ai">
-                <h2><i class="fa-solid fa-brain"></i> AI & Recommendations</h2>
+                <h2><i class="fa-solid fa-brain"></i> <span data-translate="settingsNavAI">AI & Recommendations</span></h2>
                 
                 <div class="setting-group">
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Enable AI Recommendations</label>
-                            <span class="setting-desc">Personalized track suggestions</span>
+                            <label data-translate="aiEnable">Enable AI Recommendations</label>
+                            <span class="setting-desc" data-translate="aiEnableDesc">Personalized track suggestions</span>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="aiRecommendationsToggle" checked>
@@ -369,8 +368,8 @@
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Discovery Mode</label>
-                            <span class="setting-desc">Suggest new and unheard tracks</span>
+                            <label data-translate="aiDiscovery">Discovery Mode</label>
+                            <span class="setting-desc" data-translate="aiDiscoveryDesc">Suggest new and unheard tracks</span>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="discoveryModeToggle" checked>
@@ -379,33 +378,33 @@
                     </div>
 
                     <div class="setting-divider">
-                        <span>Behavior Weights</span>
-                        <span class="setting-desc">Adjust how each interaction affects recommendations</span>
+                        <span data-translate="aiWeights">Behavior Weights</span>
+                        <span class="setting-desc" data-translate="aiWeightsDesc">Adjust how each interaction affects recommendations</span>
                     </div>
 
                     <div class="weight-sliders">
                         <div class="weight-item">
-                            <span>Like</span>
+                            <span data-translate="aiWeightLike">Like</span>
                             <input type="range" class="weight-slider" id="weightLike" min="0" max="1" step="0.05" value="0.40">
                             <span class="weight-value" id="weightLikeVal">0.40</span>
                         </div>
                         <div class="weight-item">
-                            <span>Play</span>
+                            <span data-translate="aiWeightPlay">Play</span>
                             <input type="range" class="weight-slider" id="weightPlay" min="0" max="1" step="0.05" value="0.12">
                             <span class="weight-value" id="weightPlayVal">0.12</span>
                         </div>
                         <div class="weight-item">
-                            <span>Skip</span>
+                            <span data-translate="aiWeightSkip">Skip</span>
                             <input type="range" class="weight-slider" id="weightSkip" min="0" max="1" step="0.05" value="0.30">
                             <span class="weight-value" id="weightSkipVal">0.30</span>
                         </div>
                         <div class="weight-item">
-                            <span>Repeat</span>
+                            <span data-translate="aiWeightRepeat">Repeat</span>
                             <input type="range" class="weight-slider" id="weightRepeat" min="0" max="1" step="0.05" value="0.25">
                             <span class="weight-value" id="weightRepeatVal">0.25</span>
                         </div>
                         <div class="weight-item">
-                            <span>Playlist Add</span>
+                            <span data-translate="aiWeightPlaylistAdd">Playlist Add</span>
                             <input type="range" class="weight-slider" id="weightPlaylistAdd" min="0" max="1" step="0.05" value="0.15">
                             <span class="weight-value" id="weightPlaylistAddVal">0.15</span>
                         </div>
@@ -413,8 +412,8 @@
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Diversity Boost</label>
-                            <span class="setting-desc" id="diversityBoostLabel">0.85</span>
+                            <label data-translate="aiDiversity">Diversity Boost</label>
+                            <span class="setting-desc" id="diversityBoostLabel" data-translate="aiDiversityDesc">How much variety to include in recommendations</span>
                         </div>
                         <input type="range" class="setting-slider" id="diversityBoostSlider" min="0.5" max="1" step="0.05" value="0.85">
                     </div>
@@ -425,14 +424,13 @@
             <!-- SECTION: System & Tray -->
             <!-- ============================================================ -->
             <section class="settings-section" id="section-system">
-                <h2><i class="fa-solid fa-gear"></i> System & Tray</h2>
+                <h2><i class="fa-solid fa-gear"></i> <span data-translate="settingsNavSystem">System & Tray</span></h2>
                 
                 <div class="setting-group">
-                    <!-- ===== STAY IN TRAY ===== -->
                     <div class="setting-item highlight">
                         <div class="setting-info">
-                            <label>🟢 Stay in Tray on Close</label>
-                            <span class="setting-desc">When enabled, closing the window keeps KORAI running in the system tray</span>
+                            <label data-translate="systemStayInTray">🟢 Stay in Tray on Close</label>
+                            <span class="setting-desc" data-translate="systemStayInTrayDesc">When enabled, closing the window keeps KORAI running in the system tray</span>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="stayInTrayToggle" checked>
@@ -442,8 +440,8 @@
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Show Notification on Hide</label>
-                            <span class="setting-desc">Show a notification when minimized to tray</span>
+                            <label data-translate="systemTrayNotification">Show Notification on Hide</label>
+                            <span class="setting-desc" data-translate="systemTrayNotificationDesc">Show a notification when minimized to tray</span>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="trayNotificationToggle" checked>
@@ -452,13 +450,13 @@
                     </div>
 
                     <div class="setting-divider">
-                        <span>Updates</span>
+                        <span data-translate="systemAutoUpdate">Updates</span>
                     </div>
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Auto-Check Updates</label>
-                            <span class="setting-desc">Automatically check for new versions</span>
+                            <label data-translate="systemAutoUpdate">Auto-Check Updates</label>
+                            <span class="setting-desc" data-translate="systemAutoUpdateDesc">Automatically check for new versions</span>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="autoUpdateToggle" checked>
@@ -468,51 +466,51 @@
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Update Check Interval</label>
-                            <span class="setting-desc" id="updateIntervalLabel">24 hours</span>
+                            <label data-translate="systemUpdateInterval">Update Check Interval</label>
+                            <span class="setting-desc" id="updateIntervalLabel" data-translate="systemUpdateIntervalDesc">How often to check for updates</span>
                         </div>
                         <select class="setting-select" id="updateIntervalSelect">
-                            <option value="12">12 hours</option>
-                            <option value="24" selected>24 hours</option>
-                            <option value="48">48 hours</option>
-                            <option value="168">Weekly</option>
+                            <option value="12" data-translate="systemUpdateInterval12h">12 hours</option>
+                            <option value="24" selected data-translate="systemUpdateInterval24h">24 hours</option>
+                            <option value="48" data-translate="systemUpdateInterval48h">48 hours</option>
+                            <option value="168" data-translate="systemUpdateIntervalWeekly">Weekly</option>
                         </select>
                     </div>
 
                     <div class="setting-divider">
-                        <span>Data</span>
+                        <span data-translate="systemDataDirectory">Data</span>
                     </div>
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Data Directory</label>
-                            <span class="setting-desc" id="dataPathDisplay">Loading...</span>
+                            <label data-translate="systemDataDirectory">Data Directory</label>
+                            <span class="setting-desc" id="dataPathDisplay" data-translate="systemDataDirectoryDesc">Location of your KORAI data</span>
                         </div>
-                        <button class="setting-btn" id="openDataDirBtn">
+                        <button class="setting-btn" id="openDataDirBtn" data-translate="systemOpenDataDir">
                             <i class="fa-solid fa-folder-open"></i> Open
                         </button>
                     </div>
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Clear Cache & Telemetry</label>
-                            <span class="setting-desc">Remove temporary files and performance logs</span>
+                            <label data-translate="systemClearCache">Clear Cache & Telemetry</label>
+                            <span class="setting-desc" data-translate="systemClearCacheDesc">Remove temporary files and performance logs</span>
                         </div>
-                        <button class="setting-btn danger" id="clearCacheBtn">
+                        <button class="setting-btn danger" id="clearCacheBtn" data-translate="systemClearCacheBtn">
                             <i class="fa-solid fa-trash"></i> Clear
                         </button>
                     </div>
 
                     <div class="setting-divider">
-                        <span>Version</span>
+                        <span data-translate="systemVersion">Version</span>
                     </div>
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Current Version</label>
-                            <span class="setting-desc" id="currentVersionDisplay">v1.4.5</span>
+                            <label data-translate="systemVersion">Current Version</label>
+                            <span class="setting-desc" id="currentVersionDisplay" data-translate="systemVersionDesc">Your KORAI version</span>
                         </div>
-                        <button class="setting-btn" id="checkUpdateBtn">
+                        <button class="setting-btn" id="checkUpdateBtn" data-translate="systemCheckUpdates">
                             <i class="fa-solid fa-rotate"></i> Check for Updates
                         </button>
                     </div>
@@ -523,13 +521,13 @@
             <!-- SECTION: Advanced -->
             <!-- ============================================================ -->
             <section class="settings-section" id="section-advanced">
-                <h2><i class="fa-solid fa-code"></i> Advanced</h2>
+                <h2><i class="fa-solid fa-code"></i> <span data-translate="settingsNavAdvanced">Advanced</span></h2>
                 
                 <div class="setting-group">
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Performance Mode</label>
-                            <span class="setting-desc">Reduce animations and effects for better performance</span>
+                            <label data-translate="advancedPerformance">Performance Mode</label>
+                            <span class="setting-desc" data-translate="advancedPerformanceDesc">Reduce animations and effects for better performance</span>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="performanceModeToggle">
@@ -539,8 +537,8 @@
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Show Logs in Console</label>
-                            <span class="setting-desc">Enable debug logging to developer console</span>
+                            <label data-translate="advancedDebugLogs">Show Logs in Console</label>
+                            <span class="setting-desc" data-translate="advancedDebugLogsDesc">Enable debug logging to developer console</span>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="debugLogsToggle">
@@ -550,8 +548,8 @@
 
                     <div class="setting-item">
                         <div class="setting-info">
-                            <label>Server Port</label>
-                            <span class="setting-desc" id="serverPortDisplay">3000</span>
+                            <label data-translate="advancedServerPort">Server Port</label>
+                            <span class="setting-desc" id="serverPortDisplay" data-translate="advancedServerPortDesc">Local API server port (read-only)</span>
                         </div>
                         <span class="setting-readonly">(Read-only)</span>
                     </div>
@@ -560,10 +558,10 @@
 
                     <div class="setting-item danger-zone">
                         <div class="setting-info">
-                            <label style="color: #ff2a5f;">⚠️ Reset All Settings</label>
-                            <span class="setting-desc">Restore all settings to factory defaults. This cannot be undone.</span>
+                            <label style="color: #ff2a5f;" data-translate="advancedResetAll">⚠️ Reset All Settings</label>
+                            <span class="setting-desc" data-translate="advancedResetAllDesc">Restore all settings to factory defaults. This cannot be undone.</span>
                         </div>
-                        <button class="setting-btn danger" id="resetAllBtn">
+                        <button class="setting-btn danger" id="resetAllBtn" data-translate="advancedResetBtn">
                             <i class="fa-solid fa-rotate-left"></i> Reset All
                         </button>
                     </div>
@@ -573,7 +571,7 @@
 
         <!-- ===== SAVE BUTTON ===== -->
         <div class="settings-actions">
-            <button class="save-settings-btn" id="saveSettingsBtn">
+            <button class="save-settings-btn" id="saveSettingsBtn" data-translate="settingsSave">
                 <i class="fa-solid fa-check"></i> Save Settings
             </button>
             <span id="saveStatus" class="save-status"></span>
@@ -582,6 +580,7 @@
 
     <!-- ===== TOAST NOTIFICATION ===== -->
     <div id="toastContainer" class="toast-container"></div>
+    <script src="lang.js"></script>
 
     <script src="settings.js"></script>
 </body>

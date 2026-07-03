@@ -1,16 +1,17 @@
 /**
  * recommender.js - Advanced AI Recommendation Engine v2
- * Next-generation hybrid system with:
- * - Neural-style collaborative filtering with matrix factorization
+ * Hybrid system with:
+ * - Advanced heuristic-based collaborative filtering
  * - Multi-factor behavior analysis with deep engagement tracking
- * - Advanced context awareness (mood, time, activity patterns, weather)
- * - Ensemble learning combining multiple models
+ * - Advanced context awareness (mood, time, activity patterns)
+ * - Ensemble learning combining multiple weighting models
  * - User clustering & similar user recommendations
- * - Sentiment-aware recommendations
  * - Serendipity optimization with discovery boost
  * - Session-based sequential recommendations
  * - Artist/album affinity networks
- * - Real-time A/B testing framework
+ * 
+ * NOTE: Uses heuristic weighting rather than neural networks.
+ * All processing is local with no external model dependencies.
  */
 
 const { cosineSimilarity, euclideanDistance } = require('./analyzer');

@@ -1,11 +1,15 @@
 /**
  * Plugin Store - Built-in marketplace for discovering & installing plugins
- * Features: Browse, search, rate, install, auto-update
+ * 
+ * DEVELOPMENT NOTE: This is a placeholder implementation.
+ * Currently uses mock data and example URLs.
+ * Backend marketplace endpoints not yet implemented.
+ * 
+ * Features (planned): Browse, search, rate, install, auto-update
  */
-
 class PluginStore {
   constructor() {
-    this.storeUrl = 'https://korai-plugins.example.com/api'; // Placeholder
+    this.storeUrl = 'https://korai-plugins.example.com/api'; // TODO: Implement real backend
     this.localRegistry = {}; // Cache of available plugins
     this.ratings = {}; // User ratings cache
   }

@@ -6,7 +6,9 @@
  * - Autocorrelation for low BPMs
  * - FFT-based onset detection
  * 
- * No longer relies on filename patterns!
+ * NOTE: Currently uses mock waveform data for demonstration.
+ * For production, integrate with ffmpeg or WAV decoder to get actual PCM samples.
+ * Estimated accuracy: ±5 BPM
  */
 
 const fs = require('fs');

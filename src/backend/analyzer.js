@@ -51,7 +51,11 @@ function estimateBPMFromPeaks(peaks, sampleRate, hopSize) {
 }
 
 /**
- * UPGRADED: Extract rich feature vector with psychoacoustic features
+ * UPGRADED: Extract rich feature vector with approximate psychoacoustic features
+ * 
+ * NOTE: These features are calculated from metadata (bitrate, duration, BPM)
+ * rather than actual DSP spectral analysis. They provide good approximations
+ * for genre detection and recommendation engine, but are not true psychoacoustic measurements.
  */
 async function extractFeatureVector(filePath) {
     const metadata = await mm.parseFile(filePath, { duration: true });

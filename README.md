@@ -57,7 +57,7 @@ This is a player that answers to no one but you. No servers watching. No algorit
 
 <table>
 <tr><th align="left">Audio Quality</th><th>KORAI</th><th>Spotify</th><th>Apple Music</th><th>VLC</th></tr>
-<tr><td>Graphic EQ (10 bands)</td><td align="center">✅</td><td align="center">❌</td><td align="center">❌</td><td align="center">✅</td></tr>
+<tr><td>Graphic EQ (5 bands)</td><td align="center">✅</td><td align="center">❌</td><td align="center">❌</td><td align="center">✅</td></tr>
 <tr><td>Real-time spectrum analyzer</td><td align="center">✅</td><td align="center">❌</td><td align="center">❌</td><td align="center">❌</td></tr>
 <tr><td>Live waveform on timeline</td><td align="center">✅</td><td align="center">❌</td><td align="center">❌</td><td align="center">❌</td></tr>
 <tr><td>Tempo control (0.5x–2.0x)</td><td align="center">✅</td><td align="center">❌</td><td align="center">❌</td><td align="center">✅</td></tr>

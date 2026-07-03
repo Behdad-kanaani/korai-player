@@ -756,11 +756,9 @@ async function createWindow() {
 
         createSystemTray();
         
-        try {
-            startUpdateChecker(24);
-        } catch (err) {
-            console.warn('Updater not available:', err.message);
-        }
+        startUpdateChecker(24).catch((err) => {
+            console.warn('Updater not available:', err && err.message ? err.message : err);
+        });
 
     } catch (err) {
         console.error('❌ Fatal error in createWindow:', err);
@@ -1368,20 +1366,7 @@ app.whenReady().then(async () => {
         }, 3000);
     }
 
-    // Start periodic update checker
-    setInterval(async () => {
-        try {
-            const result = await updater.checkForUpdates();
-            if (result.hasUpdate) {
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send('update-status', result);
-                }
-            }
-        } catch (err) {
-            console.warn('[main] Periodic update check failed:', err);
-        }
-    }, 12 * 60 * 60 * 1000); // Check every 12 hours
-
+    // Note: periodic update checks are handled by updater.startUpdateChecker()
 });
 
 app.on('activate', () => {

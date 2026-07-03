@@ -153,22 +153,6 @@ class SettingsSync {
         document.body.dir = direction;
         document.body.classList.toggle('rtl', direction === 'rtl');
         document.body.classList.toggle('ltr', direction !== 'rtl');
-
-        const langBtn = document.getElementById('langToggleBtn');
-        if (langBtn) {
-            const span = langBtn.querySelector('span');
-            if (span) span.textContent = direction === 'rtl' ? 'EN' : 'FA';
-        }
-
-        if (window.electronAPI?.trayLanguageChanged) {
-            window.electronAPI.trayLanguageChanged(direction === 'rtl' ? 'fa' : 'en');
-        }
-
-        if (typeof window.changeClientLanguage === 'function') {
-            window.changeClientLanguage(direction === 'rtl' ? 'fa' : 'en');
-        }
-
-        localStorage.setItem('user_lang', direction === 'rtl' ? 'fa' : 'en');
     }
 
     applyFontSize(size) {

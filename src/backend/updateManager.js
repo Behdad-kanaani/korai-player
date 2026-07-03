@@ -264,7 +264,8 @@ async function checkAndPrepareUpdate() {
             canUpdate: validation.missing.length === 0,
             validationErrors: validation,
             isVersionChange: updateInfo.versionChanged || false,
-            latestSha: updateInfo.latestSha || null
+            latestSha: updateInfo.latestSha || null,
+            needsFullCheck: updateInfo.needsFullCheck || false
         };
 
     } catch (err) {

@@ -2,10 +2,11 @@
   "name": "korai-player",
   "version": "1.5.0",
   "description": "KORAI Advanced Music Player - Professional Audio Experience",
+  "homepage": "https://github.com/Behdad-kanaani/korai-player",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "SET \"GENERATE_SOURCEMAP=false\" && electron-builder",
+    "build": "GENERATE_SOURCEMAP=false electron-builder",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
@@ -13,7 +14,10 @@
     "dist:all": "electron-builder --win --mac --linux",
     "postinstall": "electron-builder install-app-deps"
   },
-  "author": "Behdad Kanaani",
+  "author": {
+    "name": "Behdad Kanaani",
+    "email": "behdad@example.com"
+  },
   "license": "Apache-2.0 WITH Commons-Clause",
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
@@ -34,8 +38,7 @@
     "sharp": "^0.33.5",
     "wav": "^1.0.2",
     "winston": "^3.9.0",
-    "xml2js": "^0.6.2",
-    "youtube-dl-exec": "^2.5.8"
+    "xml2js": "^0.6.2"
   },
   "devDependencies": {
     "electron": "^28.0.0",

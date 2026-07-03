@@ -42,9 +42,11 @@ let vinylRotationRAFId = null;
 let lastTimeUpdateTime = 0;
 let lastAudioTimeUpdateTime = 0;
 let lastPlaybackSaveTime = 0;
-let shuffleHistory = [];  
+let shuffleHistory = [];
 let shuffleSessionActive = false;
 let remainingUnplayedTracks = [];
+let preferredGenreMode = false;
+let preferredGenreHistory = [];
 let lastPlaySource = {
     type: 'library',
     sourceId: null,
@@ -765,6 +767,9 @@ function updateBodyClasses() {
     const skinClass = `theme-${currentSkin}`;
     const miniClass = isMiniWindowMode ? 'mini-window-active' : '';
     document.body.className = `${skinClass} ${dirClass} ${miniClass}`;
+    // Apply direction to HTML elements
+    document.documentElement.dir = currentLanguage === 'fa' ? 'rtl' : 'ltr';
+    document.body.dir = currentLanguage === 'fa' ? 'rtl' : 'ltr';
 }
 
 function changeClientLanguage(targetLang) {
@@ -1053,7 +1058,7 @@ function initShuffleSession() {
         queueIndex = 0;
     }
     
-    shuffleHistory = currentTrackId ? [currentTrackId] : [];
+    shuffleHistory = [];
     remainingUnplayedTracks = queue.filter(t => t.id !== currentTrackId).map(t => t.id);
     shuffleSessionActive = true;
     
@@ -1086,6 +1091,12 @@ function resetShuffleSession() {
 }
 
 function toggleShuffleEnhanced() {
+    if (preferredGenreMode) {
+        preferredGenreMode = false;
+        preferredGenreHistory = [];
+        updatePreferredGenreUI();
+    }
+
     shuffleMode = !shuffleMode;
     
     const shuffleBtn = document.getElementById('shuffleBtnK');
@@ -1104,17 +1115,82 @@ function toggleShuffleEnhanced() {
 }
 
 window.toggleShuffle = toggleShuffleEnhanced;
+window.togglePreferredGenreMode = togglePreferredGenreMode;
+
+function updatePreferredGenreUI() {
+    const preferredGenreBtn = document.getElementById('preferredGenreBtn');
+    if (preferredGenreBtn) preferredGenreBtn.classList.toggle('active', preferredGenreMode);
+}
+
+function getTopPreferredGenres(limit = 3) {
+    const genreScores = {};
+    tracks.forEach(track => {
+        const genre = normalizeGenreLabel(track.genre || '');
+        if (!genre) return;
+        const score = (track.isLiked ? 6 : 0) + ((track.likeCount || 0) * 1.4) + ((track.playCount || 0) * 0.35);
+        genreScores[genre] = (genreScores[genre] || 0) + score;
+    });
+    return Object.entries(genreScores)
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .slice(0, limit)
+        .map(([genre]) => genre);
+}
+
+function getNextPreferredGenreTrack() {
+    if (!preferredGenreMode) return null;
+    const sourceTracks = Array.isArray(lastPlaySource.sourceTracks) && lastPlaySource.sourceTracks.length ? lastPlaySource.sourceTracks : [...tracks];
+    const currentGenre = normalizeGenreLabel(currentTrack?.genre || '');
+    const topGenres = getTopPreferredGenres(4);
+    let candidates = sourceTracks.filter(t => t.id !== currentTrackId && t.genre && topGenres.includes(normalizeGenreLabel(t.genre)));
+    if (currentGenre && topGenres.includes(currentGenre)) {
+        const sameGenre = candidates.filter(t => normalizeGenreLabel(t.genre) === currentGenre);
+        if (sameGenre.length > 0) candidates = sameGenre;
+    }
+    if (candidates.length === 0) {
+        candidates = sourceTracks.filter(t => t.id !== currentTrackId);
+    }
+    if (candidates.length === 0) return null;
+    return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
+function initPreferredGenreSession() {
+    if (!preferredGenreMode) return;
+    setPlaySource(lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
+    preferredGenreHistory = [];
+    if (currentTrackId) {
+        const idx = queue.findIndex(t => t.id === currentTrackId);
+        queueIndex = idx !== -1 ? idx : 0;
+    } else {
+        queueIndex = 0;
+    }
+    renderQueue();
+}
+
+function togglePreferredGenreMode() {
+    preferredGenreMode = !preferredGenreMode;
+    if (preferredGenreMode) {
+        if (shuffleMode) {
+            shuffleMode = false;
+            resetShuffleSession();
+        }
+        preferredGenreHistory = [];
+        initPreferredGenreSession();
+        showNotification(currentLanguage === 'fa' ? 'حالت سبک محبوب فعال شد' : 'Preferred genre playback enabled', 'success');
+    } else {
+        preferredGenreHistory = [];
+        showNotification(currentLanguage === 'fa' ? 'حالت سبک محبوب غیرفعال شد' : 'Preferred genre playback disabled', 'info');
+    }
+    updatePreferredGenreUI();
+}
 
 // Get next shuffle track
 function getNextShuffleTrack() {
     if (!shuffleMode || !shuffleSessionActive) return null;
     
-    // Find unplayed tracks
     const unplayed = queue.filter(t => t.id !== currentTrackId && !shuffleHistory.includes(t.id));
     
     if (unplayed.length === 0) {
-        // Reset history and start over
-        shuffleHistory = [currentTrackId];
+        shuffleHistory = [];
         const remaining = queue.filter(t => t.id !== currentTrackId);
         if (remaining.length === 0) return null;
         const randomIndex = Math.floor(Math.random() * remaining.length);
@@ -1398,13 +1474,29 @@ async function nextTrackEnhanced() {
     isTransitioning = true;
     
     try {
-        // Shuffle mode
-        if (shuffleMode && shuffleSessionActive) {
-            const nextTrackObj = getNextShuffleTrack();
+        // Preferred genre mode
+        if (preferredGenreMode) {
+            const nextTrackObj = getNextPreferredGenreTrack();
             if (nextTrackObj) {
-                if (currentTrackId) shuffleHistory.push(currentTrackId);
+                if (currentTrackId) preferredGenreHistory.push(currentTrackId);
                 await playTrack(nextTrackObj.id, lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
                 return;
+            }
+        }
+
+        // Shuffle mode
+        if (shuffleMode && shuffleSessionActive) {
+            if (queue.length > 0) {
+                if (queueIndex < queue.length - 1) {
+                    queueIndex += 1;
+                    await playTrack(queue[queueIndex].id, lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
+                    return;
+                }
+                if (repeatMode && !repeatOneMode) {
+                    queueIndex = 0;
+                    await playTrack(queue[queueIndex].id, lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
+                    return;
+                }
             }
         }
         
@@ -1459,13 +1551,28 @@ async function prevTrackEnhanced() {
     isTransitioning = true;
     
     try {
-        // Shuffle mode
-        if (shuffleMode && shuffleSessionActive && shuffleHistory.length > 1) {
-            shuffleHistory.pop();
-            const prevTrackId = shuffleHistory.pop();
+        // Preferred genre mode
+        if (preferredGenreMode && preferredGenreHistory.length > 0) {
+            const prevTrackId = preferredGenreHistory.pop();
             if (prevTrackId) {
                 await playTrack(prevTrackId, lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
                 return;
+            }
+        }
+
+        // Shuffle mode
+        if (shuffleMode && shuffleSessionActive) {
+            if (queue.length > 0) {
+                if (queueIndex > 0) {
+                    queueIndex -= 1;
+                    await playTrack(queue[queueIndex].id, lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
+                    return;
+                }
+                if (repeatMode) {
+                    queueIndex = queue.length - 1;
+                    await playTrack(queue[queueIndex].id, lastPlaySource.type, lastPlaySource.sourceId, lastPlaySource.sourceTracks);
+                    return;
+                }
             }
         }
         
@@ -4510,14 +4617,71 @@ window.switchSection = function(sectionName) {
                 // remove hero from DOM or let render replace it
                 if (fsBg) fsBg.classList.remove('closing');
                 doSwitch();
+                // apply enter animation to new section after switch
+                setTimeout(() => applySectionAnimations(sectionName), 30);
             }, 420);
         } catch (e) {
             doSwitch();
+            setTimeout(() => applySectionAnimations(sectionName), 30);
         }
     } else {
         doSwitch();
+        setTimeout(() => applySectionAnimations(sectionName), 30);
     }
 };
+
+// Helper: apply entrance animations and stagger to section content
+function applySectionAnimations(sectionName) {
+    try {
+        // animate nav active glow
+        const activeNav = document.querySelector('.sidebar-nav .nav-item.active');
+        if (activeNav) {
+            activeNav.classList.remove('nav-item-activate');
+            void activeNav.offsetWidth;
+            activeNav.classList.add('nav-item-activate');
+        }
+
+        // main content container
+        const container = document.getElementById('dynamicSectionContainer');
+        if (!container) return;
+
+        // add enter animation to container
+        container.classList.remove('section-exit');
+        container.classList.add('section-enter');
+
+        // stagger child items (cards, list rows, grid items)
+        const items = container.querySelectorAll('.grid-item, .list-row, .content-card, .song-row, .playlist-item');
+        items.forEach((it, idx) => {
+            it.classList.remove('content-item-appear');
+            it.style.animationDelay = (idx * 40) + 'ms';
+            void it.offsetWidth;
+            it.classList.add('content-item-appear');
+        });
+
+        // gently fade out any loading placeholder
+        const loading = container.querySelector('.loading-state-placeholder');
+        if (loading) {
+            loading.classList.add('section-exit');
+            setTimeout(() => { if (loading && loading.parentNode) loading.parentNode.removeChild(loading); }, 500);
+        }
+    } catch (e) {
+        console.warn('applySectionAnimations failed', e);
+    }
+}
+
+// Ripple effect on nav clicks
+document.addEventListener('click', (ev) => {
+    const nav = ev.target.closest('.nav-item');
+    if (!nav) return;
+    const rect = nav.getBoundingClientRect();
+    const ripple = document.createElement('span');
+    ripple.className = 'ripple-effect';
+    ripple.style.left = (ev.clientX - rect.left) + 'px';
+    ripple.style.top = (ev.clientY - rect.top) + 'px';
+    nav.style.position = nav.style.position || 'relative';
+    nav.appendChild(ripple);
+    setTimeout(() => { ripple.remove(); }, 650);
+});
 
 // =============================================================================
 // EVENT LISTENERS SETUP
@@ -4757,6 +4921,9 @@ function setupEventListeners() {
     
     const shuffleBtn = document.getElementById('shuffleBtnK');
     if (shuffleBtn) shuffleBtn.addEventListener('click', toggleShuffleEnhanced);
+
+    const preferredGenreBtn = document.getElementById('preferredGenreBtn');
+    if (preferredGenreBtn) preferredGenreBtn.addEventListener('click', togglePreferredGenreMode);
     
     const repeatBtn = document.getElementById('repeatBtnK');
     if (repeatBtn) {
@@ -4789,6 +4956,9 @@ function setupEventListeners() {
     
     const fsShuffleBtn = document.getElementById('fsShuffleBtn');
     if (fsShuffleBtn) fsShuffleBtn.addEventListener('click', toggleShuffleEnhanced);
+
+    const fsPreferredGenreBtn = document.getElementById('fsPreferredGenreBtn');
+    if (fsPreferredGenreBtn) fsPreferredGenreBtn.addEventListener('click', togglePreferredGenreMode);
     
     const fsRepeatBtn = document.getElementById('fsRepeatBtn');
     if (fsRepeatBtn) {

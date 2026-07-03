@@ -224,28 +224,6 @@ class SettingsStore {
         document.body.dir = direction;
         document.body.classList.toggle('rtl', direction === 'rtl');
         document.body.classList.toggle('ltr', direction !== 'rtl');
-
-        // Update language button if exists
-        const langBtn = document.getElementById('langToggleBtn');
-        if (langBtn) {
-            const span = langBtn.querySelector('span');
-            if (span) span.textContent = direction === 'rtl' ? 'EN' : 'FA';
-        }
-
-        // Notify main process
-        if (window.electronAPI && window.electronAPI.trayLanguageChanged) {
-            const lang = direction === 'rtl' ? 'fa' : 'en';
-            window.electronAPI.trayLanguageChanged(lang);
-        }
-
-        // Update translations if function exists
-        if (typeof window.changeClientLanguage === 'function') {
-            const lang = direction === 'rtl' ? 'fa' : 'en';
-            window.changeClientLanguage(lang);
-        }
-
-        // Update stored language
-        localStorage.setItem('user_lang', direction === 'rtl' ? 'fa' : 'en');
     }
 
     _applyPerformanceMode(enabled) {

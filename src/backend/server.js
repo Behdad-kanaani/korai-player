@@ -33,7 +33,7 @@ const PluginHost = require('./pluginHost');
 const { setupPluginRoutes } = require('./pluginRoutes');
 const PluginSettings = require('./pluginSettings');
 const PluginPerformanceMonitor = require('./pluginPerformanceMonitor');
-const ytdl = require('youtube-dl-exec');
+// const ytdl = require('youtube-dl-exec');
 
 const app = express();
 let serverUserDataPath = null;
@@ -590,29 +590,62 @@ function setupRoutes() {
     app.get('/api/tracks/:id/stream', (req, res) => {
         try {
             const db = getDb();
-            const track = db.getTrackById(parseInt(req.params.id));
-            if (!track || !track.filePath || !fs.existsSync(track.filePath)) {
-                return res.status(404).json({ error: 'File not found' });
+            const trackId = parseInt(req.params.id);
+            const track = db.getTrackById(trackId);
+
+            // FIX: Check if track exists and has a valid filePath
+            if (!track) {
+                console.warn(`[stream] Track ${trackId} not found in database`);
+                return res.status(404).json({ error: 'Track not found in database' });
             }
-            const stat = fs.statSync(track.filePath);
+
+            if (!track.filePath || track.filePath.trim() === '') {
+                console.warn(`[stream] Track ${trackId} has no file path`);
+                return res.status(400).json({ error: 'Track has no file path' });
+            }
+
+            // FIX: Normalize path and check if file exists
+            const normalizedPath = path.normalize(track.filePath);
+            if (!fs.existsSync(normalizedPath)) {
+                console.warn(`[stream] File not found: ${normalizedPath}`);
+                return res.status(404).json({ error: 'Audio file not found on disk' });
+            }
+
+            const stat = fs.statSync(normalizedPath);
             const fileSize = stat.size;
+
+            if (fileSize === 0) {
+                console.warn(`[stream] File is empty: ${normalizedPath}`);
+                return res.status(400).json({ error: 'Audio file is empty' });
+            }
+
             const range = req.headers.range;
-            const ext = path.extname(track.filePath).toLowerCase();
+            const ext = path.extname(normalizedPath).toLowerCase();
+
             let contentType = 'audio/mpeg';
             if (ext === '.wav') contentType = 'audio/wav';
             else if (ext === '.ogg') contentType = 'audio/ogg';
             else if (ext === '.m4a') contentType = 'audio/mp4';
             else if (ext === '.flac') contentType = 'audio/flac';
+            else if (ext === '.aac') contentType = 'audio/aac';
+            else if (ext === '.wma') contentType = 'audio/x-ms-wma';
+
             if (range) {
                 const parts = range.replace(/bytes=/, "").split("-");
                 const start = parseInt(parts[0], 10);
                 const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
                 const chunksize = (end - start) + 1;
-                const file = fs.createReadStream(track.filePath, { start, end });
+
+                if (start >= fileSize || end >= fileSize) {
+                    return res.status(416).json({ error: 'Requested range not satisfiable' });
+                }
+
+                const file = fs.createReadStream(normalizedPath, { start, end });
                 file.on('error', (streamErr) => {
-                    console.error('Streaming error:', streamErr);
+                    console.error('[stream] Read error:', streamErr.message);
                     if (!res.headersSent) res.status(500).end();
                 });
+
                 const head = {
                     'Content-Range': `bytes ${start}-${end}/${fileSize}`,
                     'Accept-Ranges': 'bytes',
@@ -628,14 +661,15 @@ function setupRoutes() {
                     'Accept-Ranges': 'bytes',
                 };
                 res.writeHead(200, head);
-                const file = fs.createReadStream(track.filePath);
+                const file = fs.createReadStream(normalizedPath);
                 file.on('error', (streamErr) => {
-                    console.error('Streaming error:', streamErr);
+                    console.error('[stream] Read error:', streamErr.message);
                     if (!res.headersSent) res.status(500).end();
                 });
                 file.pipe(res);
             }
         } catch (error) {
+            console.error('[stream] Error:', error.message);
             res.status(500).json({ error: error.message });
         }
     });
@@ -804,16 +838,16 @@ function setupRoutes() {
                 const tempFilePath = path.join(downloadsDir, tempFileName);
                 
                 try {
-                    await ytdl(url, {
-                        extractAudio: true,
-                        audioFormat: 'mp3',
-                        audioQuality: 0,
-                        output: tempFilePath,
-                        noCheckCertificate: true,
-                        preferFreeFormats: true,
-                        timeout: 120,
-                        addHeader: ['User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36']
-                    });
+                    // await ytdl(url, {
+                    //     extractAudio: true,
+                    //     audioFormat: 'mp3',
+                    //     audioQuality: 0,
+                    //     output: tempFilePath,
+                    //     noCheckCertificate: true,
+                    //     preferFreeFormats: true,
+                    //     timeout: 120,
+                    //     addHeader: ['User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36']
+                    // });
                     
                     // Find the downloaded file
                     const files = fs.readdirSync(downloadsDir);

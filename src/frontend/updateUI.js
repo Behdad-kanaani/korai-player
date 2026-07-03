@@ -339,13 +339,26 @@ class UpdateUI {
         // Update message
         const message = document.getElementById('updateMessage');
         if (message) {
-            const filesText = updateInfo.totalFiles === 1 ? 'file' : 'files';
-            message.innerHTML = `
-                Version <strong>${updateInfo.latestVersion}</strong> is ready to install
-                <span style="display: block; font-size: 0.65rem; opacity: 0.7; margin-top: 2px;">
-                    ${updateInfo.totalFiles || 0} ${filesText} to update
-                </span>
-            `;
+            if (updateInfo.totalFiles > 0) {
+                const filesText = updateInfo.totalFiles === 1 ? 'file' : 'files';
+                message.innerHTML = `
+                    Version <strong>${updateInfo.latestVersion}</strong> is ready to install
+                    <span style="display: block; font-size: 0.65rem; opacity: 0.7; margin-top: 2px;">
+                        ${updateInfo.totalFiles} ${filesText} to update
+                    </span>
+                `;
+            } else if (updateInfo.needsFullCheck) {
+                message.innerHTML = `
+                    Version <strong>${updateInfo.latestVersion}</strong> is ready to install
+                    <span style="display: block; font-size: 0.65rem; opacity: 0.7; margin-top: 2px;">
+                        Click Update Now to prepare the update files
+                    </span>
+                `;
+            } else {
+                message.innerHTML = `
+                    Version <strong>${updateInfo.latestVersion}</strong> is ready to install
+                `;
+            }
         }
 
         // Show buttons
@@ -687,9 +700,9 @@ class UpdateUI {
         }
 
         if (fileCount && progress.totalFiles !== undefined) {
-            const current = progress.currentFile ? 1 : 0;
+            const currentIndex = progress.fileIndex || 0;
             const total = progress.totalFiles || 0;
-            fileCount.textContent = `${current} / ${total} files`;
+            fileCount.textContent = `${currentIndex} / ${total} files`;
         }
 
         if (message) {

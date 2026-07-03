@@ -51,9 +51,12 @@ let updateProgress = {
     status: 'idle',
     progress: 0,
     totalFiles: 0,
+    fileIndex: 0,
     currentFile: '',
     message: ''
 };
+
+let updateCheckerInterval = null;
 
 // Cache for version check to avoid repeated requests
 let versionCache = {
@@ -242,10 +245,16 @@ async function getChangedFiles(latestVersion, latestSha) {
     try {
         const currentVersion = getCurrentVersion();
         const lastKnownCommit = getLastKnownCommit();
-        
-        // If we have a last known commit, use compare API
-        if (lastKnownCommit && latestSha) {
-            const compareUrl = `${GITHUB_API}/compare/${lastKnownCommit}...${latestSha}`;
+        let effectiveSha = latestSha;
+
+        if (!effectiveSha) {
+            const latestCommit = await fetchGitHubJSON(`${GITHUB_API}/commits/main`);
+            effectiveSha = latestCommit?.sha || null;
+        }
+
+        // If we have a last known commit and an SHA, use compare API
+        if (lastKnownCommit && effectiveSha) {
+            const compareUrl = `${GITHUB_API}/compare/${lastKnownCommit}...${effectiveSha}`;
             const compareResult = await fetchGitHubJSON(compareUrl);
             
             if (compareResult && compareResult.files) {
@@ -259,10 +268,10 @@ async function getChangedFiles(latestVersion, latestSha) {
                     });
             }
         }
-        
-        // Fallback: Get files from latest commit
-        if (latestSha) {
-            const commitDetail = await fetchGitHubJSON(`${GITHUB_API}/commits/${latestSha}`);
+
+        // Fallback: if commit details include file list, use those files
+        if (effectiveSha) {
+            const commitDetail = await fetchGitHubJSON(`${GITHUB_API}/commits/${effectiveSha}`);
             if (commitDetail && commitDetail.files) {
                 return commitDetail.files
                     .filter(f => f.status !== 'removed')
@@ -273,11 +282,25 @@ async function getChangedFiles(latestVersion, latestSha) {
                         return shouldInclude && !shouldExclude;
                     });
             }
+
+            // Last resort: fetch repository tree
+            const treeSha = commitDetail?.commit?.tree?.sha || effectiveSha;
+            const treeDetail = await fetchGitHubJSON(`${GITHUB_API}/git/trees/${treeSha}?recursive=1`);
+            if (treeDetail && treeDetail.tree) {
+                return treeDetail.tree
+                    .filter(item => item.type === 'blob')
+                    .map(item => item.path)
+                    .filter(file => {
+                        const shouldInclude = INCLUDE_PATTERNS.some(pattern => pattern.test(file));
+                        const shouldExclude = EXCLUDE_PATTERNS.some(pattern => pattern.test(file));
+                        return shouldInclude && !shouldExclude;
+                    });
+            }
         }
-        
+
         // If all else fails, return empty array
         return [];
-        
+
     } catch (err) {
         console.error('[updater] Failed to get changed files:', err.message);
         // If rate limit, return empty and let user retry
@@ -422,6 +445,41 @@ async function fetchLatestVersion(silent = true) {
     return await checkForUpdates();
 }
 
+/**
+ * Start periodic update checks.
+ * @param {number} hours Interval in hours between checks
+ */
+async function startUpdateChecker(hours = 24) {
+    try {
+        await checkForUpdates();
+    } catch (err) {
+        console.warn('[updater] Initial update check failed:', err && err.message ? err.message : err);
+    }
+
+    if (updateCheckerInterval) {
+        return updateCheckerInterval;
+    }
+
+    updateCheckerInterval = setInterval(async () => {
+        try {
+            await checkForUpdates();
+        } catch (err) {
+            console.warn('[updater] Periodic update check failed:', err && err.message ? err.message : err);
+        }
+    }, Math.max(1, hours) * 60 * 60 * 1000);
+
+    return updateCheckerInterval;
+}
+
+function stopUpdateChecker() {
+    if (updateCheckerInterval) {
+        clearInterval(updateCheckerInterval);
+        updateCheckerInterval = null;
+        return true;
+    }
+    return false;
+}
+
 // ============================================================================
 // APPLY UPDATE
 // ============================================================================
@@ -486,6 +544,8 @@ async function applyUpdate(updateInfo, progressCallback) {
 
             const progress = ((i + 1) / totalFiles) * 30;
             updateProgress.progress = progress;
+            updateProgress.totalFiles = totalFiles;
+            updateProgress.fileIndex = i + 1;
             updateProgress.currentFile = file;
             updateProgress.message = `Backing up: ${file}`;
             notifyProgress();
@@ -529,6 +589,8 @@ async function applyUpdate(updateInfo, progressCallback) {
 
             const progress = 30 + ((i + 1) / totalFiles) * 60;
             updateProgress.progress = progress;
+            updateProgress.totalFiles = totalFiles;
+            updateProgress.fileIndex = i + 1;
             updateProgress.currentFile = file;
             updateProgress.message = `Updating: ${file}`;
             notifyProgress();
@@ -571,6 +633,8 @@ async function applyUpdate(updateInfo, progressCallback) {
         // Step 6: Mark as updated
         updateProgress.status = 'complete';
         updateProgress.progress = 100;
+        updateProgress.fileIndex = totalFiles;
+        updateProgress.totalFiles = totalFiles;
         updateProgress.message = 'Update complete! Restarting...';
         notifyProgress();
 
@@ -717,5 +781,7 @@ module.exports = {
     getLatestVersionFromGitHub,
     compareVersions,
     performFullUpdateCheck,
-    getChangedFiles
+    getChangedFiles,
+    startUpdateChecker,
+    stopUpdateChecker
 };

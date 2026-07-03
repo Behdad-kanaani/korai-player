@@ -85,16 +85,33 @@ class AudioSeparator {
                     const reader = new wav.Reader();
                     const channels = [];
                     
+                    let wavFormat = null;
                     reader.on('format', (format) => {
+                        wavFormat = format;
                         console.debug(`WAV format: ${format.channels}ch, ${format.sampleRate}Hz, ${format.bitDepth}bit`);
                         for (let i = 0; i < format.channels; i++) channels.push([]);
                     });
-                    
+
                     reader.on('data', (chunk) => {
-                        const samples = new Int16Array(chunk.buffer, chunk.byteOffset, chunk.length / 2);
-                        for (let i = 0; i < samples.length; i++) {
-                            const channelIndex = i % channels.length;
-                            const sampleValue = samples[i] / 32768.0;
+                        if (!wavFormat) return;
+                        const bytesPerSample = wavFormat.bitDepth / 8 || 2;
+                        const samplesCount = Math.floor(chunk.length / bytesPerSample);
+                        for (let i = 0; i < samplesCount; i++) {
+                            const byteOffset = i * bytesPerSample;
+                            let intSample = 0;
+                            // Only supporting 16-bit little-endian WAVs for now
+                            if (bytesPerSample === 2) {
+                                intSample = chunk.readInt16LE(byteOffset);
+                            } else if (bytesPerSample === 1) {
+                                // 8-bit PCM unsigned
+                                intSample = chunk.readUInt8(byteOffset) - 128;
+                            } else {
+                                // fallback: read as 16-bit
+                                intSample = chunk.readInt16LE(byteOffset);
+                            }
+
+                            const sampleValue = intSample / 32768.0;
+                            const channelIndex = i % wavFormat.channels;
                             channels[channelIndex].push(sampleValue);
                         }
                     });

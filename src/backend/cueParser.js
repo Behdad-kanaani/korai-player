@@ -8,7 +8,11 @@ const { resolveSafePath } = require('./securityUtils');
  * Parse a CUE sheet file
  */
 function parseCueSheet(cuePath) {
-    const content = fs.readFileSync(cuePath, 'utf-8');
+    const safeCuePath = resolveSafePath(cuePath, path.dirname(cuePath) || process.cwd());
+    if (!safeCuePath || !fs.existsSync(safeCuePath)) {
+        throw new Error('CUE file not found');
+    }
+    const content = fs.readFileSync(safeCuePath, 'utf-8');
     const lines = content.split(/\r?\n/);
     
     const result = {
@@ -181,6 +185,10 @@ function getTracksFromCue(cuePath, audioBaseDir = null) {
  * Generate a CUE sheet from a playlist
  */
 function generateCueSheet(playlist, tracks, outputPath) {
+    const safeOutputPath = resolveSafePath(outputPath, path.dirname(outputPath) || process.cwd());
+    if (!safeOutputPath) {
+        throw new Error('Invalid output path');
+    }
     let content = `REM GENRE "${playlist.genre || 'Various'}"\n`;
     content += `REM DATE "${new Date().getFullYear()}"\n`;
     content += `TITLE "${playlist.name || 'Playlist'}"\n`;
@@ -222,8 +230,8 @@ function generateCueSheet(playlist, tracks, outputPath) {
         content += '\n';
     }
     
-    fs.writeFileSync(outputPath, content, 'utf-8');
-    return outputPath;
+    fs.writeFileSync(safeOutputPath, content, 'utf-8');
+    return safeOutputPath;
 }
 
 module.exports = {

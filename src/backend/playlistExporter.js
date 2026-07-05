@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { resolveSafePath } = require('./securityUtils');
 
 function escapeXml(str) {
     if (!str) return '';
@@ -17,16 +18,20 @@ function resolvePlaylistImportPath(rawPath, baseDir = null) {
     if (typeof rawPath !== 'string' || rawPath.trim() === '') return null;
     const normalizedPath = rawPath.trim();
     const base = baseDir ? path.resolve(baseDir) : process.cwd();
-    const resolvedPath = path.isAbsolute(normalizedPath)
-        ? path.resolve(normalizedPath)
-        : path.resolve(base, normalizedPath);
-    const relativePath = path.relative(base, resolvedPath);
-    const isSafe = relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath));
-    return isSafe ? resolvedPath : null;
+    return resolveSafePath(normalizedPath, base);
 }
 
-function exportToM3U(playlist, tracks, outputPath, extended = true) {
-    const isM3U8 = outputPath.toLowerCase().endsWith('.m3u8');
+function resolveExportPath(outputPath, baseDir = null) {
+    if (typeof outputPath !== 'string' || outputPath.trim() === '') return null;
+    const normalizedPath = outputPath.trim();
+    const base = baseDir ? path.resolve(baseDir) : process.cwd();
+    return resolveSafePath(normalizedPath, base);
+}
+
+function exportToM3U(playlist, tracks, outputPath, extended = true, baseDir = null) {
+    const safeOutputPath = resolveExportPath(outputPath, baseDir);
+    if (!safeOutputPath) throw new Error('Invalid output path');
+    const isM3U8 = safeOutputPath.toLowerCase().endsWith('.m3u8');
     let content = extended ? '#EXTM3U\n' : '';
     if (isM3U8) content = '\uFEFF' + content;
 
@@ -44,12 +49,14 @@ function exportToM3U(playlist, tracks, outputPath, extended = true) {
         }
         content += track.filePath + '\n';
     }
-    fs.writeFileSync(outputPath, content, 'utf-8');
-    return outputPath;
+    fs.writeFileSync(safeOutputPath, content, 'utf-8');
+    return safeOutputPath;
 }
 
 async function importFromM3U(filePath, baseDir = null) {
-    let content = fs.readFileSync(filePath, 'utf-8');
+    const safeFilePath = resolvePlaylistImportPath(filePath, baseDir || process.cwd());
+    if (!safeFilePath || !fs.existsSync(safeFilePath)) throw new Error('Playlist file not found');
+    let content = fs.readFileSync(safeFilePath, 'utf-8');
     if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
     const lines = content.split(/\r?\n/);
     const tracks = [];
@@ -78,7 +85,9 @@ async function importFromM3U(filePath, baseDir = null) {
 }
 
 // ===================== PLS (Winamp) =====================
-function exportToPLS(playlist, tracks, outputPath) {
+function exportToPLS(playlist, tracks, outputPath, baseDir = null) {
+    const safeOutputPath = resolveExportPath(outputPath, baseDir);
+    if (!safeOutputPath) throw new Error('Invalid output path');
     let content = '[playlist]\n';
     content += `NumberOfEntries=${playlist.tracks.length}\nVersion=2\n`;
     let index = 1;
@@ -90,12 +99,14 @@ function exportToPLS(playlist, tracks, outputPath) {
         content += `Length${index}=${Math.round(track.duration || 0)}\n`;
         index++;
     }
-    fs.writeFileSync(outputPath, content, 'utf-8');
-    return outputPath;
+    fs.writeFileSync(safeOutputPath, content, 'utf-8');
+    return safeOutputPath;
 }
 
 function importFromPLS(filePath, baseDir = null) {
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const safeFilePath = resolvePlaylistImportPath(filePath, baseDir || process.cwd());
+    if (!safeFilePath || !fs.existsSync(safeFilePath)) throw new Error('Playlist file not found');
+    const content = fs.readFileSync(safeFilePath, 'utf-8');
     const lines = content.split(/\r?\n/);
     const fileMap = new Map();
     const titleMap = new Map();
@@ -125,7 +136,9 @@ function importFromPLS(filePath, baseDir = null) {
 }
 
 // ===================== XSPF =====================
-function exportToXSPF(playlist, tracks, outputPath) {
+function exportToXSPF(playlist, tracks, outputPath, baseDir = null) {
+    const safeOutputPath = resolveExportPath(outputPath, baseDir);
+    if (!safeOutputPath) throw new Error('Invalid output path');
     let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<playlist version="1" xmlns="http://xspf.org/ns/0/">\n  <title>${escapeXml(playlist.name)}</title>\n  <trackList>`;
     for (const trackId of playlist.tracks) {
         const track = tracks.find(t => t.id === trackId);
@@ -140,13 +153,15 @@ function exportToXSPF(playlist, tracks, outputPath) {
     </track>`;
     }
     xml += `\n  </trackList>\n</playlist>`;
-    fs.writeFileSync(outputPath, xml, 'utf-8');
-    return outputPath;
+    fs.writeFileSync(safeOutputPath, xml, 'utf-8');
+    return safeOutputPath;
 }
 
 async function importFromXSPF(filePath, baseDir = null) {
     const xml2js = require('xml2js');
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const safeFilePath = resolvePlaylistImportPath(filePath, baseDir || process.cwd());
+    if (!safeFilePath || !fs.existsSync(safeFilePath)) throw new Error('Playlist file not found');
+    const content = fs.readFileSync(safeFilePath, 'utf-8');
     const parser = new xml2js.Parser();
     return new Promise((resolve, reject) => {
         parser.parseString(content, (err, result) => {
@@ -169,7 +184,9 @@ async function importFromXSPF(filePath, baseDir = null) {
 }
 
 // ===================== ASX =====================
-function exportToASX(playlist, tracks, outputPath) {
+function exportToASX(playlist, tracks, outputPath, baseDir = null) {
+    const safeOutputPath = resolveExportPath(outputPath, baseDir);
+    if (!safeOutputPath) throw new Error('Invalid output path');
     let xml = `<ASX version="3.0">\n  <TITLE>${escapeXml(playlist.name)}</TITLE>`;
     for (const trackId of playlist.tracks) {
         const track = tracks.find(t => t.id === trackId);
@@ -182,13 +199,15 @@ function exportToASX(playlist, tracks, outputPath) {
   </ENTRY>`;
     }
     xml += `\n</ASX>`;
-    fs.writeFileSync(outputPath, xml, 'utf-8');
-    return outputPath;
+    fs.writeFileSync(safeOutputPath, xml, 'utf-8');
+    return safeOutputPath;
 }
 
 async function importFromASX(filePath, baseDir = null) {
     const xml2js = require('xml2js');
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const safeFilePath = resolvePlaylistImportPath(filePath, baseDir || process.cwd());
+    if (!safeFilePath || !fs.existsSync(safeFilePath)) throw new Error('Playlist file not found');
+    const content = fs.readFileSync(safeFilePath, 'utf-8');
     return new Promise((resolve, reject) => {
         const parser = new xml2js.Parser();
         parser.parseString(content, (err, result) => {
@@ -210,7 +229,9 @@ async function importFromASX(filePath, baseDir = null) {
 }
 
 // ===================== WPL =====================
-function exportToWPL(playlist, tracks, outputPath) {
+function exportToWPL(playlist, tracks, outputPath, baseDir = null) {
+    const safeOutputPath = resolveExportPath(outputPath, baseDir);
+    if (!safeOutputPath) throw new Error('Invalid output path');
     let xml = `<?wpl version="1.0"?>\n<smil>\n  <head>\n    <title>${escapeXml(playlist.name)}</title>\n  </head>\n  <body>\n    <seq>`;
     for (const trackId of playlist.tracks) {
         const track = tracks.find(t => t.id === trackId);
@@ -218,13 +239,15 @@ function exportToWPL(playlist, tracks, outputPath) {
         xml += `\n      <media src="${encodeURI(track.filePath)}"/>`;
     }
     xml += `\n    </seq>\n  </body>\n</smil>`;
-    fs.writeFileSync(outputPath, xml, 'utf-8');
-    return outputPath;
+    fs.writeFileSync(safeOutputPath, xml, 'utf-8');
+    return safeOutputPath;
 }
 
 async function importFromWPL(filePath, baseDir = null) {
     const xml2js = require('xml2js');
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const safeFilePath = resolvePlaylistImportPath(filePath, baseDir || process.cwd());
+    if (!safeFilePath || !fs.existsSync(safeFilePath)) throw new Error('Playlist file not found');
+    const content = fs.readFileSync(safeFilePath, 'utf-8');
     return new Promise((resolve, reject) => {
         const parser = new xml2js.Parser();
         parser.parseString(content, (err, result) => {
@@ -246,7 +269,9 @@ async function importFromWPL(filePath, baseDir = null) {
 }
 
 // ===================== JSON (JSPF) =====================
-function exportToJSON(playlist, tracks, outputPath) {
+function exportToJSON(playlist, tracks, outputPath, baseDir = null) {
+    const safeOutputPath = resolveExportPath(outputPath, baseDir);
+    if (!safeOutputPath) throw new Error('Invalid output path');
     const playlistObj = {
         playlist: {
             title: playlist.name,
@@ -265,12 +290,14 @@ function exportToJSON(playlist, tracks, outputPath) {
             duration: Math.round((track.duration || 0) * 1000)
         });
     }
-    fs.writeFileSync(outputPath, JSON.stringify(playlistObj, null, 2), 'utf-8');
-    return outputPath;
+    fs.writeFileSync(safeOutputPath, JSON.stringify(playlistObj, null, 2), 'utf-8');
+    return safeOutputPath;
 }
 
 async function importFromJSON(filePath, baseDir = null) {
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const safeFilePath = resolvePlaylistImportPath(filePath, baseDir || process.cwd());
+    if (!safeFilePath || !fs.existsSync(safeFilePath)) throw new Error('Playlist file not found');
+    const content = fs.readFileSync(safeFilePath, 'utf-8');
     const data = JSON.parse(content);
     const tracks = (data.playlist?.track || []).map(t => {
         let location = t.location || '';
@@ -287,7 +314,9 @@ async function importFromJSON(filePath, baseDir = null) {
 }
 
 // ===================== CSV Exports (unchanged) =====================
-function exportLibraryToCSV(tracks, outputPath) {
+function exportLibraryToCSV(tracks, outputPath, baseDir = null) {
+    const safeOutputPath = resolveExportPath(outputPath, baseDir);
+    if (!safeOutputPath) throw new Error('Invalid output path');
     const headers = ['ID', 'Title', 'Artist', 'Album', 'Genre', 'Duration', 'BPM', 'Energy', 'Play Count', 'Like Count', 'File Path'];
     const rows = [headers];
     for (const track of tracks) {
@@ -306,11 +335,13 @@ function exportLibraryToCSV(tracks, outputPath) {
         ]);
     }
     const csvContent = rows.map(row => row.join(',')).join('\n');
-    fs.writeFileSync(outputPath, csvContent, 'utf-8');
-    return outputPath;
+    fs.writeFileSync(safeOutputPath, csvContent, 'utf-8');
+    return safeOutputPath;
 }
 
-function exportPlaylistToCSV(playlist, tracks, outputPath) {
+function exportPlaylistToCSV(playlist, tracks, outputPath, baseDir = null) {
+    const safeOutputPath = resolveExportPath(outputPath, baseDir);
+    if (!safeOutputPath) throw new Error('Invalid output path');
     const headers = ['#', 'Title', 'Artist', 'Album', 'Duration', 'BPM', 'Energy'];
     const rows = [headers];
     let index = 1;
@@ -328,8 +359,8 @@ function exportPlaylistToCSV(playlist, tracks, outputPath) {
         ]);
     }
     const csvContent = rows.map(row => row.join(',')).join('\n');
-    fs.writeFileSync(outputPath, csvContent, 'utf-8');
-    return outputPath;
+    fs.writeFileSync(safeOutputPath, csvContent, 'utf-8');
+    return safeOutputPath;
 }
 
 module.exports = {

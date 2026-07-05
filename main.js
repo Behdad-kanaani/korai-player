@@ -29,7 +29,7 @@ let cleanupTempFiles, clearCacheOnUpdate, validateWindowBounds, createStartupTim
 try {
     ({ cleanupTempFiles, clearCacheOnUpdate, validateWindowBounds, createStartupTimer, managePowerState } = require('@yawlabs/electron-optimize'));
 } catch (e) {
-    console.warn('⚠️ @yawlabs/electron-optimize not installed');
+    console.warn('@yawlabs/electron-optimize not installed');
 }
 
 // ============================================================================
@@ -48,7 +48,7 @@ try {
         // Avoid Vulkan-specific rendering on Linux AppImage builds where drivers may be unstable.
         // Keep GPU acceleration active but disable Vulkan path to reduce lag and crashes.
         app.commandLine.appendSwitch('disable-features', 'Vulkan');
-        console.warn('⚠️ Linux detected; Vulkan disabled for compatibility, GPU acceleration remains enabled.');
+        console.warn('Linux detected; Vulkan disabled for compatibility, GPU acceleration remains enabled.');
     } else {
         app.commandLine.appendSwitch('enable-features', 'Vulkan,UseSkiaRenderer');
     }

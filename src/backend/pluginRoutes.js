@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const AdmZip = require('adm-zip');
 const fetch = require('node-fetch');
-const { createRateLimiter, assertSafeUrl } = require('./securityUtils');
+const { createRateLimiter, assertSafeUrl, resolveSafePath } = require('./securityUtils');
 
 /**
  * Setup plugin API endpoints for managing plugins via HTTP
@@ -462,10 +462,12 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
       if (!entry || !entry.path) return res.status(404).send('plugin not found');
       if (!pluginRoot) pluginRoot = path.resolve(entry.path);
       if (!target) target = path.resolve(pluginRoot, file);
-      const relativePath = path.relative(pluginRoot, target);
+      const safeTarget = resolveSafePath(target, pluginRoot);
+      if (!safeTarget) return res.status(400).send('access denied');
+      const relativePath = path.relative(pluginRoot, safeTarget);
       if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) return res.status(400).send('access denied');
-      if (!fs.existsSync(target)) return res.status(404).send('not found');
-      res.sendFile(target);
+      if (!fs.existsSync(safeTarget)) return res.status(404).send('not found');
+      res.sendFile(safeTarget);
     } catch (e) {
       res.status(500).send('error');
     }

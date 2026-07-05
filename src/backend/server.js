@@ -27,7 +27,7 @@ const PluginHost = require('./pluginHost');
 const { setupPluginRoutes } = require('./pluginRoutes');
 const PluginSettings = require('./pluginSettings');
 const PluginPerformanceMonitor = require('./pluginPerformanceMonitor');
-const { createRateLimiter, assertSafeUrl } = require('./securityUtils');
+const { createRateLimiter, assertSafeUrl, resolveSafePath } = require('./securityUtils');
 
 const app = express();
 let serverUserDataPath = null;
@@ -598,10 +598,13 @@ function setupRoutes() {
         try {
             const db = getDb();
             const track = db.getTrackById(parseInt(req.params.id));
-            if (!track || !track.hasCover || !track.coverPath || !fs.existsSync(track.coverPath)) {
+            const safeCoverPath = track && track.coverPath
+                ? resolveSafePath(track.coverPath, serverUserDataPath || os.homedir())
+                : null;
+            if (!track || !track.hasCover || !track.coverPath || !safeCoverPath || !fs.existsSync(safeCoverPath)) {
                 return res.status(404).json({ error: 'Cover not found' });
             }
-            res.sendFile(track.coverPath);
+            res.sendFile(safeCoverPath);
         } catch (error) {
             res.status(500).json({ error: error.message });
         }
@@ -625,9 +628,9 @@ function setupRoutes() {
             }
 
             // FIX: Normalize path and check if file exists
-            const normalizedPath = path.normalize(track.filePath);
-            if (!fs.existsSync(normalizedPath)) {
-                console.warn(`[stream] File not found: ${normalizedPath}`);
+            const normalizedPath = resolveSafePath(track.filePath, serverUserDataPath || os.homedir());
+            if (!normalizedPath || !fs.existsSync(normalizedPath)) {
+                console.warn(`[stream] File not found: ${track.filePath}`);
                 return res.status(404).json({ error: 'Audio file not found on disk' });
             }
 
@@ -712,7 +715,8 @@ function setupRoutes() {
                         fp = fp.replace(/^file:\/\//, '');
                     }
                 }
-                return fp;
+                const safePath = resolveSafePath(fp, serverUserDataPath || os.homedir());
+                return safePath || null;
             }).filter(Boolean)));
 
             const db = getDb();
@@ -786,7 +790,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/tracks/download', async (req, res) => {
+    app.post('/api/tracks/download', createRateLimiter(10, 60_000), async (req, res) => {
         try {
             const { url } = req.body;
             if (!url) return res.status(400).json({ error: 'URL is required' });
@@ -836,7 +840,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/tracks/import-from-url', async (req, res) => {
+    app.post('/api/tracks/import-from-url', createRateLimiter(10, 60_000), async (req, res) => {
         try {
             const { url, title } = req.body;
             if (!url) return res.status(400).json({ error: 'URL is required' });
@@ -1407,16 +1411,17 @@ function setupRoutes() {
         try {
             const db = getDb();
             const { filePath, format } = req.body;
-            if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+            const safeFilePath = resolveSafePath(filePath, serverUserDataPath || os.homedir());
+            if (!safeFilePath || !fs.existsSync(safeFilePath)) return res.status(404).json({ error: 'File not found' });
             let importedTracks;
             if (format === 'm3u' || format === 'm3u8') {
-                importedTracks = await importFromM3U(filePath, path.dirname(filePath));
+                importedTracks = await importFromM3U(safeFilePath, path.dirname(safeFilePath));
             } else if (format === 'pls') {
-                importedTracks = importFromPLS(filePath);
+                importedTracks = importFromPLS(safeFilePath, path.dirname(safeFilePath));
             } else {
                 return res.status(400).json({ error: 'Invalid format' });
             }
-            const playlistName = path.basename(filePath, path.extname(filePath));
+            const playlistName = path.basename(safeFilePath, path.extname(safeFilePath));
             const newPlaylist = db.createPlaylist(playlistName);
             let importedCount = 0;
             for (const imported of importedTracks) {
@@ -1474,43 +1479,44 @@ function setupRoutes() {
         try {
             const db = getDb();
             const { filePath } = req.body;
-            if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
-            const ext = path.extname(filePath).toLowerCase();
+            const safeFilePath = resolveSafePath(filePath, serverUserDataPath || os.homedir());
+            if (!safeFilePath || !fs.existsSync(safeFilePath)) return res.status(404).json({ error: 'File not found' });
+            const ext = path.extname(safeFilePath).toLowerCase();
             let format = '';
             let importedTracks = [];
             switch (ext) {
                 case '.m3u':
                     format = 'm3u';
-                    importedTracks = await importFromM3U(filePath, path.dirname(filePath));
+                    importedTracks = await importFromM3U(safeFilePath, path.dirname(safeFilePath));
                     break;
                 case '.m3u8':
                     format = 'm3u8';
-                    importedTracks = await importFromM3U(filePath, path.dirname(filePath));
+                    importedTracks = await importFromM3U(safeFilePath, path.dirname(safeFilePath));
                     break;
                 case '.pls':
                     format = 'pls';
-                    importedTracks = importFromPLS(filePath);
+                    importedTracks = importFromPLS(safeFilePath, path.dirname(safeFilePath));
                     break;
                 case '.xspf':
                     format = 'xspf';
-                    importedTracks = await importFromXSPF(filePath, path.dirname(filePath));
+                    importedTracks = await importFromXSPF(safeFilePath, path.dirname(safeFilePath));
                     break;
                 case '.asx':
                     format = 'asx';
-                    importedTracks = await importFromASX(filePath, path.dirname(filePath));
+                    importedTracks = await importFromASX(safeFilePath, path.dirname(safeFilePath));
                     break;
                 case '.wpl':
                     format = 'wpl';
-                    importedTracks = await importFromWPL(filePath, path.dirname(filePath));
+                    importedTracks = await importFromWPL(safeFilePath, path.dirname(safeFilePath));
                     break;
                 case '.json':
                     format = 'json';
-                    importedTracks = await importFromJSON(filePath, path.dirname(filePath));
+                    importedTracks = await importFromJSON(safeFilePath, path.dirname(safeFilePath));
                     break;
                 default:
                     return res.status(400).json({ error: 'Unsupported playlist format' });
             }
-            const playlistName = path.basename(filePath, ext);
+            const playlistName = path.basename(safeFilePath, ext);
             const newPlaylist = db.createPlaylist(playlistName);
             let importedCount = 0;
             for (const imported of importedTracks) {
@@ -1580,8 +1586,9 @@ function setupRoutes() {
     app.post('/api/cue/parse', async (req, res) => {
         try {
             const { cuePath, audioBaseDir } = req.body;
-            if (!fs.existsSync(cuePath)) return res.status(404).json({ error: 'CUE file not found' });
-            const tracks = getTracksFromCue(cuePath, audioBaseDir);
+            const safeCuePath = resolveSafePath(cuePath, serverUserDataPath || os.homedir());
+            if (!safeCuePath || !fs.existsSync(safeCuePath)) return res.status(404).json({ error: 'CUE file not found' });
+            const tracks = getTracksFromCue(safeCuePath, audioBaseDir);
             res.json({ success: true, tracks });
         } catch (error) {
             console.error('CUE parse error:', error);

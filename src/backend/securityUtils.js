@@ -70,6 +70,10 @@ async function assertSafeUrl(inputUrl, options = {}) {
     throw new Error('Invalid URL protocol');
   }
 
+  if (parsed.username || parsed.password) {
+    throw new Error('URL credentials are not allowed');
+  }
+
   const hostname = parsed.hostname.toLowerCase();
   if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
     throw new Error('Localhost URLs are not allowed');
@@ -104,10 +108,15 @@ function resolveSafePath(candidatePath, baseDir = null) {
     return null;
   }
 
+  const trimmedPath = candidatePath.trim();
+  if (!trimmedPath || trimmedPath.includes('\0')) {
+    return null;
+  }
+
   const safeBase = path.resolve(baseDir || os.homedir());
-  const absolutePath = path.isAbsolute(candidatePath)
-    ? path.resolve(candidatePath)
-    : path.resolve(safeBase, candidatePath);
+  const absolutePath = path.isAbsolute(trimmedPath)
+    ? path.resolve(trimmedPath)
+    : path.resolve(safeBase, trimmedPath);
 
   const relative = path.relative(safeBase, absolutePath);
   const isUnderBase = relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
@@ -117,20 +126,18 @@ function resolveSafePath(candidatePath, baseDir = null) {
   }
 
   try {
-    if (fs.existsSync(absolutePath)) {
-      const realBase = fs.realpathSync.native(safeBase);
-      const realPath = fs.realpathSync.native(absolutePath);
-      const realRelative = path.relative(realBase, realPath);
-      const isSafeRealPath = realRelative === '' || (!realRelative.startsWith('..') && !path.isAbsolute(realRelative));
-      if (isSafeRealPath) {
-        return realPath;
-      }
+    const realBase = fs.existsSync(safeBase) ? fs.realpathSync.native(safeBase) : safeBase;
+    const realPath = fs.existsSync(absolutePath) ? fs.realpathSync.native(absolutePath) : absolutePath;
+    const realRelative = path.relative(realBase, realPath);
+    const isSafeRealPath = realRelative === '' || (!realRelative.startsWith('..') && !path.isAbsolute(realRelative));
+    if (isSafeRealPath) {
+      return realPath;
     }
   } catch {
-    // fall back to the normalized absolute path
+    return absolutePath;
   }
 
-  return absolutePath;
+  return null;
 }
 
 function isSafeKey(key) {

@@ -332,7 +332,7 @@ class UpdateUI {
         // Update title
         const title = document.getElementById('updateStatusTitle');
         if (title) {
-            title.textContent = `📦 Update Available!`;
+            title.textContent = `Update Available`;
             title.style.color = '#1db954';
         }
 
@@ -406,7 +406,7 @@ class UpdateUI {
         // Update title
         const title = document.getElementById('updateStatusTitle');
         if (title) {
-            title.textContent = `✅ Up to Date`;
+            title.textContent = `Up to Date`;
             title.style.color = '#1db954';
         }
 
@@ -454,7 +454,7 @@ class UpdateUI {
         // Update title
         const title = document.getElementById('updateStatusTitle');
         if (title) {
-            title.textContent = `🔄 Checking for updates...`;
+            title.textContent = `Checking for updates...`;
             title.style.color = '#ffc107';
         }
 
@@ -502,7 +502,7 @@ class UpdateUI {
         // Update title
         const title = document.getElementById('updateStatusTitle');
         if (title) {
-            title.textContent = `❌ Update Failed`;
+            title.textContent = `Update Failed`;
             title.style.color = '#ff2a5f';
         }
 
@@ -553,7 +553,7 @@ class UpdateUI {
 
         const title = document.getElementById('updateStatusTitle');
         if (title) {
-            title.textContent = `✅ Update Applied!`;
+            title.textContent = `Update Applied!`;
             title.style.color = '#1db954';
         }
 
@@ -719,7 +719,7 @@ class UpdateUI {
         }
 
         if (title && progress.status === 'complete') {
-            title.textContent = '✨ Update Complete!';
+            title.textContent = 'Update Complete!';
             const spinner = document.getElementById('updateSpinner');
             if (spinner) {
                 spinner.style.display = 'none';
@@ -743,7 +743,7 @@ class UpdateUI {
         const title = document.getElementById('updateStatusTitle');
         const msg = document.getElementById('updateStatusMessage');
 
-        if (title) title.textContent = '❌ Update Failed';
+        if (title) title.textContent = 'Update Failed';
         if (msg) msg.textContent = message;
 
         const spinner = document.getElementById('updateSpinner');

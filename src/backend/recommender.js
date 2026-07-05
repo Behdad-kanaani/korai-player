@@ -693,11 +693,11 @@ function areGenresSimilar(genre1, genre2) {
  * Generate advanced personalized reason
  */
 function getAdvancedPersonalizedReason(track, sourceTrack) {
-    if (track.preferenceScore > 0.4) return '🎯 Based on your favorites';
-    if (track.contentSimilarity > 0.75) return '🎵 Similar sound & vibe';
-    if (track.genreBonus > 0.1) return '🎼 Same genre as you like';
-    if (track.preferenceScore > 0.2) return '📈 You\'ve enjoyed similar tracks';
-    return '✨ AI discovery pick';
+    if (track.preferenceScore > 0.4) return ' Based on your favorites';
+    if (track.contentSimilarity > 0.75) return ' Similar sound & vibe';
+    if (track.genreBonus > 0.1) return ' Same genre as you like';
+    if (track.preferenceScore > 0.2) return ' You\'ve enjoyed similar tracks';
+    return ' AI discovery pick';
 }
 
 /**
@@ -857,7 +857,7 @@ function getContextAwareRecommendations(allTracks, userHistory, limit = 10) {
     
     return scored.slice(0, limit).map(t => ({
         ...t,
-        reason: `🕐 ${getTimeOfDayLabel()} vibes`,
+        reason: ` ${getTimeOfDayLabel()} vibes`,
         similarity: Math.round(t.score * 100)
     }));
 }
@@ -925,7 +925,7 @@ function getDiscoveryRecommendations(allTracks, userHistory, limit = 10) {
     return topCandidates.slice(0, limit).map(t => ({
         ...t,
         similarity: 0,
-        reason: '✨ New discovery for you',
+        reason: ' New discovery for you',
         confidence: 65
     }));
 }

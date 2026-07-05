@@ -161,7 +161,7 @@ export class AudioProcessor {
             this.workletNode.connect(this.processorGain);
             this.bypassNode.gain.value = 1;
             
-            console.debug('✅ Optimized Vocal Remover Worklet initialized');
+            console.debug(' Optimized Vocal Remover Worklet initialized');
             return this.processorGain;
             
         } catch (err) {
@@ -182,7 +182,7 @@ export class AudioProcessor {
         this.originalGain.gain.value = 1.0;
         this.processorGain.gain.value = 1.0;
         this.bypassNode.gain.value = 0;
-        console.debug('🎤 Professional Karaoke Mode ENGAGED');
+        console.debug(' Professional Karaoke Mode ENGAGED');
         return true;
     }
     
@@ -191,7 +191,7 @@ export class AudioProcessor {
         if (this.originalGain) this.originalGain.gain.value = 1.0;
         if (this.processorGain) this.processorGain.gain.value = 0;
         if (this.bypassNode) this.bypassNode.gain.value = 1;
-        console.debug('🎤 Karaoke Mode DISABLED');
+        console.debug(' Karaoke Mode DISABLED');
     }
     
     getOutputNode() {

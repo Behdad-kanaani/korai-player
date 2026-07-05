@@ -17,7 +17,7 @@ class AudioSeparator {
 
     static async extractVocal(inputFile, outputFile, options = {}) {
         const { lowFreq = 120, highFreq = 3500, noiseGate = 0.15, sampleRate = 22050 } = options;
-        console.debug('🎚️ Processing vocal extraction...');
+        console.debug('️ Processing vocal extraction...');
         
         // اعتبارسنجی فایل ورودی
         if (!fs.existsSync(inputFile)) {
@@ -31,7 +31,7 @@ class AudioSeparator {
         try {
             const audioData = await this.loadAudio(inputFile, sampleRate);
             if (audioData.numberOfChannels === 1) {
-                console.warn('⚠️ Mono file - vocal separation will be less effective');
+                console.warn('️ Mono file - vocal separation will be less effective');
                 await this.saveAudio(audioData.samples, outputFile, sampleRate, 1);
                 return;
             }
@@ -44,9 +44,9 @@ class AudioSeparator {
             const vocalDenoised = vocalFiltered.map(v => Math.abs(v) > threshold ? v : v * 0.3);
             const vocalNormalized = this.normalize(vocalDenoised, 0.95);
             await this.saveAudio(vocalNormalized, outputFile, sampleRate, 1);
-            console.debug(`✅ Vocal extracted: ${outputFile}`);
+            console.debug(` Vocal extracted: ${outputFile}`);
         } catch (error) {
-            console.error(`❌ Error in extractVocal: ${error.message}`);
+            console.error(` Error in extractVocal: ${error.message}`);
             throw error;
         }
     }
@@ -58,7 +58,7 @@ class AudioSeparator {
             if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
             const tempWav = path.join(tempDir, `temp_${Date.now()}.wav`);
             
-            console.debug(`🎧 Converting: ${inputFile} → ${tempWav}`);
+            console.debug(` Converting: ${inputFile} → ${tempWav}`);
             
             ffmpeg(inputFile)
                 .audioFrequency(targetRate)
@@ -78,7 +78,7 @@ class AudioSeparator {
                         return reject(new Error('FFmpeg produced empty WAV file'));
                     }
                     
-                    console.debug(`✅ WAV created, size: ${wavStats.size} bytes`);
+                    console.debug(` WAV created, size: ${wavStats.size} bytes`);
                     
                     // خواندن فایل WAV
                     const fileStream = fs.createReadStream(tempWav);
@@ -125,7 +125,7 @@ class AudioSeparator {
                         if (channels.length === 0 || channels[0].length === 0) {
                             return reject(new Error('No audio samples read from WAV'));
                         }
-                        console.debug(`📊 Loaded ${channels[0].length} samples per channel`);
+                        console.debug(` Loaded ${channels[0].length} samples per channel`);
                         resolve({
                             samples: channels,
                             numberOfChannels: channels.length,

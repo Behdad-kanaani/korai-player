@@ -88,7 +88,7 @@ async function saveDatabaseAsync() {
         await fsPromises.writeFile(tempPath, jsonContent, 'utf8');
         await fsPromises.rename(tempPath, dbPath);
     } catch (e) {
-        console.error('❌ Async atomic write failed:', e);
+        console.error(' Async atomic write failed:', e);
     } finally {
         isSaving = false;
     }
@@ -115,11 +115,11 @@ function saveDatabaseSync() {
             fs.writeFileSync(tempPath, JSON.stringify(dbData, null, 2));
             fs.renameSync(tempPath, dbPath);
         } catch (e) {
-            console.error('❌ Atomic write failed, attempting standard write:', e);
+            console.error(' Atomic write failed, attempting standard write:', e);
             try {
                 fs.writeFileSync(dbPath, JSON.stringify(dbData, null, 2));
             } catch (err) {
-                console.error('❌ Standard write failed as well:', err);
+                console.error(' Standard write failed as well:', err);
             }
         }
     }
@@ -141,7 +141,7 @@ function getDb() {
         },
         
         addTrack: (track, autoSave = true) => {
-            console.debug('📥 DB.addTrack called for', track.filePath);
+            console.debug(' DB.addTrack called for', track.filePath);
             const existing = dbData.tracks.find(t => t.filePath === track.filePath);
             if (existing) {
                 console.debug('ℹ️ DB.addTrack: already exists, returning existing track id', existing.id);
@@ -184,7 +184,7 @@ function getDb() {
                 codec: track.codec || ''
             };
             dbData.tracks.push(newTrack);
-            console.debug('✅ DB.addTrack: new track added id=', newTrack.id, 'title=', newTrack.title);
+            console.debug(' DB.addTrack: new track added id=', newTrack.id, 'title=', newTrack.title);
             if (autoSave) {
                 saveDatabase();
             }

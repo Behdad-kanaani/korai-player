@@ -231,14 +231,14 @@ function detectBPMByOnset(samples, sampleRate) {
  * and returns the most confident result
  */
 async function detectRealBPM(filePath) {
-    console.debug(`🔍 Detecting real BPM for: ${path.basename(filePath)}`);
+    console.debug(` Detecting real BPM for: ${path.basename(filePath)}`);
     
     // First try to get BPM from metadata (fastest)
     try {
         const mm = require('music-metadata');
         const metadata = await mm.parseFile(filePath);
         if (metadata.common.bpm && metadata.common.bpm > 0) {
-            console.debug(`✅ BPM from metadata: ${metadata.common.bpm}`);
+            console.debug(` BPM from metadata: ${metadata.common.bpm}`);
             return metadata.common.bpm;
         }
     } catch (err) {
@@ -249,7 +249,7 @@ async function detectRealBPM(filePath) {
     const audioData = await getAudioSamples(filePath, 11025); // 11kHz is enough for BPM
     
     if (!audioData) {
-        console.warn('⚠️ Could not read audio, using fallback');
+        console.warn('️ Could not read audio, using fallback');
         return 120;
     }
     
@@ -260,7 +260,7 @@ async function detectRealBPM(filePath) {
     const bpmAuto = detectBPMByAutocorrelation(samples, sampleRate);
     const bpmOnset = detectBPMByOnset(samples, sampleRate);
     
-    console.debug(`📊 Detection results: Peaks=${bpmPeaks}, Auto=${bpmAuto}, Onset=${bpmOnset}`);
+    console.debug(` Detection results: Peaks=${bpmPeaks}, Auto=${bpmAuto}, Onset=${bpmOnset}`);
     
     // Weighted average (autocorrelation is most reliable for steady tempos)
     let finalBpm = Math.round((bpmPeaks * 0.3) + (bpmAuto * 0.5) + (bpmOnset * 0.2));
@@ -268,7 +268,7 @@ async function detectRealBPM(filePath) {
     // Clamp to reasonable range
     finalBpm = Math.min(200, Math.max(60, finalBpm));
     
-    console.debug(`🎯 Final BPM: ${finalBpm}`);
+    console.debug(` Final BPM: ${finalBpm}`);
     return finalBpm;
 }
 

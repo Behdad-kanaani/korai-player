@@ -72,7 +72,7 @@ app.post('/api/proxy/musicdel', async (req, res) => {
             return res.status(403).json({ error: 'Only musicdel.ir domains are allowed' });
         }
 
-        console.debug(`📡 Proxy request to: ${url}`);
+        console.debug(` Proxy request to: ${url}`);
 
         // Use node-fetch to get content
         const fetch = require('node-fetch');
@@ -89,7 +89,7 @@ app.post('/api/proxy/musicdel', async (req, res) => {
         });
 
         if (!response.ok) {
-            console.warn(`⚠️ Proxy response not OK: ${response.status} for ${url}`);
+            console.warn(`️ Proxy response not OK: ${response.status} for ${url}`);
             return res.status(response.status).json({ 
                 error: `Server responded with status ${response.status}` 
             });
@@ -103,7 +103,7 @@ app.post('/api/proxy/musicdel', async (req, res) => {
         res.send(html);
 
     } catch (error) {
-        console.error('❌ Proxy error:', error.message);
+        console.error(' Proxy error:', error.message);
         
         // Specific error handling
         let statusCode = 500;
@@ -145,7 +145,7 @@ app.get('/api/proxy/musicdel/download', async (req, res) => {
             return res.status(403).json({ error: 'Only musicdel.ir domains are allowed' });
         }
 
-        console.debug(`📥 Proxy download from: ${url}`);
+        console.debug(` Proxy download from: ${url}`);
         
         const fetch = require('node-fetch');
         const response = await fetch(url, {
@@ -170,7 +170,7 @@ app.get('/api/proxy/musicdel/download', async (req, res) => {
         res.send(buffer);
 
     } catch (error) {
-        console.error('❌ Proxy download error:', error.message);
+        console.error(' Proxy download error:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
@@ -193,7 +193,7 @@ app.post('/api/search/musicdel', async (req, res) => {
         const MUSICDEL_SEARCH_API = 'https://musicdel.ir/wp-content/themes/musicdel2/api/search-html.php';
         const encodedQuery = encodeURIComponent(query.trim());
 
-        console.debug(`📡 Searching MusicDel for: ${encodedQuery}`);
+        console.debug(` Searching MusicDel for: ${encodedQuery}`);
 
         // Use node-fetch to get the HTML search results
         const fetch = require('node-fetch');
@@ -209,7 +209,7 @@ app.post('/api/search/musicdel', async (req, res) => {
         });
 
         if (!response.ok) {
-            console.warn(`⚠️ MusicDel search failed with status: ${response.status}`);
+            console.warn(`️ MusicDel search failed with status: ${response.status}`);
             return res.status(response.status).json({ error: `MusicDel search failed with status ${response.status}` });
         }
 
@@ -251,13 +251,13 @@ app.post('/api/search/musicdel', async (req, res) => {
             }
         }
 
-        console.debug(`✅ MusicDel search found ${results.length} results`);
+        console.debug(` MusicDel search found ${results.length} results`);
 
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.json({ results });
 
     } catch (error) {
-        console.error('❌ MusicDel search error:', error.message);
+        console.error(' MusicDel search error:', error.message);
         res.status(500).json({ error: 'Failed to search MusicDel: ' + error.message });
     }
 });
@@ -548,12 +548,22 @@ function setupRoutes() {
     app.get('/api/tracks', (req, res) => {
         try {
             const db = getDb();
-            const tracks = db.getAllTracks().map(track => ({
-                ...track,
-                filePath: undefined,
-                coverPath: undefined,
-                coverUrl: track.hasCover ? `/api/tracks/${track.id}/cover` : null
-            }));
+            const tracks = db.getAllTracks()
+                .filter(track => {
+                    if (!track.filePath) return false;
+                    try {
+                        return fs.existsSync(track.filePath);
+                    } catch (err) {
+                        return false;
+                    }
+                })
+                .map(track => ({
+                    ...track,
+                    filePath: undefined,
+                    coverPath: undefined,
+                    coverUrl: track.hasCover ? `/api/tracks/${track.id}/cover` : null,
+                    isAvailable: true
+                }));
             res.json(tracks);
         } catch (error) {
             res.status(500).json({ error: error.message });
@@ -677,7 +687,7 @@ function setupRoutes() {
     app.post('/api/tracks/import', async (req, res) => {
         try {
             const { filePaths } = req.body;
-            console.debug('📥 /api/tracks/import received', Array.isArray(filePaths) ? filePaths.length : typeof filePaths, 'items');
+            console.debug(' /api/tracks/import received', Array.isArray(filePaths) ? filePaths.length : typeof filePaths, 'items');
             if (!filePaths || !Array.isArray(filePaths) || filePaths.length === 0) {
                 return res.status(400).json({ error: 'No file paths provided' });
             }
@@ -689,7 +699,7 @@ function setupRoutes() {
                     return false;
                 }
             });
-            console.debug(`📂 import: ${existing.length}/${filePaths.length} paths exist on disk`);
+            console.debug(` import: ${existing.length}/${filePaths.length} paths exist on disk`);
             if (existing.length === 0) {
                 return res.json({ success: true, imported: 0, total: filePaths.length });
             }
@@ -697,7 +707,7 @@ function setupRoutes() {
             const CONCURRENCY = 3;
             async function processOne(filePath) {
                 try {
-                    console.debug(`🔍 Analyzing: ${path.basename(filePath)}`);
+                    console.debug(` Analyzing: ${path.basename(filePath)}`);
                     const analysis = await analyzeAudioFile(filePath);
                     const track = db.addTrack({
                         title: analysis.title || path.basename(filePath, path.extname(filePath)),
@@ -719,9 +729,9 @@ function setupRoutes() {
                         rawFeatures: analysis.rawFeatures
                     }, false);
                     results.push(track);
-                    console.debug(`✅ Imported: ${track.title}`);
+                    console.debug(` Imported: ${track.title}`);
                 } catch (err) {
-                    console.error(`❌ Failed to import ${filePath}:`, err.message);
+                    console.error(` Failed to import ${filePath}:`, err.message);
                 }
             }
             async function run() {
@@ -828,12 +838,12 @@ function setupRoutes() {
                 // Direct download - use simple HTTP GET
                 const fileName = `import_${timestamp}.mp3`; // Default to mp3
                 finalPath = path.join(downloadsDir, fileName);
-                console.debug(`📥 Downloading direct link: ${url}`);
+                console.debug(` Downloading direct link: ${url}`);
                 await downloadFileDirect(url, finalPath);
                 downloadedFile = fileName;
             } else {
                 // Try with youtube-dl-exec (for YouTube and similar services)
-                console.debug(`📥 Downloading with yt-dlp: ${url}`);
+                console.debug(` Downloading with yt-dlp: ${url}`);
                 const tempFileName = `import_${timestamp}.%(ext)s`;
                 const tempFilePath = path.join(downloadsDir, tempFileName);
                 
@@ -877,14 +887,14 @@ function setupRoutes() {
                 throw new Error('Downloaded file is empty');
             }
 
-            console.debug(`📊 File size: ${stats.size} bytes`);
+            console.debug(` File size: ${stats.size} bytes`);
 
             // Analyze the audio file
             let analysis;
             try {
                 analysis = await analyzeAudioFile(finalPath);
             } catch (analysisErr) {
-                console.warn('⚠️ Audio analysis failed, using fallback metadata:', analysisErr.message);
+                console.warn('️ Audio analysis failed, using fallback metadata:', analysisErr.message);
                 analysis = {
                     duration: 0,
                     bpm: 120,
@@ -924,7 +934,7 @@ function setupRoutes() {
                 codec: analysis.codec,
             });
 
-            console.debug(`✅ Imported track: ${newTrack.title} (ID: ${newTrack.id})`);
+            console.debug(` Imported track: ${newTrack.title} (ID: ${newTrack.id})`);
 
             res.json({ success: true, track: newTrack });
 
@@ -1103,13 +1113,13 @@ function setupRoutes() {
             const baseName = path.basename(track.filePath, ext);
             const outputFileName = `${baseName}_vocals_${Date.now()}.wav`;
             const outputFilePath = path.join(extractedDir, outputFileName);
-            console.debug(`🎤 Extracting vocals from: ${track.filePath}`);
+            console.debug(` Extracting vocals from: ${track.filePath}`);
             await AudioSeparator.extractVocal(track.filePath, outputFilePath);
             let analysis;
             try {
                 analysis = await analyzeAudioFile(outputFilePath);
             } catch (analysisErr) {
-                console.warn('⚠️ Audio analysis failed for extracted file, using fallback metadata:', analysisErr.message);
+                console.warn('️ Audio analysis failed for extracted file, using fallback metadata:', analysisErr.message);
                 analysis = {
                     duration: 0,
                     bpm: 120,
@@ -1153,7 +1163,7 @@ function setupRoutes() {
                 featureVector: analysis.featureVector,
                 rawFeatures: analysis.rawFeatures
             });
-            console.debug(`✅ Extracted vocal track added: ${newTrack.title} (ID: ${newTrack.id})`);
+            console.debug(` Extracted vocal track added: ${newTrack.title} (ID: ${newTrack.id})`);
             res.json({ success: true, track: newTrack });
         } catch (error) {
             console.error('Vocal extraction error:', error);
@@ -1195,7 +1205,7 @@ function setupRoutes() {
                 energy: r.energy,
                 similarity: r.similarity,
                 reason: r.reason,
-                similarityIcon: r.similarityIcon || '🎵',
+                similarityIcon: r.similarityIcon || '',
                 genre: r.genre,
                 hasCover: r.hasCover,
                 coverUrl: r.hasCover ? `/api/tracks/${r.id}/cover` : null
@@ -1393,7 +1403,7 @@ function setupRoutes() {
                     try {
                         analysis = await analyzeAudioFile(imported.filePath);
                     } catch (analysisErr) {
-                        console.warn('⚠️ Audio analysis failed for imported file, using fallback:', imported.filePath, analysisErr.message);
+                        console.warn('️ Audio analysis failed for imported file, using fallback:', imported.filePath, analysisErr.message);
                         analysis = {
                             duration: 0,
                             bpm: 120,
@@ -1487,7 +1497,7 @@ function setupRoutes() {
                     try {
                         analysis = await analyzeAudioFile(imported.filePath);
                     } catch (analysisErr) {
-                        console.warn('⚠️ Audio analysis failed for imported file, using fallback:', imported.filePath, analysisErr.message);
+                        console.warn('️ Audio analysis failed for imported file, using fallback:', imported.filePath, analysisErr.message);
                         analysis = {
                             duration: 0,
                             bpm: 120,
@@ -1605,7 +1615,7 @@ async function startServer(port, userDataPath) {
     serverUserDataPath = userDataPath;
     initDatabase(userDataPath);
     userHistory = loadUserHistory(userDataPath);
-    console.debug(`🧠 AI user history loaded: ${Object.keys(userHistory).length} tracks with interactions`);
+    console.debug(` AI user history loaded: ${Object.keys(userHistory).length} tracks with interactions`);
     const pluginManager = new PluginManager({
         appRoot: path.resolve(__dirname, '../..'),
         pluginsDir: path.join(userDataPath, 'plugins')
@@ -1619,7 +1629,7 @@ async function startServer(port, userDataPath) {
         performanceMonitor: pluginPerf,
         hotReload: false
     });
-    console.debug(`🔌 Plugin system initialized: ${pluginManager.listInstalled().length} plugins available`);
+    console.debug(` Plugin system initialized: ${pluginManager.listInstalled().length} plugins available`);
     (async () => {
         const criticalPlugins = ['korai/change-logs'];
         const installed = pluginManager.listInstalled();
@@ -1627,7 +1637,7 @@ async function startServer(port, userDataPath) {
             if (p.enabled && criticalPlugins.includes(p.id)) {
                 try {
                     await pluginHost.activatePlugin(p.id);
-                    console.debug(`🔁 Auto-activated critical plugin: ${p.id}`);
+                    console.debug(` Auto-activated critical plugin: ${p.id}`);
                 } catch (e) {
                     console.warn(`Could not auto-activate critical plugin ${p.id}:`, e.message || e);
                 }
@@ -1637,12 +1647,14 @@ async function startServer(port, userDataPath) {
     const extractTempDir = path.join(userDataPath, 'temp_extract');
     AudioSeparator.setTempDirectory(extractTempDir);
     setupRoutes();
-    setupPluginRoutes(app, pluginManager, pluginHost);
+    const PluginStore = require('./pluginStore');
+    const pluginStore = new PluginStore();
+    setupPluginRoutes(app, pluginManager, pluginHost, pluginStore);
     return new Promise((resolve) => {
         const server = app.listen(port, '127.0.0.1', () => {
-            console.debug(`🚀 Server on port http://127.0.0.1:${port}`);
-            console.debug(`🤖 AI recommendation engine active`);
-            console.debug(`🔌 Plugin routes ready at /api/plugins`);
+            console.debug(` Server on port http://127.0.0.1:${port}`);
+            console.debug(` AI recommendation engine active`);
+            console.debug(` Plugin routes ready at /api/plugins`);
             resolve(server);
         });
     });

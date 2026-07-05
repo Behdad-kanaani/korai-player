@@ -27,7 +27,7 @@ class SettingsStore {
             const res = await this._apiFetch('/api/settings');
             if (res.ok) {
                 this.settings = await res.json();
-                console.debug('📦 Settings loaded:', Object.keys(this.settings).length, 'keys');
+                console.debug('Settings loaded:', Object.keys(this.settings).length, 'keys');
             } else {
                 throw new Error('Failed to load settings');
             }
@@ -402,7 +402,7 @@ class SettingsStore {
                 throw new Error('Failed to save settings');
             }
 
-            console.debug('💾 Settings saved to server');
+            console.debug('Settings saved to server');
             this._pendingSave = false;
         } catch (err) {
             console.error('❌ Failed to save settings:', err.message);
@@ -512,7 +512,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!apiPort) apiPort = 3000;
 
     await settingsStore.init(apiPort);
-    console.debug('✅ SettingsStore initialized');
+    console.debug('SettingsStore initialized');
 });
 
 // ============================================================

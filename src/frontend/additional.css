@@ -673,7 +673,7 @@ body.playing .song-metadata-modern {
 
 /* Visual feedback when dragging files over window */
 body.drag-over::after {
-    content: "📁 Drop your audio files here";
+    content: "Drop your audio files here";
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.85);

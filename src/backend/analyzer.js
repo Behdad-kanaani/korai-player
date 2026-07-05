@@ -565,7 +565,7 @@ async function analyzeAudioFile(filePath) {
     }
     
     // UPGRADED: Better debugging output
-    console.debug(`✅ Analyzed: ${title} by ${artist} | ${bpm}BPM | Energy:${Math.round(energy*100)}% | Valence:${Math.round(audioProfile.valence*100)}% | ${finalGenre}`);
+    console.debug(` Analyzed: ${title} by ${artist} | ${bpm}BPM | Energy:${Math.round(energy*100)}% | Valence:${Math.round(audioProfile.valence*100)}% | ${finalGenre}`);
     
     return {
         // Metadata

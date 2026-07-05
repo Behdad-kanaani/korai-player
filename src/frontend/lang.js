@@ -1,15 +1,15 @@
 const translations = {
     en: {
         // ===== Time-based greetings =====
-        welcomeEarlyMorning: "☀️ Rise & shine! Ready for some fresh beats?",
-        welcomeMorningPeak: "🌅 Good morning! Your morning energy is peaking",
-        welcomeLateMorning: "🎵 Morning vibes! Time for your daily soundtrack",
-        welcomeNoon: "🌤️ Good noon! Lunch break melodies?",
-        welcomeAfternoon: "☕ Good afternoon! Keep the rhythm flowing",
-        welcomeEarlyEvening: "🌆 Good evening! Wind down with some tunes",
-        welcomeEvening: "✨ Good evening! Your musical journey continues",
-        welcomeLateNight: "🌙 Late night session? Let the music speak",
-        welcomeMidnight: "🕛 Midnight melodies... find your peace",
+        welcomeEarlyMorning: "Rise & shine! Ready for some fresh beats?",
+        welcomeMorningPeak: "Good morning! Your morning energy is peaking",
+        welcomeLateMorning: "Morning vibes! Time for your daily soundtrack",
+        welcomeNoon: "Good noon! Lunch break melodies?",
+        welcomeAfternoon: "Good afternoon! Keep the rhythm flowing",
+        welcomeEarlyEvening: "Good evening! Wind down with some tunes",
+        welcomeEvening: "Good evening! Your musical journey continues",
+        welcomeLateNight: "Late night session? Let the music speak",
+        welcomeMidnight: "Midnight melodies... find your peace",
         welcomeDeepNight: "⭐ Deep night vibes... just you and the music",
 
         // ===== Navigation & Sidebar =====
@@ -117,7 +117,7 @@ const translations = {
         vocalSeparatorIntensity: "Vocal Removal Intensity",
         vocalSeparatorSensitivity: "Detection Sensitivity",
         vocalSeparatorSensitivityDesc: "Lower = more aggressive removal, Higher = preserves more instruments",
-        vocalSeparatorActive: "🎤 Vocal Separator: AI Vocal Removal Active",
+        vocalSeparatorActive: "Vocal Separator: AI Vocal Removal Active",
         vocalSeparatorDisabled: "Vocal Separator Disabled",
         vocalSeparatorError: "Vocal separator failed to initialize",
         vocalSeparatorFirstPlay: "Play a track first to enable Vocal Separator",
@@ -320,7 +320,7 @@ const translations = {
         aiDiversityDesc: "How much variety to include in recommendations",
 
         // System section
-        systemStayInTray: "🟢 Stay in Tray on Close",
+        systemStayInTray: "Stay in Tray on Close",
         systemStayInTrayDesc: "When enabled, closing the window keeps KORAI running in the system tray",
         systemTrayNotification: "Show Notification on Hide",
         systemTrayNotificationDesc: "Show a notification when minimized to tray",
@@ -349,7 +349,7 @@ const translations = {
         advancedDebugLogsDesc: "Enable debug logging to developer console",
         advancedServerPort: "Server Port",
         advancedServerPortDesc: "Local API server port (read-only)",
-        advancedResetAll: "⚠️ Reset All Settings",
+        advancedResetAll: "Reset All Settings",
         advancedResetAllDesc: "Restore all settings to factory defaults. This cannot be undone.",
         advancedResetBtn: "Reset All",
 
@@ -359,7 +359,7 @@ const translations = {
         settingsSaveFailed: "Failed to save",
         settingsToastError: "Failed to save: ",
         settingsToastSuccess: "Settings saved successfully!",
-        settingsResetConfirm: "⚠️ Are you sure you want to reset ALL settings to defaults?\nThis action cannot be undone!",
+        settingsResetConfirm: "Are you sure you want to reset ALL settings to defaults?\nThis action cannot be undone!",
         settingsResetConfirm2: "Really? This will reset theme, EQ, playback, and all preferences.",
         settingsDefaultLoading: "Using default settings",
         settingsLoaded: "Settings loaded",
@@ -421,15 +421,15 @@ const translations = {
     },
     fa: {
         // ===== Time-based greetings =====
-        welcomeEarlyMorning: "☀️ طلوع کردی؟ وقت آهنگ‌های پرانرژیه!",
-        welcomeMorningPeak: "🌅 صبح بخیر! انرژی صبحت توی اوجشه",
-        welcomeLateMorning: "🎵 حوالی ظهر! وقت یه آهنگ خوبه",
-        welcomeNoon: "🌤️ ظهر بخیر! با موسیقی ناهار رو مزه‌دار کن",
-        welcomeAfternoon: "☕ عصر بخیر! ریتم رو حفظ کن",
-        welcomeEarlyEvening: "🌆 عصر بهاره! با موسیقی آروم بگیر",
-        welcomeEvening: "✨ شب بخیر! سفر موسیقیت ادامه داره",
-        welcomeLateNight: "🌙 پاسی از شب... بذار موسیقی حرف بزنه",
-        welcomeMidnight: "🕛 نیمه‌شب‌ها... آرامش رو با نت‌ها پیدا کن",
+        welcomeEarlyMorning: "طلوع کردی؟ وقت آهنگ‌های پرانرژیه!",
+        welcomeMorningPeak: "صبح بخیر! انرژی صبحت توی اوجشه",
+        welcomeLateMorning: "حوالی ظهر! وقت یه آهنگ خوبه",
+        welcomeNoon: "ظهر بخیر! با موسیقی ناهار رو مزه‌دار کن",
+        welcomeAfternoon: "عصر بخیر! ریتم رو حفظ کن",
+        welcomeEarlyEvening: "عصر بهاره! با موسیقی آروم بگیر",
+        welcomeEvening: "شب بخیر! سفر موسیقیت ادامه داره",
+        welcomeLateNight: "پاسی از شب... بذار موسیقی حرف بزنه",
+        welcomeMidnight: "نیمه‌شب‌ها... آرامش رو با نت‌ها پیدا کن",
         welcomeDeepNight: "⭐ سحرگاهه... فقط تو و موسیقی",
 
         // ===== Navigation & Sidebar =====
@@ -537,7 +537,7 @@ const translations = {
         vocalSeparatorIntensity: "شدت حذف صدای خواننده",
         vocalSeparatorSensitivity: "حساسیت تشخیص",
         vocalSeparatorSensitivityDesc: "مقدار کمتر = حذف تهاجمی‌تر، مقدار بیشتر = حفظ بیشتر سازها",
-        vocalSeparatorActive: "🎤 جدا ساز صدای خواننده: حذف هوشمند صدای خواننده فعال شد",
+        vocalSeparatorActive: "جدا ساز صدای خواننده: حذف هوشمند صدای خواننده فعال شد",
         vocalSeparatorDisabled: "جدا ساز صدای خواننده غیرفعال شد",
         vocalSeparatorError: "خطا در راه‌اندازی جدا ساز صدای خواننده",
         vocalSeparatorFirstPlay: "برای فعال‌سازی جدا ساز صدای خواننده ابتدا یک آهنگ پخش کنید",
@@ -740,7 +740,7 @@ const translations = {
         aiDiversityDesc: "میزان تنوع در پیشنهادات",
 
         // System section
-        systemStayInTray: "🟢 ماندن در سینی هنگام بستن",
+        systemStayInTray: "ماندن در سینی هنگام بستن",
         systemStayInTrayDesc: "هنگام فعال بودن، بستن پنجره KORAI را در سینی سیستم نگه می‌دارد",
         systemTrayNotification: "نمایش اعلان هنگام مخفی شدن",
         systemTrayNotificationDesc: "نمایش اعلان هنگام کوچک شدن به سینی",
@@ -769,7 +769,7 @@ const translations = {
         advancedDebugLogsDesc: "فعال کردن لاگ‌های دیباگ در کنسول توسعه‌دهنده",
         advancedServerPort: "پورت سرور",
         advancedServerPortDesc: "پورت سرور API محلی (فقط خواندنی)",
-        advancedResetAll: "⚠️ بازنشانی همه تنظیمات",
+        advancedResetAll: "بازنشانی همه تنظیمات",
         advancedResetAllDesc: "بازگرداندن همه تنظیمات به حالت پیش‌فرض کارخانه. این عمل قابل بازگشت نیست.",
         advancedResetBtn: "بازنشانی همه",
 
@@ -779,7 +779,7 @@ const translations = {
         settingsSaveFailed: "ذخیره ناموفق",
         settingsToastError: "خطا در ذخیره: ",
         settingsToastSuccess: "تنظیمات با موفقیت ذخیره شد!",
-        settingsResetConfirm: "⚠️ آیا از بازنشانی همه تنظیمات به حالت پیش‌فرض مطمئن هستید؟\nاین عمل قابل بازگشت نیست!",
+        settingsResetConfirm: "آیا از بازنشانی همه تنظیمات به حالت پیش‌فرض مطمئن هستید؟\nاین عمل قابل بازگشت نیست!",
         settingsResetConfirm2: "واقعاً؟ این کار پوسته، اکولایزر، پخش و همه تنظیمات را بازنشانی می‌کند.",
         settingsDefaultLoading: "استفاده از تنظیمات پیش‌فرض",
         settingsLoaded: "تنظیمات بارگذاری شد",

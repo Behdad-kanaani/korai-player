@@ -24,15 +24,15 @@ function t(key) {
 }
 
 function translatePage() {
-    console.debug('🔄 Translating settings page...');
+    console.debug('Translating settings page...');
     
     if (!window.translations) {
-        console.warn('⚠️ window.translations not found! Make sure lang.js is loaded.');
+        console.warn('window.translations not found! Make sure lang.js is loaded.');
         return;
     }
     
     const lang = localStorage.getItem('user_lang') || 'en';
-    console.debug(`📝 Current language: ${lang}`);
+    console.debug(`Current language: ${lang}`);
     
     // Translate elements with data-translate
     document.querySelectorAll('[data-translate]').forEach(el => {
@@ -63,7 +63,7 @@ function translatePage() {
         el.title = t(key);
     });
     
-    console.debug('✅ Translation complete');
+    console.debug('Translation complete');
 }
 
 // ============================================================
@@ -652,7 +652,7 @@ async function checkForUpdates() {
         if (window.electronAPI && window.electronAPI.checkUpdateStatus) {
             const status = await window.electronAPI.checkUpdateStatus();
             if (status && status.hasUpdate) {
-                showToast(`🎉 ${t('updateAvailable')}: v${status.latestVersion}`, 'success');
+                showToast(`${t('updateAvailable')}: v${status.latestVersion}`, 'success');
                 const versionDisplay = document.getElementById('currentVersionDisplay');
                 if (versionDisplay) {
                     versionDisplay.innerHTML = `v${status.currentVersion} → <strong style="color: #1db954;">v${status.latestVersion}</strong>`;
@@ -918,7 +918,7 @@ function setupEventListeners() {
 
     window.addEventListener('storage', (e) => {
         if (e.key === 'user_lang') {
-            console.debug('🔄 Language changed via storage:', e.newValue);
+            console.debug('Language changed via storage:', e.newValue);
             translatePage();
             // Update direction
             const direction = e.newValue === 'fa' ? 'rtl' : 'ltr';
@@ -931,7 +931,7 @@ function setupEventListeners() {
 
     // Listen for custom language change event
     window.addEventListener('language-changed', (e) => {
-        console.debug('🔄 Language changed via event:', e.detail?.lang);
+        console.debug('Language changed via event:', e.detail?.lang);
         setTimeout(translatePage, 100);
     });
 }
@@ -1016,7 +1016,7 @@ function updateUIElement(key, value) {
 async function init() {
     if (isInitialized) return;
 
-    console.debug('🚀 Initializing settings page...');
+    console.debug('Initializing settings page...');
 
     const dataPathDisplay = document.getElementById('dataPathDisplay');
     if (dataPathDisplay) dataPathDisplay.textContent = 'Loading...';
@@ -1025,7 +1025,7 @@ async function init() {
     translatePage();
 
     apiPort = await resolveApiPort();
-    console.debug('📡 Settings page using API port:', apiPort);
+    console.debug('Settings page using API port:', apiPort);
 
     try {
         const path = await getDataPath();
@@ -1059,11 +1059,11 @@ async function init() {
     // Re-translate after DOM is fully rendered
     setTimeout(() => {
         translatePage();
-        console.debug('🔄 Re-translation after DOM render');
+        console.debug('Re-translation after DOM render');
     }, 200);
 
     isInitialized = true;
-    console.debug('✅ Settings page initialized');
+    console.debug('Settings page initialized');
 }
 
 // ============================================================
@@ -1096,4 +1096,4 @@ window.__settings = {
     translatePage: translatePage
 };
 
-console.debug('🔧 Settings page loaded. Use window.__settings for debugging.');
+console.debug('Settings page loaded. Use window.__settings for debugging.');

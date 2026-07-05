@@ -359,8 +359,8 @@ class PluginManagerUI {
                             </div>
                             <div class="plugin-tags">
                                 <span style="padding:4px 10px; border-radius:16px; font-size:11px; font-weight:600; background:${p.enabled ? 'rgba(29,185,84,0.12)' : 'rgba(255,255,255,0.02)'}; color:${p.enabled ? '#1db954' : '#9aa0a6'}; border:1px solid ${p.enabled ? 'rgba(29,185,84,0.18)' : 'rgba(255,255,255,0.02)'};">${p.enabled ? this.t('active') : this.t('inactive')}</span>
-                                ${p.running ? `<span style="padding:4px 10px; border-radius:16px; font-size:11px; font-weight:600; background:rgba(0,255,213,0.06); color:#00ffd5;">⚡ ${this.t('running')}</span>` : ''}
-                                ${p.builtin ? `<span title="Built-in plugin" style="padding:4px 10px; border-radius:16px; font-size:11px; font-weight:700; background:linear-gradient(90deg,#ffd966,#ffb84d); color:#2b1500; border:1px solid rgba(0,0,0,0.08);">★ ${this.currentLang === 'fa' ? 'پیشفرض' : 'Built-in'}</span>` : ''}
+                                ${p.running ? `<span style="padding:4px 10px; border-radius:16px; font-size:11px; font-weight:600; background:rgba(0,255,213,0.06); color:#00ffd5;"><i class="fa-solid fa-bolt" style="margin-right:4px;"></i>${this.t('running')}</span>` : ''}
+                                ${p.builtin ? `<span title="Built-in plugin" style="padding:4px 10px; border-radius:16px; font-size:11px; font-weight:700; background:linear-gradient(90deg,#ffd966,#ffb84d); color:#2b1500; border:1px solid rgba(0,0,0,0.08);"><i class="fa-solid fa-star" style="margin-right:4px;"></i>${this.currentLang === 'fa' ? 'پیشفرض' : 'Built-in'}</span>` : ''}
                             </div>
                             <div class="plugin-desc">${this.escapeHtml(p.description || this.t('descriptionMissing'))}</div>
                             <div class="plugin-actions">

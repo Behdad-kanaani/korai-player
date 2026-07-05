@@ -21,7 +21,7 @@ class PluginStore {
     return [
       {
         id: 'com.korai.track-logger',
-        name: '🎵 Track Logger',
+        name: ' Track Logger',
         version: '1.0.0',
         author: 'KORAI Team',
         description: 'Log every track played with timestamps',
@@ -33,7 +33,7 @@ class PluginStore {
       },
       {
         id: 'com.korai.bpm-display',
-        name: '📊 BPM Display',
+        name: ' BPM Display',
         version: '1.2.0',
         author: 'Music Dev',
         description: 'Show BPM detection results with visual display',
@@ -45,7 +45,7 @@ class PluginStore {
       },
       {
         id: 'com.korai.audio-visualizer',
-        name: '🌈 Audio Visualizer',
+        name: ' Audio Visualizer',
         version: '2.0.0',
         author: 'Audio Artist',
         description: 'Real-time audio waveform visualization with spectrum analyzer',
@@ -57,7 +57,7 @@ class PluginStore {
       },
       {
         id: 'com.korai.playlist-suggester',
-        name: '✨ Smart Suggester',
+        name: ' Smart Suggester',
         version: '1.5.0',
         author: 'AI Dev',
         description: 'AI-powered playlist suggestions based on your listening habits',
@@ -69,7 +69,7 @@ class PluginStore {
       },
       {
         id: 'com.korai.equalizer-pro',
-        name: '🎚️ Equalizer Pro',
+        name: '️ Equalizer Pro',
         version: '3.1.0',
         author: 'Audio Labs',
         description: '10-band parametric equalizer with presets',

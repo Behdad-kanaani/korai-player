@@ -138,7 +138,7 @@ function renderHomePremium() {
                 <div class="section-header-modern">
                     <div class="section-title-group">
                         <h3><i class="fa-solid fa-chart-simple"></i> ${typeof t === 'function' ? (t('statsHero') || 'Most Played') : 'Most Played'}</h3>
-                        <span class="section-badge-premium">🔥 TOP 8</span>
+                        <span class="section-badge-premium">TOP 8</span>
                     </div>
                     <span class="view-all-link-modern" onclick="switchSection('library')">${typeof t === 'function' ? (t('allGenres') || 'View All') : 'View All'} <i class="fa-solid fa-arrow-right"></i></span>
                 </div>

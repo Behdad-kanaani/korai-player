@@ -40,7 +40,7 @@ class SettingsSync {
         });
 
         this.initialized = true;
-        console.debug('🔗 SettingsSync initialized');
+        console.debug('SettingsSync initialized');
     }
 
     /**
@@ -87,7 +87,7 @@ class SettingsSync {
      * Handle individual setting changes
      */
     handleSettingChange(key, value, oldValue) {
-        console.debug(`🔄 Setting changed: ${key} =`, value);
+        console.debug(`Setting changed: ${key} =`, value);
 
         // Dispatch events for specific components
         switch (key) {

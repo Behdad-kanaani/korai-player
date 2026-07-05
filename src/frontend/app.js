@@ -131,7 +131,7 @@ function detectPerformanceMode() {
     
     if (isMobile || isLowMemory || isSlowCPU) {
         document.body.classList.add('performance-mode');
-        console.debug('⚡ Performance mode enabled for this device');
+        console.debug('Performance mode enabled for this device');
         return true;
     }
     return false;
@@ -175,7 +175,7 @@ async function initSettingsSync() {
     }
     
     settingsSyncInitialized = true;
-    console.debug('✅ Settings sync initialized in app.js');
+    console.debug('Settings sync initialized in app.js');
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1007,7 +1007,7 @@ window.seekFromMini = function(event) {
 function initShuffleSession() {
     if (!shuffleMode) return;
     
-    console.debug('🔄 Initializing shuffle session...');
+    console.debug('Initializing shuffle session...');
     
     // Get the current source tracks (library, playlist, favorites, etc.)
     let baseTracks = [];
@@ -1063,7 +1063,7 @@ function initShuffleSession() {
     shuffleSessionActive = true;
     
     renderQueue();
-    console.debug(`✅ Shuffle queue generated with ${queue.length} tracks.`);
+    console.debug(`Shuffle queue generated with ${queue.length} tracks.`);
 }
 
 function resetShuffleSession() {
@@ -1087,7 +1087,7 @@ function resetShuffleSession() {
     remainingUnplayedTracks = [];
     shuffleSessionActive = false;
     renderQueue();
-    console.debug('🔀 Shuffle disabled. Restored original queue.');
+    console.debug('Shuffle disabled. Restored original queue.');
 }
 
 function toggleShuffleEnhanced() {
@@ -1289,7 +1289,7 @@ async function emergencyAudioRecovery() {
     if (emergencyRecoveryInProgress) return;
     emergencyRecoveryInProgress = true;
     
-    console.warn('🚨 Emergency audio recovery triggered');
+    console.warn('Emergency audio recovery triggered');
     
     try {
         // Force stop all audio
@@ -1823,7 +1823,7 @@ function setupAudioNodes() {
         window.analyser.connect(window.gainNode);
         window.gainNode.connect(window.audioCtx.destination);
 
-        console.debug('✅ Audio nodes setup complete');
+        console.debug('Audio nodes setup complete');
         return true;
 
     } catch (e) {
@@ -2461,7 +2461,7 @@ async function waitForAPI() {
                 const port = await window.electronAPI.getServerPort();
                 if (port) {
                     apiPort = port;
-                    console.debug('✅ API connected on port:', apiPort);
+        console.debug('API connected on port:', apiPort);
                     return true;
                 }
             }
@@ -2469,7 +2469,7 @@ async function waitForAPI() {
         await new Promise(resolve => setTimeout(resolve, 200));
     }
     apiPort = 3000;
-    console.debug('⚠️ Using fallback port 3000');
+    console.debug('Using fallback port 3000');
     return true;
 }
 
@@ -2481,7 +2481,7 @@ async function loadTracks() {
         if (cachedTracks) {
             try {
                 tracks = JSON.parse(cachedTracks);
-                console.debug('🚀 Pre-warmed start: loaded tracks from local cache');
+                console.debug('Pre-warmed start: loaded tracks from local cache');
                 const totalEl = document.getElementById('quickTotalTracks');
                 const likesEl = document.getElementById('quickTotalLikes');
                 if (totalEl) totalEl.innerText = tracks.length;
@@ -2531,7 +2531,7 @@ async function loadTracks() {
             if (currentActiveSection === 'home') renderHomeDashboard();
             else if (currentActiveSection === 'library') renderLibrary();
 
-            console.debug('✅ Library synced with server');
+            console.debug('Library synced with server');
         }
     } catch (err) {
         console.error('Error syncing tracks:', err);
@@ -3894,7 +3894,7 @@ function renderHomeDashboard() {
             <div class="section-header-premium">
                 <div class="section-title-group">
                     <h3><i class="fa-solid fa-chart-simple"></i> ${t('statsHero') || 'Most Played'}</h3>
-                    <span class="section-badge">🔥 HOT</span>
+                    <span class="section-badge">HOT</span>
                 </div>
                 <span class="view-all-link-premium" onclick="switchSection('library')">
                     ${t('allGenres') || 'View All'} <i class="fa-solid fa-arrow-right"></i>
@@ -3936,7 +3936,7 @@ function renderHomeDashboard() {
             <div class="section-header-premium">
                 <div class="section-title-group">
                     <h3><i class="fa-solid fa-sparkles"></i> ${t('dailySuggestions') || 'Daily Discoveries'}</h3>
-                    <span class="section-badge">✨ FRESH</span>
+                    <span class="section-badge">FRESH</span>
                 </div>
                 <span class="view-all-link-premium" onclick="handleAiRecommendationsEnhanced()">
                     More <i class="fa-solid fa-arrow-right"></i>
@@ -4762,7 +4762,7 @@ function setupEventListeners() {
 
     // Listen for stay-in-tray changes from main process
     window.addEventListener('stay-in-tray-changed', (e) => {
-        console.debug('🟢 Stay in tray changed:', e.detail.enabled);
+        console.debug('Stay in tray changed:', e.detail.enabled);
     });
     // =========================================================================
     // AI / PLAYLIST ACTIONS
@@ -5431,7 +5431,7 @@ async function initVersionStatus() {
 // Pause heavy animations and visualizers when window is blurred, resume on focus
 function setupWindowFocusOptimization() {
     window.addEventListener('blur', () => {
-        console.debug('💤 Window blurred — pausing heavy visual work');
+        console.debug('Window blurred — pausing heavy visual work');
         const vinyl = document.getElementById('homeVinylDisc') || document.getElementById('fsAlbumArt');
         if (vinyl) vinyl.classList.remove('playing');
 
@@ -5443,7 +5443,7 @@ function setupWindowFocusOptimization() {
     });
 
     window.addEventListener('focus', () => {
-        console.debug('☀️ Window focused — resuming visual work where appropriate');
+        console.debug('Window focused — resuming visual work where appropriate');
         const vinyl = document.getElementById('homeVinylDisc') || document.getElementById('fsAlbumArt');
         if (vinyl && isPlaying) vinyl.classList.add('playing');
 
@@ -5524,7 +5524,7 @@ window.addEventListener('beforeunload', () => {
 
 window.addEventListener('DOMContentLoaded', async () => {
     try {
-        console.debug('🚀 DOM loaded, initializing KORAI Player...');
+        console.debug('DOM loaded, initializing KORAI Player...');
         const splash = document.getElementById('koraiSplashScreen');
         const splashProgress = document.getElementById('splashProgressFill');
         const appContainer = document.getElementById('appContainer');
@@ -5538,7 +5538,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         await loadPlaylists();
         await loadEnabledPluginCss();
         if (splashProgress) splashProgress.style.width = '100%';
-        try { const playbackRes = await fetch(`http://127.0.0.1:${apiPort}/api/playback/settings`); const playbackSettings = await playbackRes.json(); gaplessEnabled = playbackSettings.gaplessEnabled !== false; crossfadeDuration = playbackSettings.crossfadeDuration || 0; console.debug('✅ Playback settings loaded:', { gaplessEnabled, crossfadeDuration }); } catch (err) { console.warn('Could not load playback settings, using defaults'); }
+        try { const playbackRes = await fetch(`http://127.0.0.1:${apiPort}/api/playback/settings`); const playbackSettings = await playbackRes.json(); gaplessEnabled = playbackSettings.gaplessEnabled !== false; crossfadeDuration = playbackSettings.crossfadeDuration || 0; console.debug('Playback settings loaded:', { gaplessEnabled, crossfadeDuration }); } catch (err) { console.warn('Could not load playback settings, using defaults'); }
         setupEventListeners();
         setVolume(0.7);
         initAudio();
@@ -5638,7 +5638,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         const importCueBtn = document.getElementById('importCueBtn');
         if (importCueBtn) importCueBtn.addEventListener('click', importCueSheet);
 
-        console.debug('✅ KORAI Player initialized');
+        console.debug('KORAI Player initialized');
     } catch (err) { console.error('Init error:', err); showNotification('Initialization failed', 'error'); }
 });
 

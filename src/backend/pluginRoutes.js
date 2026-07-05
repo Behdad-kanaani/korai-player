@@ -4,16 +4,19 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const AdmZip = require('adm-zip');
+const fetch = require('node-fetch');
 
 /**
  * Setup plugin API endpoints for managing plugins via HTTP
- * - GET  /api/plugins         - List all plugins
+ * - GET  /api/plugins         - List installed plugins
+ * - GET  /api/plugins/store   - Browse marketplace plugins
  * - POST /api/plugins/install - Install plugin from ZIP
+ * - POST /api/plugins/store/install - Install marketplace plugin by URL
  * - POST /api/plugins/:id/enable  - Enable plugin
  * - POST /api/plugins/:id/disable - Disable plugin
  * - DELETE /api/plugins/:id   - Uninstall plugin
  */
-function setupPluginRoutes(app, pluginManager, pluginHost) {
+function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
   const router = express.Router();
 
   // Temporary upload dir
@@ -98,6 +101,53 @@ function setupPluginRoutes(app, pluginManager, pluginHost) {
       res.json({ plugins: result });
     } catch (err) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Marketplace plugin list and search
+  router.get('/store', async (req, res) => {
+    try {
+      if (!pluginStore) return res.status(500).json({ error: 'plugin store unavailable' });
+      const query = (req.query.q || '').toString().trim();
+      const plugins = query ? await pluginStore.searchPlugins(query) : await pluginStore.getFeaturedPlugins();
+      res.json({ plugins });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/store/:id', async (req, res) => {
+    try {
+      if (!pluginStore) return res.status(500).json({ error: 'plugin store unavailable' });
+      const plugin = await pluginStore.getPluginDetails(req.params.id);
+      if (!plugin) return res.status(404).json({ error: 'Plugin not found' });
+      res.json({ plugin });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/store/install', async (req, res) => {
+    try {
+      const url = req.body && req.body.url;
+      if (!url) return res.status(400).json({ error: 'url is required' });
+      if (!pluginStore) return res.status(500).json({ error: 'plugin store unavailable' });
+      const parsed = new URL(url);
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        return res.status(400).json({ error: 'Invalid URL protocol' });
+      }
+      const tempPath = path.join(uploadDir, `plugin-store-${Date.now()}-${Math.round(Math.random() * 1e9)}.zip`);
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to download plugin: ${response.status}`);
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      fs.writeFileSync(tempPath, Buffer.from(arrayBuffer));
+      const plugin = pluginManager.installFromZip(tempPath);
+      fs.unlink(tempPath, () => {});
+      res.json({ message: 'Plugin installed successfully', plugin });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
     }
   });
 

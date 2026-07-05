@@ -31,10 +31,16 @@ class PluginStoreUI {
         const port = await window.electronAPI.getServerPort();
         if (port) return `http://127.0.0.1:${port}`;
       } catch (_error) {
-        // fallback to origin
+        console.warn('Plugin store failed to get server port from Electron API:', _error);
       }
     }
     if (window.location.protocol.startsWith('http')) return window.location.origin;
+    for (let p = 3000; p <= 3100; p++) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${p}/api/plugins/store`, { method: 'GET' });
+        if (res.ok) return `http://127.0.0.1:${p}`;
+      } catch (e) {}
+    }
     return 'http://127.0.0.1:3000';
   }
 

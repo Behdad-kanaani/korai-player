@@ -70,7 +70,7 @@ async function importFromM3U(filePath, baseDir = null) {
                 currentTrack = { duration: parseInt(match[1]), title: match[2].trim() };
             }
         } else if (!trimmed.startsWith('#')) {
-            const filePathResolved = resolvePlaylistImportPath(trimmed, baseDir || path.dirname(filePath));
+            const filePathResolved = resolvePlaylistImportPath(trimmed, baseDir || path.dirname(safeFilePath));
             if (filePathResolved && fs.existsSync(filePathResolved)) {
                 tracks.push({
                     filePath: filePathResolved,
@@ -123,7 +123,7 @@ function importFromPLS(filePath, baseDir = null) {
     }
     const tracks = [];
     for (const [index, filePath] of fileMap) {
-        const safePath = resolvePlaylistImportPath(filePath, baseDir || path.dirname(filePath));
+        const safePath = resolvePlaylistImportPath(filePath, baseDir || path.dirname(safeFilePath));
         if (safePath && fs.existsSync(safePath)) {
             tracks.push({
                 filePath: safePath,
@@ -170,7 +170,7 @@ async function importFromXSPF(filePath, baseDir = null) {
             const tracks = trackList.map(track => {
                 let location = track.location?.[0] || '';
                 if (location.startsWith('file://')) location = decodeURI(location.slice(7));
-                const safePath = resolvePlaylistImportPath(location, baseDir || path.dirname(filePath));
+                const safePath = resolvePlaylistImportPath(location, baseDir || path.dirname(safeFilePath));
                 if (!safePath) return null;
                 return {
                     filePath: safePath,
@@ -215,7 +215,7 @@ async function importFromASX(filePath, baseDir = null) {
             const entries = result?.ASX?.ENTRY || [];
             const tracks = entries.map(entry => {
                 let ref = entry?.REF?.[0]?.$?.HREF || '';
-                const safePath = resolvePlaylistImportPath(ref, baseDir || path.dirname(filePath));
+                const safePath = resolvePlaylistImportPath(ref, baseDir || path.dirname(safeFilePath));
                 if (!safePath) return null;
                 return {
                     filePath: safePath,
@@ -255,7 +255,7 @@ async function importFromWPL(filePath, baseDir = null) {
             const medias = result?.smil?.body?.[0]?.seq?.[0]?.media || [];
             const tracks = medias.map(media => {
                 let src = media?.$?.src || '';
-                const safePath = resolvePlaylistImportPath(src, baseDir || path.dirname(filePath));
+                const safePath = resolvePlaylistImportPath(src, baseDir || path.dirname(safeFilePath));
                 if (!safePath) return null;
                 return {
                     filePath: safePath,
@@ -302,7 +302,7 @@ async function importFromJSON(filePath, baseDir = null) {
     const tracks = (data.playlist?.track || []).map(t => {
         let location = t.location || '';
         if (location.startsWith('file://')) location = decodeURI(location.slice(7));
-        const safePath = resolvePlaylistImportPath(location, baseDir || path.dirname(filePath));
+        const safePath = resolvePlaylistImportPath(location, baseDir || path.dirname(safeFilePath));
         if (!safePath) return null;
         return {
             filePath: safePath,

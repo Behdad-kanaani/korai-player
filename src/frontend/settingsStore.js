@@ -499,9 +499,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (!apiPort) {
         // Try common ports
-        for (const p of [3000, 3001, 3002, 3003, 3004]) {
+        for (let p = 3000; p <= 3100; p++) {
             try {
-                const res = await fetch(`http://127.0.0.1:${p}/api/health`);
+                const res = await fetch(`http://127.0.0.1:${p}/api/health`, { method: 'GET' });
                 if (res.ok) {
                     apiPort = p;
                     break;
@@ -509,7 +509,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             } catch (e) {}
         }
     }
-    if (!apiPort) apiPort = 3000;
+    if (!apiPort) {
+        apiPort = 3000;
+        console.debug('SettingsStore fallback to port 3000');
+    }
 
     await settingsStore.init(apiPort);
     console.debug('SettingsStore initialized');

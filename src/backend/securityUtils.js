@@ -118,10 +118,12 @@ function resolveSafePath(candidatePath, baseDir = null) {
     ? path.resolve(trimmedPath)
     : path.resolve(safeBase, trimmedPath);
 
+  const homeDir = path.resolve(os.homedir());
+  const isUnderHome = absolutePath === homeDir || absolutePath.startsWith(homeDir + path.sep);
   const relative = path.relative(safeBase, absolutePath);
   const isUnderBase = relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 
-  if (!isUnderBase) {
+  if (!isUnderBase && !isUnderHome) {
     return null;
   }
 
@@ -130,7 +132,9 @@ function resolveSafePath(candidatePath, baseDir = null) {
     const realPath = fs.existsSync(absolutePath) ? fs.realpathSync.native(absolutePath) : absolutePath;
     const realRelative = path.relative(realBase, realPath);
     const isSafeRealPath = realRelative === '' || (!realRelative.startsWith('..') && !path.isAbsolute(realRelative));
-    if (isSafeRealPath) {
+    const realHome = fs.existsSync(homeDir) ? fs.realpathSync.native(homeDir) : homeDir;
+    const realPathUnderHome = realPath === realHome || realPath.startsWith(realHome + path.sep);
+    if (isSafeRealPath || realPathUnderHome) {
       return realPath;
     }
   } catch {

@@ -1135,14 +1135,14 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <script>
-    (function() {
+    (async function() {
       'use strict';
 
       // ==========================================
       // Configuration & State Variables
       // ==========================================
       const CLOUD_API = 'http://music.korai.ir';
-      const LOCAL_API = 'http://127.0.0.1:3000';
+      const LOCAL_API = await resolveApiBase();
       const LIKED_DATA_KEY = 'korai_liked_items';
       const LIKED_IDS_KEY = 'korai_explorer_likes';
       const ITEMS_PER_PAGE = 24;
@@ -1169,6 +1169,19 @@
       // ==========================================
       // Utility Functions
       // ==========================================
+      async function resolveApiBase() {
+        if (window.electronAPI && typeof window.electronAPI.getServerPort === 'function') {
+          try {
+            const port = await window.electronAPI.getServerPort();
+            if (port) return `http://127.0.0.1:${port}`;
+          } catch (e) {
+            console.warn('Explorer failed to get server port from Electron API:', e);
+          }
+        }
+        if (location.protocol.startsWith('http')) return location.origin;
+        return 'http://127.0.0.1:3000';
+      }
+
       const escapeHtml = (text) => String(text || '').replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m] || m));
       const formatDuration = (sec) => sec ? `${Math.floor(sec/60)}:${Math.floor(sec%60).toString().padStart(2,'0')}` : '';
 

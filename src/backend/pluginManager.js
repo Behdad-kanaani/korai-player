@@ -119,11 +119,10 @@ class PluginManager {
     if (!manifestEntry) throw new Error('manifest.json not found in zip root');
     const manifest = JSON.parse(manifestEntry.getData().toString('utf8'));
     this.validateManifest(manifest);
-    const dest = path.join(this.pluginsDir, `${manifest.id}@${manifest.version}`);
+    const safeId = manifest.id.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const dest = path.join(this.pluginsDir, `${safeId}@${manifest.version}`);
     if (fs.existsSync(dest)) throw new Error('plugin version already installed: ' + dest);
     zip.extractAllTo(dest, true);
-    // Sanitize manifest.id before using on filesystem and registry
-    const safeId = manifest.id.replace(/[^a-zA-Z0-9._-]/g, '_');
     this.registry[safeId] = {
       id: safeId,
       name: manifest.name || safeId,

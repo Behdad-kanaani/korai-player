@@ -398,6 +398,8 @@ async function downloadFile(fileUrl, destPath, redirectCount = 0) {
 }
 
 function setupRoutes() {
+    const fileOperationLimiter = createRateLimiter(20, 60_000);
+
     app.get('/api/settings', (req, res) => {
         try {
             const db = getDb();
@@ -697,7 +699,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/tracks/import', async (req, res) => {
+    app.post('/api/tracks/import', fileOperationLimiter, async (req, res) => {
         try {
             const { filePaths } = req.body;
             console.debug(' /api/tracks/import received', Array.isArray(filePaths) ? filePaths.length : typeof filePaths, 'items');
@@ -790,7 +792,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/tracks/download', createRateLimiter(10, 60_000), async (req, res) => {
+    app.post('/api/tracks/download', fileOperationLimiter, async (req, res) => {
         try {
             const { url } = req.body;
             if (!url) return res.status(400).json({ error: 'URL is required' });
@@ -840,7 +842,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/tracks/import-from-url', createRateLimiter(10, 60_000), async (req, res) => {
+    app.post('/api/tracks/import-from-url', fileOperationLimiter, async (req, res) => {
         try {
             const { url, title } = req.body;
             if (!url) return res.status(400).json({ error: 'URL is required' });
@@ -1376,7 +1378,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/playlists/:id/export', async (req, res) => {
+    app.post('/api/playlists/:id/export', fileOperationLimiter, async (req, res) => {
         try {
             const db = getDb();
             const playlist = db.getPlaylists().find(p => p.id === parseInt(req.params.id));
@@ -1407,7 +1409,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/playlists/import', async (req, res) => {
+    app.post('/api/playlists/import', fileOperationLimiter, async (req, res) => {
         try {
             const db = getDb();
             const { filePath, format } = req.body;
@@ -1475,7 +1477,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/playlists/import-auto', async (req, res) => {
+    app.post('/api/playlists/import-auto', fileOperationLimiter, async (req, res) => {
         try {
             const db = getDb();
             const { filePath } = req.body;
@@ -1570,7 +1572,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/library/export', async (req, res) => {
+    app.post('/api/library/export', fileOperationLimiter, async (req, res) => {
         try {
             const db = getDb();
             const tracks = db.getAllTracks();
@@ -1583,7 +1585,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/cue/parse', async (req, res) => {
+    app.post('/api/cue/parse', fileOperationLimiter, async (req, res) => {
         try {
             const { cuePath, audioBaseDir } = req.body;
             const safeCuePath = resolveSafePath(cuePath, serverUserDataPath || os.homedir());
@@ -1596,7 +1598,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/cue/generate', async (req, res) => {
+    app.post('/api/cue/generate', fileOperationLimiter, async (req, res) => {
         try {
             const db = getDb();
             const { playlistId, outputPath } = req.body;
@@ -1640,23 +1642,6 @@ function setupRoutes() {
         }
     });
 
-    // Fallback for API routes to return JSON instead of HTML 404 pages
-    app.use((req, res, next) => {
-        if (req.path.startsWith('/api/')) {
-            return res.status(404).json({ error: 'API route not found' });
-        }
-        next();
-    });
-
-    // Global error handler to ensure JSON responses for unhandled server errors
-    app.use((err, req, res, next) => {
-        console.error('Unhandled server error:', err);
-        if (res.headersSent) return next(err);
-        if (req.path.startsWith('/api/')) {
-            return res.status(500).json({ error: err.message || 'Internal server error' });
-        }
-        res.status(500).send('Internal server error');
-    });
 }
 
 async function startServer(port, userDataPath) {
@@ -1698,13 +1683,37 @@ async function startServer(port, userDataPath) {
     const PluginStore = require('./pluginStore');
     const pluginStore = new PluginStore();
     setupPluginRoutes(app, pluginManager, pluginHost, pluginStore);
-    return new Promise((resolve) => {
-        const server = app.listen(port, '127.0.0.1', () => {
-            console.debug(` Server on port http://127.0.0.1:${port}`);
-            console.debug(` AI recommendation engine active`);
-            console.debug(` Plugin routes ready at /api/plugins`);
-            resolve(server);
-        });
+
+    // Fallback for API routes to return JSON instead of HTML 404 pages
+    app.use((req, res, next) => {
+        if (req.path.startsWith('/api/')) {
+            return res.status(404).json({ error: 'API route not found' });
+        }
+        next();
+    });
+
+    // Global error handler to ensure JSON responses for unhandled server errors
+    app.use((err, req, res, next) => {
+        console.error('Unhandled server error:', err);
+        if (res.headersSent) return next(err);
+        if (req.path.startsWith('/api/')) {
+            return res.status(500).json({ error: err.message || 'Internal server error' });
+        }
+        res.status(500).send('Internal server error');
+    });
+
+    return new Promise((resolve, reject) => {
+        const server = app.listen(port, '127.0.0.1')
+            .on('listening', () => {
+                console.debug(` Server on port http://127.0.0.1:${port}`);
+                console.debug(` AI recommendation engine active`);
+                console.debug(` Plugin routes ready at /api/plugins`);
+                resolve(server);
+            })
+            .on('error', (err) => {
+                console.error('Server failed to start:', err.message || err);
+                reject(err);
+            });
     });
 }
 

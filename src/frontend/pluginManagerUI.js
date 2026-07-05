@@ -123,11 +123,12 @@ class PluginManagerUI {
             try {
                 const port = await window.electronAPI.getServerPort();
                 if (port) return `http://localhost:${port}`;
-            } catch (e) {}
+            } catch (e) {
+                console.warn('Plugin manager failed to get server port from Electron API:', e);
+            }
         }
         if (location.protocol.startsWith('http')) return location.origin;
-        const ports = [3000,3001,3002,3003,3004,3005,3006,3007,3008,3009,3010];
-        for (const p of ports) {
+        for (let p = 3000; p <= 3100; p++) {
             try {
                 const res = await fetch(`http://127.0.0.1:${p}/api/plugins`, { method: 'GET' });
                 if (res.ok) return `http://127.0.0.1:${p}`;

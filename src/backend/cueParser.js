@@ -8,7 +8,7 @@ const { resolveSafePath } = require('./securityUtils');
  * Parse a CUE sheet file
  */
 function parseCueSheet(cuePath) {
-    const safeCuePath = resolveSafePath(cuePath, path.dirname(cuePath) || process.cwd());
+    const safeCuePath = resolveSafePath(cuePath, process.cwd());
     if (!safeCuePath || !fs.existsSync(safeCuePath)) {
         throw new Error('CUE file not found');
     }
@@ -185,7 +185,7 @@ function getTracksFromCue(cuePath, audioBaseDir = null) {
  * Generate a CUE sheet from a playlist
  */
 function generateCueSheet(playlist, tracks, outputPath) {
-    const safeOutputPath = resolveSafePath(outputPath, path.dirname(outputPath) || process.cwd());
+    const safeOutputPath = resolveSafePath(outputPath, process.cwd());
     if (!safeOutputPath) {
         throw new Error('Invalid output path');
     }

@@ -104,6 +104,7 @@ let healthCheckInterval = null;
 let startupTimer = null;
 let updatePollingTimer = null;
 let powerCleanup = null;
+let windowCreationPromise = null;
 
 const { startServer } = require('./src/backend/server');
 
@@ -190,6 +191,29 @@ app.on('second-instance', (event, commandLine, workingDirectory) => {
         }
     }
 });
+
+// ============================================================================
+// SINGLE WINDOW CREATION HELPER
+// ============================================================================
+
+async function ensureWindowCreation() {
+    if (windowCreationPromise) {
+        return windowCreationPromise;
+    }
+
+    windowCreationPromise = (async () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            return mainWindow;
+        }
+
+        await createWindow();
+        return mainWindow;
+    })().finally(() => {
+        windowCreationPromise = null;
+    });
+
+    return windowCreationPromise;
+}
 
 // ============================================================================
 // TRAY ICON PATH HELPER
@@ -621,18 +645,39 @@ async function scanDirectoryRecursively(dirPath, audioExtensions, files, maxDept
 // MAIN WINDOW CREATION
 // ============================================================================
 
+async function initializeHttpServer(userDataPath) {
+    const maxAttempts = 5;
+    let lastError;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const [port] = await findFreePort(3000, 3100, '127.0.0.1');
+        serverPort = port;
+        console.debug(`✅ Port candidate selected: ${serverPort} (attempt ${attempt}/${maxAttempts})`);
+
+        try {
+            httpServer = await startServer(serverPort, userDataPath);
+            return;
+        } catch (err) {
+            lastError = err;
+            console.warn(`⚠️ Failed to bind server to 127.0.0.1:${serverPort}:`, err.code || err.message || err);
+            if (attempt === maxAttempts || !['EADDRINUSE', 'EACCES', 'EAGAIN'].includes(err.code)) {
+                throw err;
+            }
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
+
+    throw lastError || new Error('Unable to start HTTP server');
+}
+
 async function createWindow() {
     try {
         console.debug('🚀 Creating Electron window...');
         if (startupTimer && typeof startupTimer.mark === 'function') startupTimer.mark('creating-window');
         
-        const [port] = await findFreePort(3000, 3100);
-        serverPort = port;
-        console.debug(`✅ Port found: ${serverPort}`);
-
         const userDataPath = app.getPath('userData');
         await seedBundledPlugins(app.getAppPath(), userDataPath);
-        httpServer = await startServer(serverPort, userDataPath);
+        await initializeHttpServer(userDataPath);
         console.debug('✅ HTTP Server started');
         
         // Start health check after server is running
@@ -1363,7 +1408,7 @@ app.whenReady().then(async () => {
         console.warn('Startup optimizations failed:', err && err.message);
     }
 
-    createWindow();
+    await ensureWindowCreation();
 
     // Check if restart is required after update
     const restartInfo = updateManager.isRestartRequired();
@@ -1386,9 +1431,9 @@ app.whenReady().then(async () => {
     // Note: periodic update checks are handled by updater.startUpdateChecker()
 });
 
-app.on('activate', () => {
+app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
+        await ensureWindowCreation();
     }
 });
 

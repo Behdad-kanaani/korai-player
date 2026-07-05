@@ -2461,13 +2461,30 @@ async function waitForAPI() {
                 const port = await window.electronAPI.getServerPort();
                 if (port) {
                     apiPort = port;
-        console.debug('API connected on port:', apiPort);
+                    console.debug('API connected on port:', apiPort);
                     return true;
                 }
             }
-        } catch (e) { console.error('API connection attempt failed:', e); }
+        } catch (e) {
+            console.error('API connection attempt failed:', e);
+        }
         await new Promise(resolve => setTimeout(resolve, 200));
     }
+
+    const candidatePorts = Array.from({ length: 101 }, (_, i) => 3000 + i);
+    for (const port of candidatePorts) {
+        try {
+            const res = await fetch(`http://127.0.0.1:${port}/api/health`, { method: 'GET' });
+            if (res.ok) {
+                apiPort = port;
+                console.debug(`API detected on port: ${apiPort}`);
+                return true;
+            }
+        } catch (e) {
+            // continue scanning ports until one answers successfully
+        }
+    }
+
     apiPort = 3000;
     console.debug('Using fallback port 3000');
     return true;

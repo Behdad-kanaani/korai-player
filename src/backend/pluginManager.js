@@ -75,6 +75,11 @@ class PluginManager {
     if (!manifest || typeof manifest !== 'object') throw new Error('manifest missing or invalid');
     if (!manifest.id || !manifest.name || !manifest.version || !manifest.entry) throw new Error('manifest missing required fields');
 
+    // id must be a safe filesystem-friendly token (prevent path traversal)
+    if (!/^[a-zA-Z0-9._-]+$/.test(manifest.id)) {
+      throw new Error('manifest.id contains invalid characters');
+    }
+
     // version must be semver
     if (!semver.valid(manifest.version)) throw new Error('manifest.version must be a valid semver string');
 
@@ -117,9 +122,11 @@ class PluginManager {
     const dest = path.join(this.pluginsDir, `${manifest.id}@${manifest.version}`);
     if (fs.existsSync(dest)) throw new Error('plugin version already installed: ' + dest);
     zip.extractAllTo(dest, true);
-    this.registry[manifest.id] = {
-      id: manifest.id,
-      name: manifest.name,
+    // Sanitize manifest.id before using on filesystem and registry
+    const safeId = manifest.id.replace(/[^a-zA-Z0-9._-]/g, '_');
+    this.registry[safeId] = {
+      id: safeId,
+      name: manifest.name || safeId,
       version: manifest.version,
       entry: manifest.entry,
       // builtin plugins should be enabled by default unless manifest explicitly disables them
@@ -132,7 +139,7 @@ class PluginManager {
       builtin: !!manifest.builtin
     };
     this.saveRegistry();
-    return this.registry[manifest.id];
+    return this.registry[safeId];
   }
 
   /**

@@ -1,7 +1,4 @@
-/**
- * Plugin Performance Monitor & Dashboard
- * Tracks: CPU time, memory usage, hooks called, errors, execution stats
- */
+// pluginPerformanceMonitor - tracks plugin resource usage and errors
 
 class PluginPerformanceMonitor {
   constructor() {

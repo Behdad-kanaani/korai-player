@@ -198,8 +198,9 @@ class PluginHost extends EventEmitter {
             // allow plugin to register custom/dynamic hooks at runtime
             try {
               const entryObj = this.runningPlugins.get(id);
-              if (entryObj && msg.hook && typeof msg.hook === 'string') {
-                entryObj.hooks[msg.hook] = true;
+              const hookName = msg.hook;
+              if (entryObj && typeof hookName === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(hookName)) {
+                entryObj.hooks[hookName] = true;
               }
             } catch (e) {}
           } else if (msg.type === 'storage-get') {

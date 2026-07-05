@@ -1,12 +1,8 @@
-/**
- * playlistExporter.js - M3U/PLS/XSPF/ASX/WPL/JSON Playlist Export/Import
- * Supports: M3U, M3U8, PLS, XSPF, ASX, WPL, JSON (JSPF)
- */
+// playlistExporter - playlist import/export utilities (M3U, PLS, XSPF, ASX, WPL, JSON)
 
 const fs = require('fs');
 const path = require('path');
 
-// Helper: escape XML special characters
 function escapeXml(str) {
     if (!str) return '';
     return str.replace(/[&<>]/g, function(m) {
@@ -17,7 +13,18 @@ function escapeXml(str) {
     });
 }
 
-// ===================== M3U / M3U8 =====================
+function resolvePlaylistImportPath(rawPath, baseDir = null) {
+    if (typeof rawPath !== 'string' || rawPath.trim() === '') return null;
+    const normalizedPath = rawPath.trim();
+    const base = baseDir ? path.resolve(baseDir) : process.cwd();
+    const resolvedPath = path.isAbsolute(normalizedPath)
+        ? path.resolve(normalizedPath)
+        : path.resolve(base, normalizedPath);
+    const relativePath = path.relative(base, resolvedPath);
+    const isSafe = relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath));
+    return isSafe ? resolvedPath : null;
+}
+
 function exportToM3U(playlist, tracks, outputPath, extended = true) {
     const isM3U8 = outputPath.toLowerCase().endsWith('.m3u8');
     let content = extended ? '#EXTM3U\n' : '';
@@ -56,11 +63,8 @@ async function importFromM3U(filePath, baseDir = null) {
                 currentTrack = { duration: parseInt(match[1]), title: match[2].trim() };
             }
         } else if (!trimmed.startsWith('#')) {
-            let filePathResolved = trimmed;
-            if (baseDir && !path.isAbsolute(filePathResolved)) {
-                filePathResolved = path.join(baseDir, filePathResolved);
-            }
-            if (fs.existsSync(filePathResolved)) {
+            const filePathResolved = resolvePlaylistImportPath(trimmed, baseDir || path.dirname(filePath));
+            if (filePathResolved && fs.existsSync(filePathResolved)) {
                 tracks.push({
                     filePath: filePathResolved,
                     title: currentTrack?.title || path.basename(filePathResolved, path.extname(filePathResolved)),
@@ -90,7 +94,7 @@ function exportToPLS(playlist, tracks, outputPath) {
     return outputPath;
 }
 
-function importFromPLS(filePath) {
+function importFromPLS(filePath, baseDir = null) {
     const content = fs.readFileSync(filePath, 'utf-8');
     const lines = content.split(/\r?\n/);
     const fileMap = new Map();
@@ -108,9 +112,10 @@ function importFromPLS(filePath) {
     }
     const tracks = [];
     for (const [index, filePath] of fileMap) {
-        if (fs.existsSync(filePath)) {
+        const safePath = resolvePlaylistImportPath(filePath, baseDir || path.dirname(filePath));
+        if (safePath && fs.existsSync(safePath)) {
             tracks.push({
-                filePath: filePath,
+                filePath: safePath,
                 title: titleMap.get(index) || path.basename(filePath, path.extname(filePath)),
                 duration: lengthMap.get(index) || 0
             });
@@ -150,9 +155,10 @@ async function importFromXSPF(filePath, baseDir = null) {
             const tracks = trackList.map(track => {
                 let location = track.location?.[0] || '';
                 if (location.startsWith('file://')) location = decodeURI(location.slice(7));
-                if (baseDir && !path.isAbsolute(location)) location = path.join(baseDir, location);
+                const safePath = resolvePlaylistImportPath(location, baseDir || path.dirname(filePath));
+                if (!safePath) return null;
                 return {
-                    filePath: location,
+                    filePath: safePath,
                     title: track.title?.[0] || path.basename(location, path.extname(location)),
                     duration: (track.duration?.[0] || 0) / 1000
                 };
@@ -190,9 +196,10 @@ async function importFromASX(filePath, baseDir = null) {
             const entries = result?.ASX?.ENTRY || [];
             const tracks = entries.map(entry => {
                 let ref = entry?.REF?.[0]?.$?.HREF || '';
-                if (baseDir && !path.isAbsolute(ref)) ref = path.join(baseDir, ref);
+                const safePath = resolvePlaylistImportPath(ref, baseDir || path.dirname(filePath));
+                if (!safePath) return null;
                 return {
-                    filePath: ref,
+                    filePath: safePath,
                     title: entry?.TITLE?.[0] || path.basename(ref, path.extname(ref)),
                     duration: 0
                 };
@@ -225,9 +232,10 @@ async function importFromWPL(filePath, baseDir = null) {
             const medias = result?.smil?.body?.[0]?.seq?.[0]?.media || [];
             const tracks = medias.map(media => {
                 let src = media?.$?.src || '';
-                if (baseDir && !path.isAbsolute(src)) src = path.join(baseDir, src);
+                const safePath = resolvePlaylistImportPath(src, baseDir || path.dirname(filePath));
+                if (!safePath) return null;
                 return {
-                    filePath: src,
+                    filePath: safePath,
                     title: path.basename(src, path.extname(src)),
                     duration: 0
                 };
@@ -267,9 +275,10 @@ async function importFromJSON(filePath, baseDir = null) {
     const tracks = (data.playlist?.track || []).map(t => {
         let location = t.location || '';
         if (location.startsWith('file://')) location = decodeURI(location.slice(7));
-        if (baseDir && !path.isAbsolute(location)) location = path.join(baseDir, location);
+        const safePath = resolvePlaylistImportPath(location, baseDir || path.dirname(filePath));
+        if (!safePath) return null;
         return {
-            filePath: location,
+            filePath: safePath,
             title: t.title || path.basename(location, path.extname(location)),
             duration: (t.duration || 0) / 1000
         };

@@ -5,6 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const AdmZip = require('adm-zip');
 const fetch = require('node-fetch');
+const { createRateLimiter, assertSafeUrl } = require('./securityUtils');
 
 /**
  * Setup plugin API endpoints for managing plugins via HTTP
@@ -18,6 +19,7 @@ const fetch = require('node-fetch');
  */
 function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
   const router = express.Router();
+  router.use(createRateLimiter(60, 60_000));
 
   // Temporary upload dir
   const uploadDir = path.join(os.tmpdir(), 'korai-plugin-uploads');
@@ -132,12 +134,9 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
       const url = req.body && req.body.url;
       if (!url) return res.status(400).json({ error: 'url is required' });
       if (!pluginStore) return res.status(500).json({ error: 'plugin store unavailable' });
-      const parsed = new URL(url);
-      if (!['http:', 'https:'].includes(parsed.protocol)) {
-        return res.status(400).json({ error: 'Invalid URL protocol' });
-      }
+      const parsed = await assertSafeUrl(url);
       const tempPath = path.join(uploadDir, `plugin-store-${Date.now()}-${Math.round(Math.random() * 1e9)}.zip`);
-      const response = await fetch(url);
+      const response = await fetch(parsed);
       if (!response.ok) {
         throw new Error(`Failed to download plugin: ${response.status}`);
       }
@@ -432,26 +431,26 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
     try {
       const id = req.params.id;
       const file = req.params.file;
-      // basic validation
       if (!id || !file) return res.status(400).send('bad request');
       if (file.includes('..') || file.includes('/') || file.includes('\\')) return res.status(400).send('invalid file');
       let entry = pluginManager.registry[id];
       let target = null;
+      let pluginRoot = null;
 
       if (entry && entry.path) {
-        target = path.join(entry.path, file);
+        pluginRoot = path.resolve(entry.path);
+        target = path.resolve(pluginRoot, file);
       } else {
-        // Development fallback: check workspace plugins directory for a matching id@version folder
         try {
           const workspacePlugins = path.join(pluginManager.appRoot, 'plugins');
           if (fs.existsSync(workspacePlugins)) {
             const dirs = fs.readdirSync(workspacePlugins, { withFileTypes: true }).filter(d => d.isDirectory());
             const match = dirs.find(d => d.name.startsWith(id + '@'));
             if (match) {
-              const candidate = path.join(workspacePlugins, match.name);
+              const candidate = path.resolve(workspacePlugins, match.name);
               if (fs.existsSync(candidate)) {
-                target = path.join(candidate, file);
-                // also set a fake entry so startsWith check later works
+                pluginRoot = candidate;
+                target = path.resolve(candidate, file);
                 entry = entry || { path: candidate };
               }
             }
@@ -461,8 +460,10 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
         }
       }
       if (!entry || !entry.path) return res.status(404).send('plugin not found');
-      if (!target) target = path.join(entry.path, file);
-      if (!target.startsWith(entry.path)) return res.status(400).send('access denied');
+      if (!pluginRoot) pluginRoot = path.resolve(entry.path);
+      if (!target) target = path.resolve(pluginRoot, file);
+      const relativePath = path.relative(pluginRoot, target);
+      if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) return res.status(400).send('access denied');
       if (!fs.existsSync(target)) return res.status(404).send('not found');
       res.sendFile(target);
     } catch (e) {

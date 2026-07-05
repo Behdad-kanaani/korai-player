@@ -1,18 +1,4 @@
-/**
- * recommender.js - Advanced AI Recommendation Engine v2
- * Hybrid system with:
- * - Advanced heuristic-based collaborative filtering
- * - Multi-factor behavior analysis with deep engagement tracking
- * - Advanced context awareness (mood, time, activity patterns)
- * - Ensemble learning combining multiple weighting models
- * - User clustering & similar user recommendations
- * - Serendipity optimization with discovery boost
- * - Session-based sequential recommendations
- * - Artist/album affinity networks
- * 
- * NOTE: Uses heuristic weighting rather than neural networks.
- * All processing is local with no external model dependencies.
- */
+// recommender - local multi-factor recommendation engine (heuristic-based)
 
 const { cosineSimilarity, euclideanDistance } = require('./analyzer');
 
@@ -784,13 +770,21 @@ function updateUserHistory(userHistory, trackId, action, userDataPath) {
             break;
     }
     
-    // Store interaction in history
-    if (history.interactions && history.interactions.length < 100) {
-        history.interactions.push({
-            type: action.type,
-            timestamp: now,
-            duration: action.duration || null
-        });
+    // Store interaction in history (filter keys to avoid prototype pollution)
+    try {
+        const { isSafeKey } = require('./securityUtils');
+        if (history.interactions && history.interactions.length < 100) {
+            const safeEntry = {};
+            if (isSafeKey('type')) safeEntry.type = String(action.type || '');
+            if (isSafeKey('timestamp')) safeEntry.timestamp = now;
+            if (isSafeKey('duration') && action.duration !== undefined) safeEntry.duration = action.duration;
+            history.interactions.push(safeEntry);
+        }
+    } catch (e) {
+        // fallback to minimal push
+        if (history.interactions && history.interactions.length < 100) {
+            history.interactions.push({ type: String(action.type || ''), timestamp: now });
+        }
     }
     
     // Async save to disk (non-blocking)

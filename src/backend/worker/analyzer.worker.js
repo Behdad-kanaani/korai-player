@@ -1,12 +1,4 @@
-/**
- * analyzer.worker.js - Audio Analysis Web Worker
- * 
- * Runs in separate thread to prevent UI blocking
- * Handles BPM detection, energy calculation, and metadata extraction
- * 
- * FIXED: Replaced import with require for Node.js compatibility
- * FIXED: Added robust error handling for all operations
- */
+// analyzer.worker - audio analysis worker (BPM, energy, metadata)
 
 const { parentPort } = require('worker_threads');
 const fs = require('fs');

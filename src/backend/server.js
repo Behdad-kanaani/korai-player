@@ -1,10 +1,4 @@
-/**
- * server.js - KORAI Music Player Backend Server
- * Complete file with MusicDel proxy endpoints added
- * 
- * FIXED: Added MusicDel proxy endpoints for search and download
- * FIXED: Proper error handling and domain validation
- */
+// Backend server for the KORAI music player.
 
 const express = require('express');
 const cors = require('cors');
@@ -33,19 +27,37 @@ const PluginHost = require('./pluginHost');
 const { setupPluginRoutes } = require('./pluginRoutes');
 const PluginSettings = require('./pluginSettings');
 const PluginPerformanceMonitor = require('./pluginPerformanceMonitor');
-// const ytdl = require('youtube-dl-exec');
+const { createRateLimiter, assertSafeUrl } = require('./securityUtils');
 
 const app = express();
 let serverUserDataPath = null;
 let userHistory = {};
 
+const { safeAssign } = require('./securityUtils');
+
 app.use(cors({
-    origin: '*',
+    origin: (origin, cb) => {
+        // allow no-origin (e.g. file:// in Electron) and localhost origins
+        if (!origin) return cb(null, true);
+        const allowed = [
+            'http://localhost',
+            'http://127.0.0.1',
+            'https://localhost',
+            'https://127.0.0.1'
+        ];
+        try {
+            const url = new URL(origin);
+            const base = `${url.protocol}//${url.hostname}`;
+            if (allowed.includes(base)) return cb(null, true);
+        } catch (e) {}
+        cb(new Error('Not allowed by CORS'));
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Range', 'Authorization']
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/api', createRateLimiter(200, 60_000));
 
 // =============================================================================
 // MUSICDEL PROXY ENDPOINTS
@@ -66,18 +78,15 @@ app.post('/api/proxy/musicdel', async (req, res) => {
             return res.status(400).json({ error: 'URL is required' });
         }
 
-        // Validate URL - only allow musicdel.ir domain
-        const urlObj = new URL(url);
-        if (!urlObj.hostname.includes('musicdel.ir')) {
-            return res.status(403).json({ error: 'Only musicdel.ir domains are allowed' });
-        }
+        const targetUrl = await assertSafeUrl(url, {
+            allowHosts: ['musicdel.ir', 'www.musicdel.ir', 'dl.musicdel.ir']
+        });
 
-        console.debug(` Proxy request to: ${url}`);
+        console.debug(`Proxy request to: ${targetUrl.toString()}`);
 
-        // Use node-fetch to get content
         const fetch = require('node-fetch');
-        
-        const response = await fetch(url, {
+
+        const response = await fetch(targetUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -139,16 +148,14 @@ app.get('/api/proxy/musicdel/download', async (req, res) => {
             return res.status(400).json({ error: 'URL is required' });
         }
 
-        // Validate URL - only allow musicdel.ir domains
-        const urlObj = new URL(url);
-        if (!urlObj.hostname.includes('musicdel.ir') && !urlObj.hostname.includes('dl.musicdel.ir')) {
-            return res.status(403).json({ error: 'Only musicdel.ir domains are allowed' });
-        }
+        const targetUrl = await assertSafeUrl(url, {
+            allowHosts: ['musicdel.ir', 'www.musicdel.ir', 'dl.musicdel.ir']
+        });
 
-        console.debug(` Proxy download from: ${url}`);
-        
+        console.debug(`Proxy download from: ${targetUrl.toString()}`);
+
         const fetch = require('node-fetch');
-        const response = await fetch(url, {
+        const response = await fetch(targetUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Accept': '*/*',
@@ -193,13 +200,16 @@ app.post('/api/search/musicdel', async (req, res) => {
         const MUSICDEL_SEARCH_API = 'https://musicdel.ir/wp-content/themes/musicdel2/api/search-html.php';
         const encodedQuery = encodeURIComponent(query.trim());
 
-        console.debug(` Searching MusicDel for: ${encodedQuery}`);
+        console.debug(`Searching MusicDel for: ${encodedQuery}`);
 
-        // Use node-fetch to get the HTML search results
         const fetch = require('node-fetch');
-        const searchUrl = `${MUSICDEL_SEARCH_API}?q=${encodedQuery}`;
+        const searchUrl = new URL(MUSICDEL_SEARCH_API);
+        searchUrl.searchParams.set('q', query.trim());
+        const safeSearchUrl = await assertSafeUrl(searchUrl.toString(), {
+            allowHosts: ['musicdel.ir', 'www.musicdel.ir']
+        });
 
-        const response = await fetch(searchUrl, {
+        const response = await fetch(safeSearchUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -348,17 +358,17 @@ async function scanDirectoryRecursively(dirPath, audioExtensions, files, maxDept
     }
 }
 
-function downloadFile(fileUrl, destPath, redirectCount = 0) {
+async function downloadFile(fileUrl, destPath, redirectCount = 0) {
     if (redirectCount > 5) {
         return Promise.reject(new Error('Too many redirects'));
     }
+    const urlObj = await assertSafeUrl(fileUrl);
     return new Promise((resolve, reject) => {
-        const urlObj = new URL(fileUrl);
         const client = urlObj.protocol === 'https:' ? https : http;
-        const request = client.get(fileUrl, (response) => {
+        const request = client.get(urlObj, (response) => {
             const statusCode = response.statusCode;
             if (statusCode >= 300 && statusCode < 400 && response.headers.location) {
-                const redirectUrl = new URL(response.headers.location, fileUrl).href;
+                const redirectUrl = new URL(response.headers.location, urlObj).href;
                 return downloadFile(redirectUrl, destPath, redirectCount + 1)
                     .then(resolve)
                     .catch(reject);
@@ -531,7 +541,7 @@ function setupRoutes() {
             if (!fs.existsSync(telemetryDir)) fs.mkdirSync(telemetryDir, { recursive: true });
             const outPath = path.join(telemetryDir, 'perf.jsonl');
             const writeEntries = Array.isArray(payload) ? payload : [payload];
-            const lines = writeEntries.map(e => JSON.stringify(Object.assign({ receivedAt: Date.now() }, e))).join('\n') + '\n';
+            const lines = writeEntries.map(e => JSON.stringify(safeAssign({ receivedAt: Date.now() }, e))).join('\n') + '\n';
             fs.appendFile(outPath, lines, (err) => {
                 if (err) {
                     console.error('Failed to write telemetry:', err);
@@ -959,43 +969,42 @@ function setupRoutes() {
     });
 
     async function downloadFileDirect(fileUrl, destPath) {
+        const urlObj = await assertSafeUrl(fileUrl);
         return new Promise((resolve, reject) => {
-            const urlObj = new URL(fileUrl);
             const client = urlObj.protocol === 'https:' ? https : http;
-            
-            const request = client.get(fileUrl, (response) => {
-            // Handle redirects
-            if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-                const redirectUrl = new URL(response.headers.location, fileUrl).href;
-                return downloadFileDirect(redirectUrl, destPath).then(resolve).catch(reject);
-            }
-            
-            if (response.statusCode !== 200) {
-                return reject(new Error(`Server responded with status: ${response.statusCode}`));
-            }
-            
-            const fileStream = fs.createWriteStream(destPath);
-            response.pipe(fileStream);
-            
-            fileStream.on('finish', () => {
-                fileStream.close();
-                resolve();
+
+            const request = client.get(urlObj, (response) => {
+                if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+                    const redirectUrl = new URL(response.headers.location, urlObj).href;
+                    return downloadFileDirect(redirectUrl, destPath).then(resolve).catch(reject);
+                }
+
+                if (response.statusCode !== 200) {
+                    return reject(new Error(`Server responded with status: ${response.statusCode}`));
+                }
+
+                const fileStream = fs.createWriteStream(destPath);
+                response.pipe(fileStream);
+
+                fileStream.on('finish', () => {
+                    fileStream.close();
+                    resolve();
+                });
+
+                fileStream.on('error', (err) => {
+                    fs.unlink(destPath, () => {});
+                    reject(err);
+                });
             });
-            
-            fileStream.on('error', (err) => {
-                fs.unlink(destPath, () => {});
-                reject(err);
-            });
-            });
-            
+
             request.setTimeout(30000, () => {
-            request.destroy();
-            reject(new Error('Download timeout'));
+                request.destroy();
+                reject(new Error('Download timeout'));
             });
-            
+
             request.on('error', reject);
         });
-        }
+    }
 
     app.get('/api/playlists', (req, res) => {
         try {

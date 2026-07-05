@@ -1,16 +1,4 @@
-/**
- * database.js - KORAI Music Player Database Layer
- * 
- * Manages JSON-based persistent storage for:
- * - Tracks library with metadata
- * - Playlists
- * - Play history
- * - Likes/favorites
- * - Application settings
- * 
- * Uses atomic file writes to prevent corruption.
- * Implements write debouncing to prevent I/O blocking.
- */
+// database - JSON-based persistent storage for tracks, playlists, history and settings
 
 const fs = require('fs');
 const fsPromises = fs.promises;

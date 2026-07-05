@@ -1,7 +1,4 @@
-/**
- * Plugin Settings - Per-plugin configuration framework
- * Allows plugins to define settings that users can customize
- */
+// pluginSettings - per-plugin configuration framework
 
 class PluginSettings {
   constructor() {
@@ -28,8 +25,9 @@ class PluginSettings {
     if (!this.pluginSettings[pluginId]) {
       this.pluginSettings[pluginId] = {};
       // Set defaults
+      const { isSafeKey } = require('./securityUtils');
       schema.settings.forEach(s => {
-        if (s.default !== undefined) {
+        if (s.default !== undefined && isSafeKey(s.key)) {
           this.pluginSettings[pluginId][s.key] = s.default;
         }
       });
@@ -51,6 +49,8 @@ class PluginSettings {
       this.pluginSettings[pluginId] = {};
     }
     // Validate against schema if exists
+    const { isSafeKey } = require('./securityUtils');
+    if (!isSafeKey(key)) throw new Error('Invalid setting key');
     if (this.pluginSchemas[pluginId]) {
       const setting = this.pluginSchemas[pluginId].settings.find(s => s.key === key);
       if (!setting) throw new Error(`Unknown setting: ${key}`);
@@ -91,7 +91,20 @@ class PluginSettings {
    * Import settings (restore)
    */
   importSettings(data) {
-    this.pluginSettings = data;
+    const { isSafeKey } = require('./securityUtils');
+    const out = {};
+    if (!data || typeof data !== 'object') return;
+    for (const pid of Object.keys(data)) {
+      if (!isSafeKey(pid)) continue;
+      const obj = data[pid];
+      if (!obj || typeof obj !== 'object') continue;
+      out[pid] = {};
+      for (const k of Object.keys(obj)) {
+        if (!isSafeKey(k)) continue;
+        out[pid][k] = obj[k];
+      }
+    }
+    this.pluginSettings = out;
   }
 }
 

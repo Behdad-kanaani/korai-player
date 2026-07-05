@@ -1,13 +1,4 @@
-/**
- * updateManager.js - Update Manager
- * 
- * Orchestrates the entire update process including:
- * - Pre-update validation
- * - File downloading with retry logic
- * - Applying changes atomically
- * - Post-update verification
- * - Auto-restart handling
- */
+// updateManager - coordinates update download/apply workflow
 
 const fs = require('fs');
 const path = require('path');

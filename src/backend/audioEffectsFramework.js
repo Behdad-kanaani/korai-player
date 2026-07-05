@@ -1,9 +1,4 @@
-/**
- * Audio Effects Framework for Plugins
- * Allows plugins to register and apply audio filters/effects
- * 
- * Supports: Volume, Gain, Equalizer, Reverb, Chorus, Delay, Compression, etc.
- */
+// audioEffectsFramework - plugin audio effects registration and chain
 
 class AudioEffectsFramework {
   constructor() {

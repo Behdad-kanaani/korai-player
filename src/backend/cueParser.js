@@ -1,12 +1,8 @@
-/**
- * cueParser.js - CUE Sheet Parser
- * 
- * Parses .cue files and extracts track information
- * Supports: REM, PERFORMER, TITLE, FILE, TRACK, INDEX, FLAGS
- */
+// cueParser - simple CUE sheet parser
 
 const fs = require('fs');
 const path = require('path');
+const { resolveSafePath } = require('./securityUtils');
 
 /**
  * Parse a CUE sheet file
@@ -149,18 +145,16 @@ function getTracksFromCue(cuePath, audioBaseDir = null) {
     
     for (const file of cue.files) {
         let audioPath = file.path;
-        if (audioBaseDir && !path.isAbsolute(audioPath)) {
-            audioPath = path.join(audioBaseDir, audioPath);
-        }
-        
-        if (!fs.existsSync(audioPath)) {
-            console.warn(`Audio file not found: ${audioPath}`);
+        if (audioPath.startsWith('file://')) audioPath = decodeURI(audioPath.slice(7));
+        const safePath = resolveSafePath(audioPath, audioBaseDir || path.dirname(cuePath));
+        if (!safePath || !fs.existsSync(safePath)) {
+            console.warn(`Audio file not found or unsafe: ${audioPath}`);
             continue;
         }
         
         for (const track of file.tracks) {
             tracks.push({
-                filePath: audioPath,
+                filePath: safePath,
                 title: track.title || `${file.title || cue.title || 'Unknown'} - Track ${track.number}`,
                 artist: track.performer || file.performer || Array.from(cue.performers)[0] || 'Unknown Artist',
                 album: file.title || cue.title || 'Unknown Album',

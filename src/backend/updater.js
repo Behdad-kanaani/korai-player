@@ -1,10 +1,4 @@
-/**
- * updater.js - Automatic Code Update System (Optimized)
- * 
- * Fetches changed files from GitHub and applies updates without reinstallation
- * Uses raw GitHub URLs to avoid rate limits
- * Only checks for updates once per session or when user requests
- */
+// updater - lightweight update fetcher for remote assets
 
 const https = require('https');
 const fs = require('fs');

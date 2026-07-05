@@ -36,14 +36,27 @@ try {
 // PERFORMANCE OPTIMIZATIONS
 // ============================================================================
 
+const isLinux = process.platform === 'linux';
+
 try {
     app.commandLine.appendSwitch('enable-gpu-rasterization');
     app.commandLine.appendSwitch('enable-zero-copy');
     app.commandLine.appendSwitch('ignore-gpu-blocklist');
-    app.commandLine.appendSwitch('enable-features', 'Vulkan,UseSkiaRenderer');
     app.commandLine.appendSwitch('enable-accelerated-video-decode');
+
+    if (isLinux) {
+        // Avoid Vulkan-specific rendering on Linux AppImage builds where drivers may be unstable.
+        // Keep GPU acceleration active but disable Vulkan path to reduce lag and crashes.
+        app.commandLine.appendSwitch('disable-features', 'Vulkan');
+        console.warn('⚠️ Linux detected; Vulkan disabled for compatibility, GPU acceleration remains enabled.');
+    } else {
+        app.commandLine.appendSwitch('enable-features', 'Vulkan,UseSkiaRenderer');
+    }
+
     app.commandLine.appendSwitch('max_old_space_size', '4096');
-} catch (e) {}
+} catch (e) {
+    console.warn('Performance optimization flags failed:', e && e.message);
+}
 
 // ============================================================================
 // AUTO-UPDATER
@@ -1011,30 +1024,34 @@ ipcMain.handle('select-audio-files', async () => {
 // FIXED: Deep recursive directory scanner with improved error handling
 ipcMain.handle('select-audio-folder', async () => {
     if (!mainWindow) return [];
-    
-    const result = await dialog.showOpenDialog(mainWindow, {
-        properties: ['openDirectory']
-    });
-    
-    if (result.canceled || result.filePaths.length === 0) return [];
-    
-    const folderPath = result.filePaths[0];
-    const audioExtensions = ['.mp3', '.wav', '.ogg', '.m4a', '.flac'];
-    const files = [];
-    
-    console.debug(`[scan] Starting deep scan of folder: ${folderPath}`);
-    
-    // Use improved recursive scanner
-    await scanDirectoryRecursively(folderPath, audioExtensions, files);
-    
-    console.debug(`[scan] Found ${files.length} audio files in ${folderPath} (including subfolders)`);
-    
-    // Show warning if no files found
-    if (files.length === 0 && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('scan-no-files-found', folderPath);
+
+    try {
+        const result = await dialog.showOpenDialog(mainWindow, {
+            properties: ['openDirectory', 'createDirectory', 'showHiddenFiles'],
+            title: 'Select a folder to scan for audio files',
+            buttonLabel: 'Scan Folder'
+        });
+
+        if (result.canceled || !result.filePaths || result.filePaths.length === 0) return [];
+
+        const folderPath = result.filePaths[0];
+        const audioExtensions = ['.mp3', '.wav', '.ogg', '.m4a', '.flac'];
+        const files = [];
+
+        console.debug(`[scan] Starting deep scan of folder: ${folderPath}`);
+        await scanDirectoryRecursively(folderPath, audioExtensions, files);
+
+        console.debug(`[scan] Found ${files.length} audio files in ${folderPath} (including subfolders)`);
+
+        if (files.length === 0 && mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('scan-no-files-found', folderPath);
+        }
+
+        return files;
+    } catch (error) {
+        console.error('[scan] Folder selection error:', error);
+        return [];
     }
-    
-    return files;
 });
 
 // ============================================================================

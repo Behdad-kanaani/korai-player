@@ -691,17 +691,31 @@ function setupRoutes() {
             if (!filePaths || !Array.isArray(filePaths) || filePaths.length === 0) {
                 return res.status(400).json({ error: 'No file paths provided' });
             }
+
+            const normalizedPaths = Array.from(new Set(filePaths.map((rawPath) => {
+                if (!rawPath || typeof rawPath !== 'string') return null;
+                let fp = rawPath.trim();
+                if (fp.startsWith('file://')) {
+                    try {
+                        fp = decodeURI(fp.replace(/^file:\/\//, ''));
+                    } catch (err) {
+                        fp = fp.replace(/^file:\/\//, '');
+                    }
+                }
+                return fp;
+            }).filter(Boolean)));
+
             const db = getDb();
-            const existing = filePaths.filter(fp => {
+            const existing = normalizedPaths.filter(fp => {
                 try {
                     return fs.existsSync(fp);
                 } catch (e) {
                     return false;
                 }
             });
-            console.debug(` import: ${existing.length}/${filePaths.length} paths exist on disk`);
+            console.debug(` import: ${existing.length}/${normalizedPaths.length} paths exist on disk`);
             if (existing.length === 0) {
-                return res.json({ success: true, imported: 0, total: filePaths.length });
+                return res.json({ success: true, imported: 0, total: normalizedPaths.length, skipped: normalizedPaths.length });
             }
             const results = [];
             const CONCURRENCY = 3;
@@ -1608,6 +1622,24 @@ function setupRoutes() {
             console.error('BPM detection error:', error);
             res.status(500).json({ error: error.message });
         }
+    });
+
+    // Fallback for API routes to return JSON instead of HTML 404 pages
+    app.use((req, res, next) => {
+        if (req.path.startsWith('/api/')) {
+            return res.status(404).json({ error: 'API route not found' });
+        }
+        next();
+    });
+
+    // Global error handler to ensure JSON responses for unhandled server errors
+    app.use((err, req, res, next) => {
+        console.error('Unhandled server error:', err);
+        if (res.headersSent) return next(err);
+        if (req.path.startsWith('/api/')) {
+            return res.status(500).json({ error: err.message || 'Internal server error' });
+        }
+        res.status(500).send('Internal server error');
     });
 }
 

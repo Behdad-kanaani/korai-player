@@ -28,7 +28,7 @@ const PluginHost = require('./pluginHost');
 const { setupPluginRoutes } = require('./pluginRoutes');
 const PluginSettings = require('./pluginSettings');
 const PluginPerformanceMonitor = require('./pluginPerformanceMonitor');
-const { createRateLimiter, assertSafeUrl, resolveSafePath, resolveExistingFile } = require('./securityUtils');
+const { createRateLimiter, assertSafeUrl, fetchSafeUrl, resolveSafePath, resolveExistingFile } = require('./securityUtils');
 
 const MAX_REMOTE_AUDIO_BYTES = 250 * 1024 * 1024;
 const MAX_PROXY_HTML_BYTES = 5 * 1024 * 1024;
@@ -245,18 +245,20 @@ app.post('/api/proxy/musicdel', async (req, res) => {
 
         
 
-        const response = await fetchWithTimeout(targetUrl, {
+        const response = await fetchSafeUrl(targetUrl.href, {
+            allowHosts: ['musicdel.ir', 'www.musicdel.ir', 'dl.musicdel.ir'],
+            timeoutMs: 30_000,
+            maxRedirects: 5,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                 'Accept-Language': 'fa-IR,fa;q=0.9,en-US;q=0.8,en;q=0.7',
-                'Accept-Encoding': 'gzip, deflate, br',
                 'Cache-Control': 'no-cache'
-            },
-            timeout: 30000
+            }
         });
 
         if (!response.ok) {
+            if (response.body) await response.body.cancel();
             console.warn(`️ Proxy response not OK: ${response.status} for ${url}`);
             return res.status(response.status).json({ 
                 error: `Server responded with status ${response.status}` 
@@ -314,25 +316,18 @@ app.get('/api/proxy/musicdel/download', async (req, res) => {
         console.debug(`Proxy download from: ${targetUrl.toString()}`);
 
         
-        const response = await fetchWithTimeout(targetUrl, {
-            redirect: 'manual',
+        const response = await fetchSafeUrl(targetUrl.href, {
+            allowHosts: ['musicdel.ir', 'www.musicdel.ir', 'dl.musicdel.ir'],
+            timeoutMs: 60_000,
+            maxRedirects: 5,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Accept': '*/*',
-                'Accept-Encoding': 'gzip, deflate, br',
                 'Accept-Language': 'fa-IR,fa;q=0.9,en-US;q=0.8,en;q=0.7'
             }
-        }, 60_000);
-
-        if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
-            const redirectedUrl = await assertSafeUrl(new URL(response.headers.get('location'), targetUrl).href, {
-                allowHosts: ['musicdel.ir', 'www.musicdel.ir', 'dl.musicdel.ir']
-            });
-            const redirected = await fetchWithTimeout(redirectedUrl, { redirect: 'manual' }, 60_000);
-            if (!redirected.ok) throw new Error(`Download failed: ${redirected.status}`);
-            return streamRemoteAudio(redirected, res);
-        }
+        });
         if (!response.ok) {
+            if (response.body) await response.body.cancel();
             throw new Error(`Download failed: ${response.status}`);
         }
         return streamRemoteAudio(response, res);
@@ -370,16 +365,19 @@ app.post('/api/search/musicdel', async (req, res) => {
             allowHosts: ['musicdel.ir', 'www.musicdel.ir']
         });
 
-        const response = await fetchWithTimeout(safeSearchUrl, {
+        const response = await fetchSafeUrl(safeSearchUrl.href, {
+            allowHosts: ['musicdel.ir', 'www.musicdel.ir'],
+            timeoutMs: 30_000,
+            maxRedirects: 5,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'fa-IR,fa;q=0.9,en-US;q=0.8,en;q=0.7',
-            },
-            timeout: 30000
+                'Accept-Language': 'fa-IR,fa;q=0.9,en-US;q=0.8,en;q=0.7'
+            }
         });
 
         if (!response.ok) {
+            if (response.body) await response.body.cancel();
             console.warn(`️ MusicDel search failed with status: ${response.status}`);
             return res.status(response.status).json({ error: `MusicDel search failed with status ${response.status}` });
         }
@@ -713,13 +711,8 @@ function setupRoutes() {
                 fs.mkdirSync(tempDir, { recursive: true });
             }
             
-            // Clear downloads temp
-            const downloadsDir = path.join(userDataPath, 'downloads');
-            if (fs.existsSync(downloadsDir)) {
-                fs.rmSync(downloadsDir, { recursive: true, force: true });
-                fs.mkdirSync(downloadsDir, { recursive: true });
-            }
-            
+            // The downloads directory contains audio files referenced by library tracks.
+            // It is persistent user data, not disposable cache.
             res.json({ success: true });
         } catch (error) {
             console.error('Clear cache error:', error);

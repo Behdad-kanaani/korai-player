@@ -3,6 +3,8 @@ const fs = require('fs');
 const net = require('net');
 const os = require('os');
 const path = require('path');
+const https = require('https');
+const { Readable } = require('stream');
 
 function getClientIp(req) {
   // The server is bound to loopback, so forwarding headers are not trusted.
@@ -48,36 +50,65 @@ function isLocalAddress(address) {
   if (family === 4) {
     const octets = normalized.split('.').map(Number);
     if (octets.length !== 4 || octets.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return true;
-    const [a, b] = octets;
+    const [a, b, c] = octets;
     return (
       a === 0 ||
       a === 10 ||
       a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
       (a === 169 && b === 254) ||
       (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168)
+      (a === 192 && (b === 168 || (b === 0 && (c === 0 || c === 2)))) ||
+      (a === 192 && b === 88 && c === 99) ||
+      (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) ||
+      (a === 203 && b === 0 && c === 113) ||
+      a >= 224
     );
   }
 
   if (family === 6) {
-    // IPv4-mapped IPv6 addresses.
-    if (normalized.startsWith('::ffff:')) {
-      return isLocalAddress(normalized.slice(7));
+    const halves = normalized.split('::');
+    if (halves.length > 2) return true;
+    const parseHalf = half => {
+      if (!half) return [];
+      const groups = half.split(':');
+      if (groups.some(group => !/^[\da-f]{1,4}$/.test(group))) return null;
+      return groups.map(group => Number.parseInt(group, 16));
+    };
+    const left = parseHalf(halves[0]);
+    const right = parseHalf(halves[1] || '');
+    if (!left || !right || (halves.length === 1 && left.length !== 8) || left.length + right.length > 8) return true;
+    const groups = [...left, ...Array(8 - left.length - right.length).fill(0), ...right];
+
+    if (groups.slice(0, 5).every(group => group === 0) && groups[5] === 0xffff) {
+      const high = groups[6];
+      const low = groups[7];
+      return isLocalAddress([
+        high >> 8, high & 0xff, low >> 8, low & 0xff
+      ].join('.'));
     }
 
-    const firstHextet = parseInt(normalized.split(':')[0] || '0', 16);
+    const firstHextet = groups[0];
+    const secondHextet = groups[1];
     return (
       normalized === '::' ||
       normalized === '::1' ||
       (firstHextet >= 0xfc00 && firstHextet <= 0xfdff) ||
-      (firstHextet >= 0xfe80 && firstHextet <= 0xfebf)
+      (firstHextet >= 0xfe80 && firstHextet <= 0xfebf) ||
+      firstHextet >= 0xff00 ||
+      firstHextet < 0x2000 ||
+      firstHextet > 0x3fff ||
+      (firstHextet === 0x2001 && secondHextet <= 0x01ff) ||
+      (firstHextet === 0x2001 && secondHextet === 0x0db8) ||
+      (firstHextet === 0x2002) ||
+      (firstHextet === 0x3fff && (secondHextet & 0xfff0) === 0)
     );
   }
 
   return true;
 }
 
-async function assertSafeUrl(inputUrl, options = {}) {
+async function resolveSafeUrl(inputUrl, options = {}) {
   if (!inputUrl || typeof inputUrl !== 'string') {
     throw new Error('URL is required');
   }
@@ -105,7 +136,7 @@ async function assertSafeUrl(inputUrl, options = {}) {
 
   const allowedHosts = (options.allowHosts || []).map(host => String(host).toLowerCase().trim()).filter(Boolean);
   if (allowedHosts.length > 0) {
-    const isAllowed = allowedHosts.some(host => hostname === host || hostname.endsWith(`.${host}`));
+    const isAllowed = allowedHosts.includes(hostname);
     if (!isAllowed) throw new Error('Host not allowed');
   }
 
@@ -120,7 +151,81 @@ async function assertSafeUrl(inputUrl, options = {}) {
     throw new Error('Refusing to access local network address');
   }
 
-  return parsed;
+  return { url: parsed, addresses };
+}
+
+async function assertSafeUrl(inputUrl, options = {}) {
+  const resolved = await resolveSafeUrl(inputUrl, options);
+  return resolved.url;
+}
+
+function createPinnedLookup(hostname, addresses) {
+  const approvedHostname = String(hostname).toLowerCase();
+  const approvedAddresses = addresses.map(({ address, family }) => ({ address, family }));
+  if (approvedAddresses.length === 0) throw new Error('No validated IP addresses available');
+
+  return (requestedHostname, options, callback) => {
+    if (String(requestedHostname).toLowerCase() !== approvedHostname) {
+      callback(new Error('DNS lookup hostname changed after URL validation'));
+      return;
+    }
+
+    if (options && options.all) {
+      callback(null, approvedAddresses);
+      return;
+    }
+
+    const address = approvedAddresses[0];
+    callback(null, address.address, address.family);
+  };
+}
+
+async function fetchSafeUrl(inputUrl, options = {}) {
+  const maxRedirects = Number.isInteger(options.maxRedirects) ? options.maxRedirects : 5;
+  const timeoutMs = Number.isFinite(options.timeoutMs) ? options.timeoutMs : 30_000;
+  const requestHeaders = options.headers || {};
+  let currentUrl = inputUrl;
+
+  for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount += 1) {
+    const { url, addresses } = await resolveSafeUrl(currentUrl, options);
+    const response = await new Promise((resolve, reject) => {
+      const request = https.request(url, {
+        method: 'GET',
+        headers: requestHeaders,
+        lookup: createPinnedLookup(url.hostname, addresses)
+      }, resolve);
+
+      request.setTimeout(timeoutMs, () => request.destroy(new Error('Request timeout')));
+      request.once('error', reject);
+      request.end();
+    });
+
+    const location = response.headers.location;
+    if (response.statusCode >= 300 && response.statusCode < 400 && location) {
+      response.resume();
+      if (redirectCount === maxRedirects) throw new Error('Too many redirects');
+      currentUrl = new URL(location, url).href;
+      continue;
+    }
+
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(response.headers)) {
+      if (Array.isArray(value)) {
+        value.forEach(item => headers.append(name, item));
+      } else if (value != null) {
+        headers.set(name, String(value));
+      }
+    }
+
+    return {
+      status: response.statusCode || 0,
+      ok: response.statusCode >= 200 && response.statusCode < 300,
+      headers,
+      body: Readable.toWeb(response)
+    };
+  }
+
+  throw new Error('Too many redirects');
 }
 
 function isPathInside(baseDir, candidatePath) {
@@ -223,6 +328,9 @@ module.exports = {
   isLocalAddress,
   isPathInside,
   assertSafeUrl,
+  resolveSafeUrl,
+  createPinnedLookup,
+  fetchSafeUrl,
   resolveSafePath,
   resolveExistingFile,
   isSafeKey,

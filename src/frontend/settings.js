@@ -603,11 +603,12 @@ async function clearCache() {
         if (res.ok) {
             showToast(t('settingsCacheCleared'), 'success');
         } else {
-            throw new Error(t('settingsCacheClearFailed'));
+            const result = await res.json().catch(() => ({}));
+            throw new Error(result.error || t('settingsCacheClearFailed'));
         }
     } catch (err) {
         console.error('Cache clear failed:', err);
-        showToast(t('settingsCacheClearFailed'), 'error');
+        showToast(err.message || t('settingsCacheClearFailed'), 'error');
     }
 }
 

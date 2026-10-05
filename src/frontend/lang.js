@@ -577,6 +577,7 @@ const translations = {
 
         // Explorer Page
         explorerSearchPlaceholder: "Type a song, artist or album name...",
+        explorerSections: "Explorer sections",
         explorerSearchBtn: "Search",
         explorerNoResults: "No results found",
         explorerSearchHint: "Ready to explore new sounds.",
@@ -629,6 +630,10 @@ const translations = {
         explorerSearchQueriesMissing: "No search queries available.",
         explorerAddedFavorite: "Added to favorites",
         explorerRemovedFavorite: "Removed from favorites",
+        explorerFavoriteSyncFailed: "Saved in Explorer, but could not sync with your library.",
+        explorerStorageFailed: "Favorites could not be saved on this device.",
+        explorerUnknownTrack: "Unknown track",
+        explorerUnknownArtist: "Unknown artist",
         explorerRetry: "Retry",
         explorerDownloading: "Downloading...",
         explorerAddedLibrary: "Added to library.",
@@ -1279,6 +1284,7 @@ const translations = {
 
         // Explorer Page
         explorerSearchPlaceholder: "نام آهنگ، خواننده یا آلبوم را تایپ کنید...",
+        explorerSections: "بخش‌های کاوش",
         explorerSearchBtn: "جستجو",
         explorerNoResults: "نتیجه‌ای یافت نشد",
         explorerSearchHint: "آماده کشف صداهای جدید هستید.",
@@ -1331,6 +1337,10 @@ const translations = {
         explorerSearchQueriesMissing: "عبارت جستجویی در دسترس نیست.",
         explorerAddedFavorite: "به موردعلاقه‌ها افزوده شد",
         explorerRemovedFavorite: "از موردعلاقه‌ها حذف شد",
+        explorerFavoriteSyncFailed: "در کاوش ذخیره شد، اما با کتابخانه همگام نشد.",
+        explorerStorageFailed: "ذخیرهٔ موردعلاقه‌ها روی این دستگاه ممکن نبود.",
+        explorerUnknownTrack: "آهنگ ناشناخته",
+        explorerUnknownArtist: "خواننده ناشناخته",
         explorerRetry: "تلاش دوباره",
         explorerDownloading: "در حال دریافت...",
         explorerAddedLibrary: "به کتابخانه افزوده شد.",

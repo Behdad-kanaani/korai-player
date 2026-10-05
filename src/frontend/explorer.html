@@ -7,7 +7,6 @@
   <title data-translate="explorerBrand">KORAI Explore</title>
 <!-- FontAwesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="stylesheet" href="styles/pages.css">
   
   <style>
     /* =========================================
@@ -1028,6 +1027,205 @@
       .empty-state h3 { font-size: 1.5rem; }
       .brand-attribution { display: none; }
     }
+
+    :root {
+      --primary: #51e891;
+      --primary-glow: rgba(81,232,145,.22);
+      --secondary: #43b9a0;
+      --bg-dark: #090d10;
+      --bg-light: #111a1d;
+      --glass-border: rgba(222,240,231,.09);
+      --glass-border-highlight: rgba(222,240,231,.15);
+      --text-muted: #9eaaa8;
+      --text-dim: #75827f;
+      --radius-xl: 24px;
+      --radius-lg: 17px;
+      --transition-bounce: .22s cubic-bezier(.2,.72,.2,1);
+    }
+    body {
+      background: radial-gradient(ellipse at 50% -20%,rgba(54,139,100,.11),transparent 58%),var(--bg-dark);
+      font-family: Inter,Vazirmatn,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    }
+    body::before { opacity: .18; }
+    .ambient-orbs { opacity: .3; }
+    .ambient-orbs span { filter: blur(145px); opacity: .16; }
+    .app-container { width: min(100%,1440px); padding: 26px clamp(16px,4vw,48px) 80px; align-items: stretch; }
+    .top-bar {
+      min-height: 60px;
+      margin-bottom: 30px;
+      padding: 10px 14px;
+      border: 1px solid var(--glass-border);
+      border-radius: 15px;
+      background: rgba(13,19,21,.82);
+      box-shadow: 0 12px 34px rgba(0,0,0,.16),inset 0 1px rgba(255,255,255,.025);
+      backdrop-filter: blur(18px);
+    }
+    .brand-logo { min-width: 0; gap: 10px; font-size: 1rem; letter-spacing: -.02em; }
+    .brand-logo i {
+      width: 34px; height: 34px; display: grid; place-items: center;
+      border: 1px solid rgba(81,232,145,.17); border-radius: 10px;
+      background: rgba(81,232,145,.08); color: var(--primary); font-size: 15px; filter: none;
+    }
+    .brand-attribution {
+      max-width: 260px; overflow: hidden; margin-inline-start: 7px; padding-inline-start: 12px;
+      border-inline-start: 1px solid var(--glass-border); border-right: 0; padding-right: 0; margin-right: 0;
+      color: #76827f; font-size: .7rem; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .btn-back { min-height: 38px; padding: 8px 13px; gap: 8px; border-radius: 10px; background: rgba(255,255,255,.035); font-size: .76rem; box-shadow: none; }
+    .btn-back { color: inherit; text-decoration: none; }
+    .btn-back:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,0,0,.2); }
+    .tabs-wrapper { justify-content: flex-start; margin-bottom: 25px; }
+    .tabs-container { gap: 5px; padding: 5px; border-radius: 12px; background: rgba(14,20,22,.84); box-shadow: none; }
+    .tab-btn { min-height: 39px; padding: 9px 15px; gap: 8px; border-radius: 9px; font-size: .78rem; }
+    .tab-btn i { font-size: .85rem; }
+    .tab-btn.active { box-shadow: none; }
+    .tab-btn[data-tab="search"].active,
+    .tab-btn[data-tab="newreleases"].active { border: 1px solid rgba(81,232,145,.18); background: rgba(81,232,145,.09); color: #8af2b1; text-shadow: none; }
+    .tab-btn[data-tab="liked"].active { border: 1px solid rgba(255,105,119,.18); background: rgba(255,105,119,.08); color: #ff9ba4; text-shadow: none; }
+    .tab-btn:focus-visible,.filter-chip:focus-visible,.btn-back:focus-visible,.btn-search:focus-visible,
+    .action-btn:focus-visible,.btn-play-circle:focus-visible,.musicdel-modal-close:focus-visible,.mini-download-btn:focus-visible {
+      outline: 2px solid #70eba0; outline-offset: 3px;
+    }
+    .tab-content { animation-duration: .28s; }
+    .tab-content[hidden] { display: none !important; }
+    .section-hero {
+      position: relative; align-items: flex-start; margin: 0 0 20px; padding: clamp(20px,3vw,30px);
+      overflow: hidden; text-align: start; border: 1px solid rgba(255,255,255,.07); border-radius: 17px;
+      background: radial-gradient(ellipse at 90% 0,rgba(81,232,145,.09),transparent 45%),linear-gradient(135deg,rgba(19,28,29,.92),rgba(13,19,21,.94));
+    }
+    .section-hero::before { content: "KORAI  /  EXPLORE"; margin-bottom: 10px; color: #72d99a; font-size: .62rem; font-weight: 850; letter-spacing: .16em; }
+    .section-hero h2 { margin: 0 0 7px; gap: 12px; font-size: clamp(1.5rem,3vw,2.25rem); letter-spacing: -.045em; }
+    .section-hero h2 i {
+      width: 42px; height: 42px; display: grid; flex: 0 0 42px; place-items: center; margin: 0 !important;
+      border: 1px solid rgba(81,232,145,.16); border-radius: 12px; background: rgba(81,232,145,.08);
+      color: var(--primary) !important; font-size: 17px !important; filter: none !important;
+    }
+    .section-hero p { max-width: 620px; font-size: .88rem; line-height: 1.7; }
+    .search-box {
+      max-width: none; min-height: 62px; margin: 0 0 16px; padding: 6px; border-radius: 13px;
+      border: 1px solid rgba(255,255,255,.09); border-top-color: rgba(255,255,255,.13);
+      background: rgba(13,19,21,.92); box-shadow: 0 12px 32px rgba(0,0,0,.17); backdrop-filter: blur(14px);
+    }
+    .search-box:focus-within { transform: none; border-color: rgba(81,232,145,.4); }
+    .search-box::before { display: none; }
+    .search-input-wrap { min-width: 0; padding-inline: 15px; gap: 11px; }
+    .search-input-wrap i { color: #7f9088; font-size: 1rem; }
+    .search-box:focus-within .search-input-wrap i { color: var(--primary); transform: none; filter: none; }
+    .search-box input { min-width: 0; font-size: .9rem; }
+    .btn-search {
+      min-height: 46px; padding: 0 23px; border-radius: 10px;
+      background: linear-gradient(135deg,#75eca1,#42d781); color: #07120b; font-size: .82rem;
+      box-shadow: 0 6px 18px rgba(54,213,121,.14);
+    }
+    .btn-search:hover { transform: translateY(-1px); background: linear-gradient(135deg,#91f2b3,#54e28f); box-shadow: 0 9px 22px rgba(54,213,121,.21); }
+    .btn-search::after { display: none; }
+    .btn-play-circle:disabled { opacity: .35; cursor: not-allowed; }
+    .filters-container { justify-content: flex-start; gap: 7px; margin: 0 0 18px; }
+    .filter-chip { min-height: 34px; padding: 7px 11px; gap: 7px; border-radius: 9px; background: rgba(255,255,255,.025); color: #9eaaa8; font: inherit; font-size: .72rem; }
+    .filter-chip.active { border-color: rgba(81,232,145,.28); background: rgba(81,232,145,.09); color: #9af2b9; box-shadow: none; }
+    .meta-bar {
+      justify-content: space-between; min-height: 39px; margin-bottom: 14px; padding: 0 2px 10px;
+      color: #82908c; font-size: .76rem; letter-spacing: 0; border-bottom-color: rgba(255,255,255,.07);
+    }
+    .meta-bar strong { color: #e5eee8; font-variant-numeric: tabular-nums; }
+    .results-grid,.skeleton-grid { grid-template-columns: repeat(auto-fill,minmax(220px,1fr)); gap: 15px; }
+    .track-card {
+      border: 1px solid rgba(255,255,255,.075); border-radius: 14px;
+      background: linear-gradient(155deg,rgba(22,31,32,.94),rgba(13,19,21,.96));
+      box-shadow: 0 8px 22px rgba(0,0,0,.15); backdrop-filter: none;
+    }
+    .track-card:hover { transform: translateY(-3px); border-color: rgba(81,232,145,.2); background: linear-gradient(155deg,rgba(25,36,35,.98),rgba(14,21,22,.98)); box-shadow: 0 14px 30px rgba(0,0,0,.24); }
+    .card-img-wrapper { aspect-ratio: 1.18; background: #121a1b; }
+    .card-img-wrapper img { object-fit: cover; }
+    .card-img-wrapper img.is-broken { display: none; }
+    .fallback-icon { color: rgba(135,223,167,.32); font-size: 3rem; }
+    .card-overlay { background: rgba(4,10,8,.35); backdrop-filter: blur(2px); }
+    .btn-play-circle { width: 48px; height: 48px; padding: 0; border-color: rgba(255,255,255,.23); background: rgba(9,17,13,.72); color: #9af2b9; font-size: 1rem; transform: translateY(6px) scale(.94); box-shadow: 0 8px 22px rgba(0,0,0,.28); }
+    .track-card:hover .btn-play-circle,.track-card:focus-within .btn-play-circle { transform: translateY(0) scale(1); }
+    .btn-play-circle:hover { background: #73e99d; color: #07120b; border-color: #73e99d; }
+    .card-content { gap: 7px; padding: 15px; text-align: start; }
+    .card-title { font-size: .95rem; letter-spacing: -.02em; }
+    .card-subtitle { color: #95a29d; font-size: .78rem; }
+    .card-badges { gap: 6px; padding-top: 10px; }
+    .badge { padding: 4px 8px; border-radius: 7px; color: #a4b1ab; font-size: .63rem; letter-spacing: 0; }
+    .card-actions { gap: 8px; margin-top: 12px; padding-top: 12px; }
+    .action-btn { min-height: 37px; padding: 8px 9px; gap: 6px; border-radius: 9px; font-size: .72rem; }
+    .btn-like { color: #bec8c2; }
+    .btn-like:hover { transform: translateY(-1px); }
+    .btn-like.liked { border: 1px solid rgba(255,105,119,.22); background: rgba(255,105,119,.11); color: #ff9ba4; box-shadow: none; }
+    .btn-import { border-color: rgba(81,232,145,.2); background: rgba(81,232,145,.07); color: #90edb1; }
+    .btn-import:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 5px 14px rgba(81,232,145,.1); }
+    .empty-state { min-height: 300px; padding: 42px 20px; }
+    .empty-state i { width: 76px; height: 76px; margin-bottom: 19px; border-radius: 22px; font-size: 29px; box-shadow: none; }
+    .empty-state h3 { margin-bottom: 7px; font-size: 1.25rem; }
+    .empty-state p { font-size: .86rem; }
+    .musicdel-modal-overlay { padding: 18px; background: rgba(4,8,9,.78); backdrop-filter: blur(15px); }
+    .musicdel-modal { position: relative; width: min(1320px,100%); height: min(820px,88vh); border: 1px solid rgba(255,255,255,.11); border-radius: 19px; background: #101719; box-shadow: 0 32px 90px rgba(0,0,0,.58); }
+    .musicdel-modal-header { min-height: 66px; padding: 13px 18px; background: rgba(255,255,255,.018); border-bottom-color: rgba(255,255,255,.075); }
+    .musicdel-modal-header h3 { gap: 10px; font-size: .96rem; }
+    .musicdel-modal-header h3 i { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid rgba(255,145,105,.18); border-radius: 10px; background: rgba(255,145,105,.08); font-size: 14px; filter: none; }
+    .musicdel-modal-header .modal-subtitle { margin-inline-start: 4px; padding-inline-start: 11px; border-inline-start: 1px solid rgba(255,255,255,.1); border-right: 0; padding-right: 0; color: #7e8c87; font-size: .72rem; }
+    .musicdel-modal-close { width: 36px; height: 36px; border-radius: 10px; font-size: .9rem; }
+    .musicdel-modal-body { min-height: 0; padding: 15px; }
+    .musicdel-columns { min-height: 0; gap: 12px; }
+    .musicdel-column { min-width: 0; border-color: rgba(255,255,255,.07); border-radius: 13px; background: rgba(18,26,27,.86); box-shadow: none; }
+    .musicdel-column-header { min-width: 0; padding: 11px 12px; gap: 8px; font-size: .72rem; }
+    .musicdel-column-header div { min-width: 0; gap: 7px; }
+    .musicdel-column-header .query-badge { max-width: 46%; padding: 4px 8px; font-size: .63rem; }
+    .musicdel-column-results { min-height: 0; padding: 9px; gap: 8px; }
+    .md-result-mini { min-width: 0; gap: 9px; padding: 8px; border-color: rgba(255,255,255,.06); border-radius: 10px; cursor: default; }
+    .md-result-mini:hover { transform: none; border-color: rgba(255,145,105,.18); }
+    .md-result-mini .mini-thumb { width: 42px; height: 42px; border-radius: 8px; }
+    .md-result-mini .mini-info { min-width: 0; }
+    .md-result-mini .mini-title { font-size: .72rem; }
+    .md-result-mini .mini-artist { font-size: .64rem; }
+    .md-result-mini .mini-download-btn { padding: 7px 10px; border-radius: 8px; font-size: .65rem; }
+    .toast-container { z-index: 12000; right: 20px; bottom: 20px; gap: 9px; }
+    .toast { max-width: min(420px,calc(100vw - 32px)); padding: 12px 15px; gap: 10px; border-left-width: 3px; border-radius: 11px; font-size: .78rem; }
+    .toast i { font-size: .95rem; }
+    @keyframes slideOutRight { to { opacity: 0; transform: translateX(14px); } }
+    @media (max-width: 760px) {
+      .app-container { padding: 14px 14px 40px; }
+      .top-bar { margin-bottom: 20px; }
+      .tabs-wrapper { margin-bottom: 20px; }
+      .section-hero { padding: 20px; text-align: start; align-items: flex-start; }
+      .section-hero h2 { flex-direction: row; font-size: 1.55rem; }
+      .section-hero p { font-size: .82rem; }
+      .search-box { flex-direction: row; border-radius: 12px; padding: 5px; gap: 5px; }
+      .search-input-wrap { min-height: 44px; padding-inline: 11px; }
+      .search-box input { font-size: .8rem; }
+      .btn-search { width: auto; min-height: 42px; padding: 0 14px; border-radius: 9px; }
+      .filters-container { flex-wrap: nowrap; }
+      .musicdel-modal-overlay { padding: 9px; }
+      .musicdel-modal { height: min(90vh,820px); border-radius: 15px; }
+      .musicdel-modal-header { flex-direction: row; align-items: center; gap: 10px; }
+      .musicdel-modal-close { position: static; flex: 0 0 36px; }
+      .musicdel-modal-body { padding: 9px; overflow-y: auto; }
+      .musicdel-columns { grid-template-columns: 1fr; grid-auto-rows: minmax(220px,1fr); }
+      #md-col-2 { grid-column: auto; }
+      .musicdel-column-results { max-height: 34vh; }
+    }
+    @media (max-width: 480px) {
+      .app-container { padding-inline: 11px; }
+      .brand-logo { font-size: .88rem; }
+      .btn-back { min-height: 35px; padding-inline: 9px; font-size: .68rem; }
+      .tabs-container { width: 100%; justify-content: space-between; }
+      .tab-btn { min-width: 0; flex: 1; justify-content: center; padding-inline: 8px; font-size: .7rem; }
+      .section-hero { padding: 17px; }
+      .section-hero h2 { font-size: 1.25rem; }
+      .section-hero h2 i { width: 36px; height: 36px; flex-basis: 36px; font-size: 14px !important; }
+      .results-grid,.skeleton-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+      .card-content { padding: 10px; }
+      .card-title { font-size: .8rem; }
+      .card-subtitle { font-size: .66rem; }
+      .card-actions { flex-direction: column; gap: 6px; }
+      .action-btn { width: 100%; min-height: 34px; }
+      .brand-attribution { display: none; }
+      .musicdel-modal-header { padding: 12px; }
+      .musicdel-modal-header h3 { padding-inline-end: 0; font-size: .82rem; }
+      .musicdel-modal-header .modal-subtitle { display: none; }
+    }
+
   </style>
 </head>
 <body>
@@ -1044,38 +1242,38 @@
         <span data-translate="explorerBrand">KORAI Explore</span>
         <span class="brand-attribution" data-translate="explorerBrandAttribution">Downloads are sourced from MusicDel.</span>
       </div>
-      <button class="btn-back" onclick="history.back()">
+      <a class="btn-back" href="index.html">
         <i class="fa-solid fa-arrow-left"></i> <span data-translate="explorerBack">Back to player</span>
-      </button>
+      </a>
     </header>
 
     <!-- Navigation Tabs -->
-    <nav class="tabs-wrapper">
+    <nav class="tabs-wrapper" role="tablist" data-translate-aria-label="explorerSections" aria-label="Explorer sections">
       <div class="tabs-container">
-        <button class="tab-btn active" data-tab="search">
+        <button class="tab-btn active" id="tab-search-control" type="button" role="tab" aria-selected="true" aria-controls="tab-search" data-tab="search">
           <i class="fa-solid fa-magnifying-glass"></i> <span data-translate="explorerTabExplore">Explore</span>
         </button>
-        <button class="tab-btn" data-tab="newreleases">
+        <button class="tab-btn" id="tab-newreleases-control" type="button" role="tab" aria-selected="false" aria-controls="tab-newreleases" data-tab="newreleases">
           <i class="fa-solid fa-bolt"></i> <span data-translate="explorerTabDiscover">Discover</span>
         </button>
-        <button class="tab-btn" data-tab="liked">
+        <button class="tab-btn" id="tab-liked-control" type="button" role="tab" aria-selected="false" aria-controls="tab-liked" data-tab="liked">
           <i class="fa-solid fa-heart"></i> <span data-translate="explorerFavorites">Favorites</span>
         </button>
       </div>
     </nav>
 
     <!-- Tab 1: Global Search -->
-    <main class="tab-content active" id="tab-search">
+    <main class="tab-content active" id="tab-search" role="tabpanel" aria-labelledby="tab-search-control">
       <div class="section-hero">
-        <h2><i class="fa-solid fa-sparkles" style="color:var(--primary); font-size: 3rem; filter:drop-shadow(0 0 15px var(--primary-glow))"></i> <span data-translate="explorerSearchTitle">Search the universe</span></h2>
+        <h2><i class="fa-solid fa-magnifying-glass" style="color:var(--primary); font-size: 3rem; filter:drop-shadow(0 0 15px var(--primary-glow))"></i> <span data-translate="explorerSearchTitle">Search the universe</span></h2>
         <p data-translate="explorerSearchDesc">Find tracks, artists, albums, and playlists in great quality.</p>
       </div>
       <div class="search-box">
         <div class="search-input-wrap">
           <i class="fa-solid fa-search"></i>
-          <input type="text" id="searchInput" data-translate-placeholder="explorerSearchPlaceholder" placeholder="Type a song, artist or album name..." autocomplete="off">
+          <input type="search" id="searchInput" data-translate-placeholder="explorerSearchPlaceholder" data-translate-aria-label="explorerSearchPlaceholder" placeholder="Type a song, artist or album name..." autocomplete="off" aria-label="Search tracks, artists, albums, and playlists">
         </div>
-        <button class="btn-search" id="searchBtn" data-translate="explorerSearchBtn">Search</button>
+        <button class="btn-search" id="searchBtn" type="button" data-translate="explorerSearchBtn">Search</button>
       </div>
       <div class="filters-container" id="filtersContainer">
         <!-- Dynamically injected via JS -->
@@ -1087,7 +1285,7 @@
     </main>
 
     <!-- Tab 2: New Releases -->
-    <main class="tab-content" id="tab-newreleases">
+    <section class="tab-content" id="tab-newreleases" role="tabpanel" aria-labelledby="tab-newreleases-control" hidden>
       <div class="section-hero">
         <h2><i class="fa-solid fa-bolt" style="color:var(--primary); font-size: 3rem;"></i> <span data-translate="explorerFreshDrops">Fresh Drops</span></h2>
         <p data-translate="explorerFreshDropsDesc">The hottest new releases and trending albums updated daily.</p>
@@ -1095,40 +1293,40 @@
       <div class="meta-bar" id="nrMeta"><span data-translate="explorerFetching">Fetching latest hits...</span></div>
       <div class="results-grid" id="nrGrid"></div>
       <div class="skeleton-grid" id="nrSkeleton"></div>
-    </main>
+    </section>
 
     <!-- Tab 3: Favorites -->
-    <main class="tab-content" id="tab-liked">
+    <section class="tab-content" id="tab-liked" role="tabpanel" aria-labelledby="tab-liked-control" hidden>
       <div class="section-hero">
         <h2><i class="fa-solid fa-heart" style="color:var(--accent); font-size: 3rem; filter:drop-shadow(0 0 15px var(--accent-glow))"></i> <span data-translate="explorerCollectionTitle">Your collection</span></h2>
         <p data-translate="explorerLikedEmptyDesc">All the tracks you've loved and saved in one beautiful place.</p>
       </div>
       <div class="meta-bar" id="likedMeta"><span></span></div>
       <div class="results-grid" id="likedGrid"></div>
-    </main>
+    </section>
 
   </div>
 
   <!-- MUSICDEL MODAL (3-COLUMN DASHBOARD) -->
-  <div class="musicdel-modal-overlay" id="musicdelModal">
-    <div class="musicdel-modal">
+  <div class="musicdel-modal-overlay" id="musicdelModal" aria-hidden="true">
+    <section class="musicdel-modal" role="dialog" aria-modal="true" aria-labelledby="musicdelModalTitle">
       <div class="musicdel-modal-header">
         <h3>
           <i class="fa-solid fa-music"></i>
-          <span data-translate="explorerMusicDelTitle">MusicDel Engine</span>
+          <span id="musicdelModalTitle" data-translate="explorerMusicDelTitle">MusicDel Engine</span>
           <span class="modal-subtitle" data-translate="explorerMusicDelSubtitle">Advanced multi-strategy search</span>
         </h3>
-        <button class="musicdel-modal-close" id="musicdelModalClose" data-translate-title="explorerClose" aria-label="Close">
+        <button class="musicdel-modal-close" id="musicdelModalClose" type="button" data-translate-title="explorerClose" aria-label="Close">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
-      <div class="musicdel-modal-body" id="musicdelModalBody">
+      <div class="musicdel-modal-body" id="musicdelModalBody" aria-live="polite">
         <!-- Columns will be rendered by JS -->
       </div>
-    </div>
+    </section>
   </div>
 
-  <div class="toast-container" id="toastContainer"></div>
+  <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="false"></div>
 
   <script src="lang.js"></script>
   <script>
@@ -1142,6 +1340,15 @@
       const LIKED_DATA_KEY = 'korai_liked_items';
       const LIKED_IDS_KEY = 'korai_explorer_likes';
       const ITEMS_PER_PAGE = 24;
+      const readStoredArray = key => {
+        try {
+          const value = JSON.parse(localStorage.getItem(key) || '[]');
+          return Array.isArray(value) ? value : [];
+        } catch (error) {
+          console.warn(`Explorer ignored invalid stored data for "${key}".`, error);
+          return [];
+        }
+      };
       const getLanguage = () => localStorage.getItem('user_lang') === 'fa' ? 'fa' : 'en';
       const t = (key, values = {}) => {
         const dictionary = window.translations || {};
@@ -1166,6 +1373,9 @@
           element.title = t(element.dataset.translateTitle);
           element.setAttribute('aria-label', element.title);
         });
+        document.querySelectorAll('[data-translate-aria-label]').forEach(element => {
+          element.setAttribute('aria-label', t(element.dataset.translateAriaLabel));
+        });
       };
       applyLanguage();
       window.addEventListener('storage', event => {
@@ -1180,6 +1390,13 @@
             renderLiked();
           }
         }
+        if (event.key === LIKED_IDS_KEY || event.key === LIKED_DATA_KEY || event.key === null) {
+          state.likedSet = new Set(readStoredArray(LIKED_IDS_KEY).map(String));
+          state.likedItems = readStoredArray(LIKED_DATA_KEY)
+            .filter(item => item && item.id != null && state.likedSet.has(String(item.id)));
+          if (state.activeTab === 'liked') renderLiked();
+          syncVisibleLikeButtons();
+        }
       });
 
       const FILTERS = [
@@ -1192,13 +1409,12 @@
       let state = {
         activeTab: 'search',
         filter: 'songs',
-        likedSet: new Set(JSON.parse(localStorage.getItem(LIKED_IDS_KEY) || '[]')),
-        likedItems: JSON.parse(localStorage.getItem(LIKED_DATA_KEY) || '[]'),
+        likedSet: new Set(readStoredArray(LIKED_IDS_KEY).map(String)),
+        likedItems: readStoredArray(LIKED_DATA_KEY),
         lastSearchQuery: ''  
       };
 
-      // Clean up invalid liked items 
-      state.likedItems = state.likedItems.filter(item => state.likedSet.has(item.id));
+      state.likedItems = state.likedItems.filter(item => item && item.id != null && state.likedSet.has(String(item.id)));
 
       // ==========================================
       // Utility Functions
@@ -1216,13 +1432,26 @@
         return 'http://127.0.0.1:3000';
       }
 
-      const escapeHtml = (text) => String(text || '').replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m] || m));
+      const escapeHtml = text => String(text ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[char]));
+      const safeImageUrl = value => {
+        if (!value) return '';
+        try {
+          const url = new URL(String(value), location.href);
+          return ['https:', 'http:', 'blob:'].includes(url.protocol) ||
+            (url.protocol === 'data:' && /^data:image\//i.test(String(value))) ? url.href : '';
+        } catch (error) {
+          return '';
+        }
+      };
       const formatDuration = (sec) => sec ? `${Math.floor(sec/60)}:${Math.floor(sec%60).toString().padStart(2,'0')}` : '';
 
       const showToast = (msg, type = 'info') => {
         const container = document.getElementById('toastContainer');
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
+        toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
         const icon = { success: 'fa-check-circle', error: 'fa-circle-exclamation', info: 'fa-info-circle' }[type];
         toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${escapeHtml(msg)}</span>`;
         container.appendChild(toast);
@@ -1261,34 +1490,61 @@
       // Like Management
       // ==========================================
       const saveLikes = () => {
-        localStorage.setItem(LIKED_IDS_KEY, JSON.stringify([...state.likedSet]));
-        localStorage.setItem(LIKED_DATA_KEY, JSON.stringify(state.likedItems));
+        try {
+          localStorage.setItem(LIKED_IDS_KEY, JSON.stringify([...state.likedSet]));
+          localStorage.setItem(LIKED_DATA_KEY, JSON.stringify(state.likedItems));
+        } catch (error) {
+          console.error('Explorer could not save favorites locally:', error);
+          showToast(t('explorerStorageFailed'), 'error');
+        }
         const metaEl = document.getElementById('likedMeta');
         if(metaEl) metaEl.innerHTML = `<span>${t('explorerSavedTracksCount', { count: `<strong>${state.likedItems.length}</strong>` })}</span>`;
       };
 
       const toggleLike = async (item, btnEl) => {
-        const isLiked = state.likedSet.has(item.id);
+        const trackId = String(item.id);
+        const isLiked = state.likedSet.has(trackId);
         if (!isLiked) {
-          state.likedSet.add(item.id);
-          if(!state.likedItems.some(i => i.id === item.id)) state.likedItems.push(item);
+          state.likedSet.add(trackId);
+          if(!state.likedItems.some(i => String(i.id) === trackId)) state.likedItems.push(item);
           btnEl.classList.add('liked');
           btnEl.innerHTML = `<i class="fa-solid fa-heart"></i> ${t('explorerSaved')}`;
           showToast(t('explorerAddedFavorite'), 'success');
         } else {
-          state.likedSet.delete(item.id);
-          state.likedItems = state.likedItems.filter(i => i.id !== item.id);
+          state.likedSet.delete(trackId);
+          state.likedItems = state.likedItems.filter(i => String(i.id) !== trackId);
           btnEl.classList.remove('liked');
           btnEl.innerHTML = `<i class="fa-regular fa-heart"></i> ${t('explorerSave')}`;
           showToast(t('explorerRemovedFavorite'), 'info');
           if(state.activeTab === 'liked') renderLiked();
         }
         saveLikes();
+        syncVisibleLikeButtons();
 
+        if (!item.serverTrackId) return;
         try {
-          const sid = item.serverTrackId || item.id;
-          await fetch(`${LOCAL_API}/api/tracks/${sid}/like`, { method: !isLiked ? 'POST' : 'DELETE' });
-        } catch(e) {}
+          const sid = item.serverTrackId;
+          const response = await fetch(`${LOCAL_API}/api/tracks/${encodeURIComponent(String(sid))}/like`, {
+            method: !isLiked ? 'POST' : 'DELETE'
+          });
+          if (!response.ok) {
+            throw new Error(t('explorerServerResponseError', { status: response.status }));
+          }
+        } catch (error) {
+          console.warn('Explorer favorite saved locally but could not sync with the library:', error);
+          showToast(t('explorerFavoriteSyncFailed'), 'error');
+        }
+      };
+
+      const syncVisibleLikeButtons = () => {
+        document.querySelectorAll('.track-card[data-track-id]').forEach(card => {
+          const button = card.querySelector('.btn-like');
+          if (!button) return;
+          const isLiked = state.likedSet.has(card.dataset.trackId);
+          button.classList.toggle('liked', isLiked);
+          button.setAttribute('aria-pressed', String(isLiked));
+          button.innerHTML = `<i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart"></i> ${t(isLiked ? 'explorerSaved' : 'explorerSave')}`;
+        });
       };
 
       // ==========================================
@@ -1297,55 +1553,75 @@
       const renderCard = (item) => {
         const card = document.createElement('div');
         card.className = 'track-card';
-        const isLiked = state.likedSet.has(item.id);
+        const title = String(item.title || t('explorerUnknownTrack'));
+        const subtitle = String(item.subtitle || '');
+        const trackId = String(item.id ?? item.videoId ?? item.url ?? `${title}|${subtitle}|${item.type || ''}`).trim();
+        const cardItem = { ...item, id: trackId };
+        const imageUrl = safeImageUrl(item.thumbnail);
+        const previewUrl = (() => {
+          if (!item.url) return '';
+          try {
+            const url = new URL(String(item.url), location.href);
+            return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+          } catch (error) {
+            return '';
+          }
+        })();
+        card.dataset.trackId = trackId;
+        const isLiked = state.likedSet.has(trackId);
         
         card.innerHTML = `
           <div class="card-img-wrapper">
-            ${item.thumbnail ? `<img src="${item.thumbnail}" alt="${escapeHtml(item.title)}" loading="lazy">` 
+            ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(title)}" loading="lazy">` 
                              : `<i class="fa-solid fa-music fallback-icon"></i>`}
             <div class="card-overlay">
-              <div class="btn-play-circle" data-url="${escapeHtml(item.url || '')}" title="${escapeHtml(t('explorerPlayPreview'))}" aria-label="${escapeHtml(t('explorerPlayPreview'))}">
+              <button class="btn-play-circle" type="button" ${previewUrl ? '' : 'disabled'} title="${escapeHtml(t('explorerPlayPreview'))}" aria-label="${escapeHtml(t('explorerPlayPreview'))}">
                 <i class="fa-solid fa-play"></i>
-              </div>
+              </button>
             </div>
           </div>
           <div class="card-content">
-            <div class="card-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
-            <div class="card-subtitle" title="${escapeHtml(item.subtitle)}">${escapeHtml(item.subtitle)}</div>
+            <div class="card-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+            <div class="card-subtitle" title="${escapeHtml(subtitle)}">${escapeHtml(subtitle || t('explorerUnknownArtist'))}</div>
             <div class="card-badges">
-              <span class="badge">${item.type || 'track'}</span>
-              ${item.duration ? `<span class="badge"><i class="fa-regular fa-clock"></i> ${formatDuration(item.duration)}</span>` : ''}
+              <span class="badge">${escapeHtml(item.type || t('explorerSongs'))}</span>
+              ${Number.isFinite(Number(item.duration)) && Number(item.duration) > 0 ? `<span class="badge"><i class="fa-regular fa-clock"></i> ${formatDuration(Number(item.duration))}</span>` : ''}
             </div>
             <div class="card-actions">
-              <button class="action-btn btn-like ${isLiked ? 'liked' : ''}">
-                <i class="fa-solid fa-heart"></i> ${isLiked ? t('explorerSaved') : t('explorerSave')}
+              <button class="action-btn btn-like ${isLiked ? 'liked' : ''}" type="button" ${trackId ? '' : 'disabled'} aria-pressed="${isLiked}">
+                <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart"></i> ${isLiked ? t('explorerSaved') : t('explorerSave')}
               </button>
-              <button class="action-btn btn-import" 
-                      data-track-title="${escapeHtml(item.title)}" 
-                      data-track-artist="${escapeHtml(item.subtitle)}">
+              <button class="action-btn btn-import" type="button"
+                      data-track-title="${escapeHtml(title)}" 
+                      data-track-artist="${escapeHtml(subtitle)}">
                 <i class="fa-solid fa-cloud-arrow-down"></i> ${t('explorerImport')}
               </button>
             </div>
           </div>
         `;
 
-        // Play/Preview
+        const cardImage = card.querySelector('.card-img-wrapper img');
+        if (cardImage) cardImage.addEventListener('error', () => {
+          const fallback = document.createElement('i');
+          fallback.className = 'fa-solid fa-music fallback-icon';
+          cardImage.remove();
+          card.querySelector('.card-img-wrapper').prepend(fallback);
+        }, { once: true });
+
         card.querySelector('.btn-play-circle').addEventListener('click', () => {
-          if(item.url) window.open(item.url, '_blank');
+          if (previewUrl) window.open(previewUrl, '_blank', 'noopener,noreferrer');
         });
 
-        // Like button
         const likeBtn = card.querySelector('.btn-like');
-        if(likeBtn) likeBtn.addEventListener('click', () => toggleLike(item, likeBtn));
+        if(likeBtn) likeBtn.addEventListener('click', () => toggleLike(cardItem, likeBtn));
 
-        // Import button - open MusicDel modal with 3 search strategies
         const importBtn = card.querySelector('.btn-import');
         importBtn.addEventListener('click', () => {
           const title = importBtn.dataset.trackTitle;
           const artist = importBtn.dataset.trackArtist || '';
           
           // Build 3 search queries
-          const firstWord = title.split(' ')[0] || title;
+          const firstWord = title.trim().split(/\s+/)[0] || title;
           const fullQuery = title + (artist ? ' ' + artist : '');
           
           // Use the user's last search query for the middle column
@@ -1364,11 +1640,13 @@
       };
 
       const renderEmptyState = (gridId, icon, titleKey, descKey, cssClass='') => {
+        const title = escapeHtml(t(titleKey));
+        const description = escapeHtml(descKey ? t(descKey) : '');
         document.getElementById(gridId).innerHTML = `
           <div class="empty-state ${cssClass}">
             <i class="fa-solid ${icon}"></i>
-            <h3>${t(titleKey)}</h3>
-            <p>${descKey ? t(descKey) : ''}</p>
+            <h3>${title}</h3>
+            <p>${description}</p>
           </div>
         `;
       };
@@ -1379,6 +1657,8 @@
       const modal = document.getElementById('musicdelModal');
       const modalBody = document.getElementById('musicdelModalBody');
       const modalClose = document.getElementById('musicdelModalClose');
+      let modalSearchVersion = 0;
+      let modalReturnFocus = null;
 
       const openMusicDelModal = (queries) => {
         if (!queries || queries.length === 0) {
@@ -1386,7 +1666,10 @@
           return;
         }
 
+        modalReturnFocus = document.activeElement;
+        const searchVersion = ++modalSearchVersion;
         modal.classList.add('active');
+        modal.setAttribute('aria-hidden', 'false');
         
         // Build column layout
         let html = `<div class="musicdel-columns">`;
@@ -1396,7 +1679,7 @@
           html += `
             <div class="musicdel-column" id="${colId}">
               <div class="musicdel-column-header">
-                <div><i class="fa-solid ${q.icon}"></i> ${q.label}</div>
+                <div><i class="fa-solid ${escapeHtml(q.icon)}"></i> ${escapeHtml(q.label)}</div>
                 <span class="query-badge" title="${escapeHtml(q.query)}">${escapeHtml(q.query)}</span>
               </div>
               <div class="musicdel-column-results" id="${colId}-results">
@@ -1411,28 +1694,38 @@
         
         html += `</div>`;
         modalBody.innerHTML = html;
+        modalClose.focus();
 
         // Perform searches for each column
         queries.forEach((q, index) => {
           const colId = `md-col-${index}`;
           const resultsContainer = document.getElementById(`${colId}-results`);
-          searchMusicDelForColumn(q.query, resultsContainer, q.label);
+          searchMusicDelForColumn(q.query, resultsContainer, q.label, searchVersion);
         });
       };
 
       const closeMusicDelModal = () => {
+        modalSearchVersion += 1;
         modal.classList.remove('active');
+        modal.setAttribute('aria-hidden', 'true');
+        if (modalReturnFocus && typeof modalReturnFocus.focus === 'function') modalReturnFocus.focus();
       };
 
       modalClose.addEventListener('click', closeMusicDelModal);
       modal.addEventListener('click', (e) => {
         if (e.target === modal) closeMusicDelModal();
       });
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && modal.classList.contains('active')) {
+          event.preventDefault();
+          closeMusicDelModal();
+        }
+      });
 
       /**
        * Search MusicDel for a single query and populate a column
        */
-      async function searchMusicDelForColumn(query, container, label) {
+      async function searchMusicDelForColumn(query, container, label, searchVersion) {
         try {
           const res = await fetch(`${LOCAL_API}/api/search/musicdel`, {
             method: 'POST',
@@ -1445,7 +1738,8 @@
           }
 
           const data = await res.json();
-          const results = data.results || [];
+          if (searchVersion !== modalSearchVersion || !modal.classList.contains('active')) return;
+          const results = Array.isArray(data.results) ? data.results : [];
 
           if (results.length === 0) {
             container.innerHTML = `
@@ -1460,21 +1754,28 @@
           // Render results in column
           let html = '';
           results.slice(0, 12).forEach(item => {
-            const thumb = item.thumbnail || '';
+            const thumb = safeImageUrl(item.thumbnail);
+            const itemTitle = String(item.title || t('explorerUnknownTrack'));
+            const itemArtist = String(item.subtitle || '');
+            const itemUrl = String(item.url || '');
             html += `
-              <div class="md-result-mini" data-url="${escapeHtml(item.url)}" data-title="${escapeHtml(item.title)}" data-artist="${escapeHtml(item.subtitle)}">
+              <div class="md-result-mini" data-url="${escapeHtml(itemUrl)}" data-title="${escapeHtml(itemTitle)}" data-artist="${escapeHtml(itemArtist)}">
                 <div class="mini-thumb">
-                  ${thumb ? `<img src="${thumb}" alt="${escapeHtml(item.title)}" loading="lazy">` : `<i class="fa-solid fa-music"></i>`}
+                  ${thumb ? `<img src="${escapeHtml(thumb)}" alt="${escapeHtml(itemTitle)}" loading="lazy">` : `<i class="fa-solid fa-music"></i>`}
                 </div>
                 <div class="mini-info">
-                  <div class="mini-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
-                  <div class="mini-artist" title="${escapeHtml(item.subtitle)}">${escapeHtml(item.subtitle)}</div>
+                  <div class="mini-title" title="${escapeHtml(itemTitle)}">${escapeHtml(itemTitle)}</div>
+                  <div class="mini-artist" title="${escapeHtml(itemArtist)}">${escapeHtml(itemArtist)}</div>
                 </div>
-                <button class="mini-download-btn">${t('explorerImport')}</button>
+                <button class="mini-download-btn" type="button" ${itemUrl ? '' : 'disabled'}>${t('explorerImport')}</button>
               </div>
             `;
           });
           container.innerHTML = html;
+
+          container.querySelectorAll('.mini-thumb img').forEach(image => {
+            image.addEventListener('error', () => image.remove(), { once: true });
+          });
 
           // Attach download handlers
           container.querySelectorAll('.md-result-mini').forEach(card => {
@@ -1490,6 +1791,7 @@
           });
 
         } catch (err) {
+          if (searchVersion !== modalSearchVersion || !modal.classList.contains('active')) return;
           console.error(`MusicDel search error for "${query}":`, err);
           container.innerHTML = `
             <div class="empty-column">
@@ -1509,11 +1811,15 @@
         btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
 
         try {
+          const musicDelPageUrl = new URL(String(trackUrl));
+          if (!['http:', 'https:'].includes(musicDelPageUrl.protocol)) {
+            throw new Error(t('explorerDownloadPageFailed', { status: 'invalid URL' }));
+          }
           // Step 1: Fetch track page via proxy to get download link
           const proxyRes = await fetch(`${LOCAL_API}/api/proxy/musicdel`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: trackUrl })
+            body: JSON.stringify({ url: musicDelPageUrl.href })
           });
 
           if (!proxyRes.ok) {
@@ -1525,30 +1831,35 @@
           const doc = parser.parseFromString(html, 'text/html');
 
           // Find download links in the .dls section
-          const downloadLinks = Array.from(doc.querySelectorAll('.dls a[href*=".mp3"]'));
+          const downloadLinks = Array.from(doc.querySelectorAll('.dls a[href*=".mp3"]'))
+            .map(anchor => {
+              const rawUrl = anchor.getAttribute('href');
+              if (!rawUrl) return null;
+              try {
+                const url = new URL(rawUrl, 'https://musicdel.ir/');
+                return ['http:', 'https:'].includes(url.protocol) ? { anchor, url } : null;
+              } catch (error) {
+                return null;
+              }
+            })
+            .filter(Boolean);
 
-          let dlUrl = null;
           // Prioritize 320kbps (عالی), then 128kbps (خوب)
           const highQuality = downloadLinks.find(a => 
-            a.textContent.includes('320') || 
-            a.textContent.includes('عالی') ||
-            a.href.includes('320')
+            a.anchor.textContent.includes('320') || 
+            a.anchor.textContent.includes('عالی') ||
+            a.url.href.includes('320')
           );
           const midQuality = downloadLinks.find(a => 
-            a.textContent.includes('128') || 
-            a.textContent.includes('خوب') ||
-            a.href.includes('128')
+            a.anchor.textContent.includes('128') || 
+            a.anchor.textContent.includes('خوب') ||
+            a.url.href.includes('128')
           );
           
-          dlUrl = highQuality?.href || midQuality?.href || downloadLinks[0]?.href;
+          const dlUrl = highQuality?.url.href || midQuality?.url.href || downloadLinks[0]?.url.href;
 
           if (!dlUrl) {
             throw new Error(t('explorerDownloadLinkMissing'));
-          }
-
-          // Fix relative URLs
-          if (dlUrl.startsWith('/')) {
-            dlUrl = 'https://musicdel.ir' + dlUrl;
           }
 
           btn.textContent = t('explorerDownloadShort');
@@ -1593,24 +1904,35 @@
       // ==========================================
       // API Fetch Requests
       // ==========================================
+      let searchRequestId = 0;
+      let searchController = null;
       const fetchGlobalSearch = async (query) => {
-        // Store the user's search query
-        state.lastSearchQuery = query;
-        
+        const normalizedQuery = String(query || '').trim();
+        if (!normalizedQuery) return;
+        state.lastSearchQuery = normalizedQuery;
+        if (searchController) searchController.abort();
+        searchController = new AbortController();
+        const requestId = ++searchRequestId;
         toggleSkeleton('searchGrid', 'searchSkeleton', true);
         const grid = document.getElementById('searchGrid');
         const meta = document.getElementById('searchMeta');
+        const searchButton = document.getElementById('searchBtn');
+        searchButton.disabled = true;
+        searchButton.setAttribute('aria-busy', 'true');
         
         try {
           const params = new URLSearchParams({
-            query: String(query || '').trim(),
+            query: normalizedQuery,
             filter: state.filter,
             limit: String(ITEMS_PER_PAGE)
           });
-          const res = await fetch(`${LOCAL_API}/api/search/global?${params.toString()}`);
+          const res = await fetch(`${LOCAL_API}/api/search/global?${params.toString()}`, {
+            signal: searchController.signal
+          });
           const data = await res.json().catch(() => ({}));
           if(!res.ok) throw new Error(data.error || t('explorerSearchFailedStatus', { status: res.status }));
-          const results = data.results || data.items || [];
+          if (requestId !== searchRequestId) return;
+          const results = Array.isArray(data.results) ? data.results : Array.isArray(data.items) ? data.items : [];
           
           grid.innerHTML = '';
           if(results.length === 0) {
@@ -1623,29 +1945,40 @@
           }
           meta.innerHTML = `<span>${t('explorerResultsCount', { count: `<strong>${results.length}</strong>` })}</span>`;
         } catch(e) {
+          if (e.name === 'AbortError' || requestId !== searchRequestId) return;
           console.warn('Global search failed:', e);
           grid.innerHTML = '';
           renderEmptyState('searchGrid', 'fa-triangle-exclamation', 'explorerSearchUnavailable', e.message || t('explorerOnlineSearchUnavailable'));
           meta.innerHTML = `<span>${t('explorerTryLater')}</span>`;
         } finally {
-          toggleSkeleton('searchGrid', 'searchSkeleton', false);
+          if (requestId === searchRequestId) {
+            searchButton.disabled = false;
+            searchButton.removeAttribute('aria-busy');
+            toggleSkeleton('searchGrid', 'searchSkeleton', false);
+          }
         }
       };
 
       // ==========================================
       // Initialization & Tab Logic
       // ==========================================
+      let discoverRequestId = 0;
+      let discoverController = null;
       const loadDiscover = async () => {
         const grid = document.getElementById('nrGrid');
         const meta = document.getElementById('nrMeta');
         const skeleton = document.getElementById('nrSkeleton');
         if (!grid || !meta) return;
+        if (discoverController) discoverController.abort();
+        discoverController = new AbortController();
+        const requestId = ++discoverRequestId;
         toggleSkeleton('nrGrid', 'nrSkeleton', true);
         meta.innerHTML = `<span>${t('explorerDiscoveryBuilding')}</span>`;
         try {
-          const res = await fetch(`${LOCAL_API}/api/ai/discover`);
+          const res = await fetch(`${LOCAL_API}/api/ai/discover`, { signal: discoverController.signal });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error || t('explorerDiscoveryFailedStatus', { status: res.status }));
+          if (requestId !== discoverRequestId) return;
           const results = Array.isArray(data.recommendations) ? data.recommendations : [];
           grid.innerHTML = '';
           if (results.length === 0) {
@@ -1661,12 +1994,13 @@
             meta.innerHTML = `<span>${t('explorerTracksSelectedCount', { count: `<strong>${results.length}</strong>` })}</span>`;
           }
         } catch (e) {
+          if (e.name === 'AbortError' || requestId !== discoverRequestId) return;
           console.warn('Discovery load failed:', e);
           grid.innerHTML = '';
           renderEmptyState('nrGrid', 'fa-triangle-exclamation', 'explorerDiscoveryUnavailable', e.message || t('explorerLocalServiceUnavailable'), 'search');
           meta.innerHTML = `<span>${t('explorerTryAfterPlayback')}</span>`;
         } finally {
-          if (skeleton) toggleSkeleton('nrGrid', 'nrSkeleton', false);
+          if (requestId === discoverRequestId && skeleton) toggleSkeleton('nrGrid', 'nrSkeleton', false);
         }
       };
 
@@ -1683,8 +2017,17 @@
 
       const switchTab = (tabId) => {
         state.activeTab = tabId;
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === `tab-${tabId}`));
+        document.querySelectorAll('.tab-btn').forEach(button => {
+          const active = button.dataset.tab === tabId;
+          button.classList.toggle('active', active);
+          button.setAttribute('aria-selected', String(active));
+          button.tabIndex = active ? 0 : -1;
+        });
+        document.querySelectorAll('.tab-content').forEach(panel => {
+          const active = panel.id === `tab-${tabId}`;
+          panel.classList.toggle('active', active);
+          panel.hidden = !active;
+        });
         
         if(tabId === 'liked') renderLiked();
         if(tabId === 'newreleases') loadDiscover();
@@ -1693,18 +2036,21 @@
       const setupFilters = () => {
         const container = document.getElementById('filtersContainer');
         container.innerHTML = FILTERS.map(f => `
-          <div class="filter-chip ${f.id === state.filter ? 'active' : ''}" data-id="${f.id}">
+          <button class="filter-chip ${f.id === state.filter ? 'active' : ''}" type="button" aria-pressed="${f.id === state.filter}" data-id="${f.id}">
             <i class="fa-solid ${f.icon}"></i> ${t(f.label)}
-          </div>
+          </button>
         `).join('');
         
         container.querySelectorAll('.filter-chip').forEach(chip => {
           chip.addEventListener('click', () => {
-            container.querySelector('.active').classList.remove('active');
-            chip.classList.add('active');
+            container.querySelectorAll('.filter-chip').forEach(filter => {
+              const active = filter === chip;
+              filter.classList.toggle('active', active);
+              filter.setAttribute('aria-pressed', String(active));
+            });
             state.filter = chip.dataset.id;
             const q = document.getElementById('searchInput').value;
-            if(q) fetchGlobalSearch(q);
+            if(q.trim()) fetchGlobalSearch(q);
           });
         });
       };
@@ -1716,15 +2062,32 @@
         document.querySelectorAll('.tab-btn').forEach(btn => {
           btn.addEventListener('click', () => switchTab(btn.dataset.tab));
         });
+        const tabList = document.querySelector('[role="tablist"]');
+        tabList.addEventListener('keydown', event => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+          const tabs = Array.from(tabList.querySelectorAll('[role="tab"]'));
+          const currentIndex = tabs.indexOf(document.activeElement);
+          if (currentIndex < 0) return;
+          event.preventDefault();
+          const direction = document.documentElement.dir === 'rtl' ? -1 : 1;
+          const nextIndex = event.key === 'Home' ? 0
+            : event.key === 'End' ? tabs.length - 1
+            : (currentIndex + direction * (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+          tabs[nextIndex].focus();
+          tabs[nextIndex].click();
+        });
 
         // Search Input Listeners
         const sInput = document.getElementById('searchInput');
         
-        document.getElementById('searchBtn').addEventListener('click', () => { 
-          if(sInput.value) fetchGlobalSearch(sInput.value);
+        document.getElementById('searchBtn').addEventListener('click', () => {
+          fetchGlobalSearch(sInput.value);
         });
-        sInput.addEventListener('keypress', e => { 
-          if(e.key==='Enter' && sInput.value) fetchGlobalSearch(sInput.value);
+        sInput.addEventListener('keydown', e => {
+          if(e.key === 'Enter') {
+            e.preventDefault();
+            fetchGlobalSearch(sInput.value);
+          }
         });
 
         // Placeholder Empty State for New Releases
@@ -1736,7 +2099,11 @@
       };
 
       // Launch App
-      document.addEventListener('DOMContentLoaded', init);
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init, { once: true });
+      } else {
+        init();
+      }
     })();
   </script>
 </body>

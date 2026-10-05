@@ -459,9 +459,6 @@ The release includes static auditing and GitHub Actions-based security scanning 
 
 ### v1.6.5
 
-The release contains a substantial cleanup and redesign pass:
-
-**19 commits · 90 files changed · 10,460 additions · 13,081 deletions**
 
 The important part is not the size of the diff.
 

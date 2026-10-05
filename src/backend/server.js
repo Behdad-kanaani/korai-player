@@ -245,7 +245,8 @@ app.post('/api/proxy/musicdel', async (req, res) => {
 
         
 
-        const response = await fetchWithTimeout(targetUrl, {
+        let response = await fetchWithTimeout(targetUrl, {
+            redirect: 'manual',
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -255,6 +256,13 @@ app.post('/api/proxy/musicdel', async (req, res) => {
             },
             timeout: 30000
         });
+
+        if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
+            const redirectedUrl = await assertSafeUrl(new URL(response.headers.get('location'), targetUrl).href, {
+                allowHosts: ['musicdel.ir', 'www.musicdel.ir', 'dl.musicdel.ir']
+            });
+            response = await fetchWithTimeout(redirectedUrl, { redirect: 'manual' }, 30000);
+        }
 
         if (!response.ok) {
             console.warn(`️ Proxy response not OK: ${response.status} for ${url}`);

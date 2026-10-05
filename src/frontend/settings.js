@@ -9,7 +9,9 @@
 function t(key) {
     try {
         if (typeof window !== 'undefined' && window.translations) {
-            const lang = localStorage.getItem('user_lang') || 'en';
+            const lang = localStorage.getItem('user_lang') === 'fa' ? 'fa' : 'en';
+            document.documentElement.lang = lang;
+            document.documentElement.dir = lang === 'fa' ? 'rtl' : 'ltr';
             if (window.translations[lang] && window.translations[lang][key]) {
                 return window.translations[lang][key];
             }
@@ -136,7 +138,6 @@ function getDefaultSettings() {
         defaultVolume: 70,
         audioOutput: 'stereo',
         eq: [0, 0, 0, 0, 0],
-        theme: 'default',
         direction: 'ltr',
         fontSize: 'medium',
         showAlbumArt: true,
@@ -198,7 +199,6 @@ async function saveSettings() {
             resumeOnStart: document.getElementById('resumeOnStartToggle')?.checked ?? false,
             defaultVolume: parseInt(document.getElementById('defaultVolumeSlider')?.value ?? 70),
             audioOutput: document.getElementById('audioOutputSelect')?.value ?? 'stereo',
-            theme: document.querySelector('.theme-btn.active')?.dataset.theme ?? 'default',
             direction: document.getElementById('directionSelect')?.value ?? 'ltr',
             fontSize: document.getElementById('fontSizeSelect')?.value ?? 'medium',
             showAlbumArt: document.getElementById('showAlbumArtToggle')?.checked ?? true,
@@ -248,7 +248,6 @@ async function saveSettings() {
 
         showToast(t('settingsToastSuccess'), 'success');
         applySettingsToUI(updates);
-        applyTheme(updates.theme);
         applyDirection(updates.direction);
 
         if (window.electronAPI && window.electronAPI.trayLanguageChanged) {
@@ -326,10 +325,6 @@ function applySettingsToUI(s) {
         }
     }
 
-    document.querySelectorAll('.theme-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.theme === (s.theme || 'default'));
-    });
-    
     const directionSelect = document.getElementById('directionSelect');
     if (directionSelect) directionSelect.value = s.direction || 'ltr';
     
@@ -409,7 +404,6 @@ function applySettingsToUI(s) {
     const serverPortDisplay = document.getElementById('serverPortDisplay');
     if (serverPortDisplay) serverPortDisplay.textContent = apiPort || '3000';
 
-    applyTheme(s.theme || 'default');
     applyDirection(s.direction || 'ltr');
 
     if (s.performanceMode) {
@@ -441,22 +435,6 @@ function setSlider(id, value) {
 // ============================================================
 // APPLY FUNCTIONS
 // ============================================================
-
-function applyTheme(theme) {
-    document.body.classList.remove('theme-default', 'theme-liquid-glass');
-    document.body.classList.add('theme-' + theme);
-    
-    document.querySelectorAll('.theme-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.theme === theme);
-    });
-
-    document.querySelectorAll('.skin-btn').forEach(btn => {
-        const skinValue = btn.dataset.skin;
-        let targetSkin = skinValue;
-        if (skinValue === 'apple') targetSkin = 'liquid-glass';
-        btn.classList.toggle('active', targetSkin === theme);
-    });
-}
 
 function applyDirection(direction) {
     document.documentElement.dir = direction;
@@ -589,9 +567,9 @@ async function getDataPath() {
         if (window.electronAPI && window.electronAPI.getDataPath) {
             return await window.electronAPI.getDataPath();
         }
-        return 'User Data';
+        return t('settingsUserData');
     } catch (e) {
-        return 'User Data';
+        return t('settingsUserData');
     }
 }
 
@@ -600,25 +578,15 @@ function openDataDirectory() {
     if (!pathDisplay) return;
     
     const dataPath = pathDisplay.textContent;
-    if (!dataPath || dataPath === 'Loading...' || dataPath === 'User Data') {
-        showToast('Data directory path is not available', 'error');
+    if (!dataPath || dataPath === t('settingsLoading') || dataPath === t('settingsUserData')) {
+        showToast(t('notificationDataPathUnavailable'), 'error');
         return;
     }
 
-    // استفاده از electronAPI برای باز کردن پوشه
-    if (window.electronAPI && window.electronAPI.openFolder) {
+    if (window.electronAPI && typeof window.electronAPI.openFolder === 'function') {
         window.electronAPI.openFolder(dataPath);
-    } else if (window.electronAPI && window.electronAPI.openExternalLink) {
-        // fallback
-        let formattedPath = dataPath;
-        if (process.platform === 'win32') {
-            formattedPath = 'file:///' + dataPath.replace(/\\/g, '/');
-        } else {
-            formattedPath = 'file://' + dataPath;
-        }
-        window.electronAPI.openExternalLink(formattedPath);
     } else {
-        showToast('Cannot open directory', 'error');
+        showToast(t('notificationCannotOpenDirectory'), 'error');
     }
 }
 
@@ -633,12 +601,13 @@ async function clearCache() {
     try {
         const res = await apiFetch('/api/settings/clear-cache', { method: 'POST' });
         if (res.ok) {
-            showToast(t('systemClearCache') + ' cleared successfully!', 'success');
+            showToast(t('settingsCacheCleared'), 'success');
         } else {
-            throw new Error('Failed to clear cache');
+            throw new Error(t('settingsCacheClearFailed'));
         }
     } catch (err) {
-        showToast(t('systemClearCache') + ' failed: ' + err.message, 'error');
+        console.error('Cache clear failed:', err);
+        showToast(t('settingsCacheClearFailed'), 'error');
     }
 }
 
@@ -663,10 +632,10 @@ async function checkForUpdates() {
                 showToast(`✅ ${t('noUpdates')}`, 'success');
             }
         } else {
-            showToast(t('systemCheckUpdates') + ' not available', 'error');
+            showToast(t('settingsUpdateUnavailable'), 'error');
         }
     } catch (err) {
-        showToast(t('systemCheckUpdates') + ' failed: ' + err.message, 'error');
+        showToast(`${t('settingsUpdateFailed')}: ${err.message}`, 'error');
     }
 }
 
@@ -700,7 +669,8 @@ async function resetAllSettings() {
             throw new Error('Failed to reset settings');
         }
     } catch (err) {
-        showToast(t('settingsResetFailed') + ': ' + err.message, 'error');
+        console.error('Settings reset failed:', err);
+        showToast(t('settingsResetFailed'), 'error');
     }
 }
 
@@ -854,14 +824,6 @@ function setupEventListeners() {
         });
     });
 
-    document.querySelectorAll('.theme-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            applyTheme(btn.dataset.theme);
-        });
-    });
-
     document.querySelectorAll('.format-tag').forEach(tag => {
         tag.addEventListener('click', () => {
             tag.classList.toggle('active');
@@ -942,12 +904,6 @@ function setupEventListeners() {
 
 function updateUIElement(key, value) {
     switch (key) {
-        case 'theme':
-            applyTheme(value);
-            document.querySelectorAll('.theme-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.theme === value);
-            });
-            break;
         case 'direction':
             applyDirection(value);
             const dirSelect = document.getElementById('directionSelect');
@@ -1019,7 +975,7 @@ async function init() {
     console.debug('Initializing settings page...');
 
     const dataPathDisplay = document.getElementById('dataPathDisplay');
-    if (dataPathDisplay) dataPathDisplay.textContent = 'Loading...';
+    if (dataPathDisplay) dataPathDisplay.textContent = t('settingsLoading');
 
     // Translate page immediately
     translatePage();
@@ -1030,10 +986,10 @@ async function init() {
     try {
         const path = await getDataPath();
         const display = document.getElementById('dataPathDisplay');
-        if (display) display.textContent = path || 'User Data';
+        if (display) display.textContent = path || t('settingsUserData');
     } catch (e) {
         const display = document.getElementById('dataPathDisplay');
-        if (display) display.textContent = 'User Data';
+        if (display) display.textContent = t('settingsUserData');
     }
 
     const portDisplay = document.getElementById('serverPortDisplay');

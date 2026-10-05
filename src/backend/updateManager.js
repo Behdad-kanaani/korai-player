@@ -29,39 +29,29 @@ let currentOperation = null;
  * FIXED: Added null/undefined check for files parameter
  */
 function validateUpdateFiles(files, appPath) {
-    // FIX: Ensure files is an array
-    if (!files || !Array.isArray(files)) {
-        console.warn('[updateManager] No files to validate, returning empty validation');
-        return { missing: [], invalid: [] };
-    }
+    if (!Array.isArray(files)) return { missing: [], invalid: [] };
 
     const missing = [];
     const invalid = [];
-
     for (const file of files) {
-        const fullPath = path.join(appPath, file);
-        const dir = path.dirname(fullPath);
-
-        // Check if directory exists or can be created
         try {
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
+            const relative = updater.validateUpdatePath(file);
+            const fullPath = path.join(appPath, relative);
+            if (!fs.existsSync(path.dirname(fullPath))) {
+                // New directories are valid; no write probe here because probes
+                // themselves mutate the app directory and are unsafe in ASAR.
+                continue;
+            }
+            try {
+                const stat = fs.statSync(path.dirname(fullPath));
+                if (!stat.isDirectory()) invalid.push({ file, error: 'Parent path is not a directory' });
+            } catch (err) {
+                invalid.push({ file, error: err.message });
             }
         } catch (err) {
-            invalid.push({ file, error: `Cannot create directory: ${err.message}` });
-            continue;
-        }
-
-        // Check if file can be written
-        try {
-            const testPath = path.join(dir, '.write-test');
-            fs.writeFileSync(testPath, 'test');
-            fs.unlinkSync(testPath);
-        } catch (err) {
-            invalid.push({ file, error: `Cannot write to directory: ${err.message}` });
+            invalid.push({ file, error: err.message });
         }
     }
-
     return { missing, invalid };
 }
 
@@ -74,17 +64,20 @@ async function performFullUpdate(updateInfo, progressCallback) {
         throw new Error('Another update operation is already in progress');
     }
 
-    // FIX: Validate updateInfo and changedFiles
     if (!updateInfo) {
         throw new Error('Update info is required');
     }
 
-    if (!updateInfo.changedFiles || !Array.isArray(updateInfo.changedFiles)) {
-        updateInfo.changedFiles = [];
-        console.warn('[updateManager] No changed files provided, using empty array');
+    if (!updater.canApplySourceUpdate()) {
+        throw new Error('Automatic source updates are disabled for packaged installs. Use the official release installer.');
     }
 
-    if (updateInfo.changedFiles.length === 0) {
+    if (!Array.isArray(updateInfo.changedFiles) || updateInfo.changedFiles.length === 0) {
+        const fullInfo = await updater.performFullUpdateCheck();
+        Object.assign(updateInfo, fullInfo);
+    }
+
+    if (!Array.isArray(updateInfo.changedFiles) || updateInfo.changedFiles.length === 0) {
         throw new Error('No files to update');
     }
 
@@ -239,24 +232,24 @@ async function checkAndPrepareUpdate() {
             };
         }
 
-        // Ensure changedFiles is an array
-        const changedFiles = updateInfo.changedFiles || [];
-        
-        // Validate that we can actually apply the update
+        const changedFiles = Array.isArray(updateInfo.changedFiles) ? updateInfo.changedFiles : [];
         const appPath = app.getAppPath();
         const validation = validateUpdateFiles(changedFiles, appPath);
+        const canUpdate = updater.canApplySourceUpdate() && validation.invalid.length === 0;
 
         return {
             hasUpdate: true,
             currentVersion: updateInfo.currentVersion || updater.getCurrentVersion(),
             latestVersion: updateInfo.latestVersion || null,
             totalFiles: changedFiles.length,
+            changedFiles,
             files: changedFiles,
-            canUpdate: validation.missing.length === 0,
+            canUpdate,
             validationErrors: validation,
             isVersionChange: updateInfo.versionChanged || false,
             latestSha: updateInfo.latestSha || null,
-            needsFullCheck: updateInfo.needsFullCheck || false
+            needsFullCheck: updateInfo.needsFullCheck || false,
+            url: updateInfo.url || `https://github.com/Behdad-kanaani/korai-player/releases/tag/v${updateInfo.latestVersion || ''}`
         };
 
     } catch (err) {

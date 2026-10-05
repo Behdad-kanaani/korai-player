@@ -4,7 +4,6 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const AdmZip = require('adm-zip');
-const fetch = require('node-fetch');
 const { createRateLimiter, assertSafeUrl, resolveSafePath } = require('./securityUtils');
 
 /**
@@ -17,6 +16,32 @@ const { createRateLimiter, assertSafeUrl, resolveSafePath } = require('./securit
  * - POST /api/plugins/:id/disable - Disable plugin
  * - DELETE /api/plugins/:id   - Uninstall plugin
  */
+async function streamResponseToFile(response, targetPath, maxBytes) {
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > maxBytes) throw new Error('Remote plugin exceeds size limit');
+  const file = fs.createWriteStream(targetPath, { flags: 'wx' });
+  let total = 0;
+  try {
+    if (!response.body) throw new Error('Remote response has no body');
+    const reader = response.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new Error('Remote plugin exceeds size limit');
+      }
+      if (!file.write(Buffer.from(value)) ) await new Promise(resolve => file.once('drain', resolve));
+    }
+    await new Promise((resolve, reject) => { file.end(err => err ? reject(err) : resolve()); });
+  } catch (error) {
+    try { file.destroy(); } catch {}
+    try { fs.unlinkSync(targetPath); } catch {}
+    throw error;
+  }
+}
+
 function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
   const router = express.Router();
   router.use(createRateLimiter(60, 60_000));
@@ -134,17 +159,26 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
       const url = req.body && req.body.url;
       if (!url) return res.status(400).json({ error: 'url is required' });
       if (!pluginStore) return res.status(500).json({ error: 'plugin store unavailable' });
-      const parsed = await assertSafeUrl(url);
+      const parsed = await assertSafeUrl(url, { allowHosts: ['raw.githubusercontent.com', 'github.com', 'objects.githubusercontent.com'] });
       const tempPath = path.join(uploadDir, `plugin-store-${Date.now()}-${Math.round(Math.random() * 1e9)}.zip`);
-      const response = await fetch(parsed);
-      if (!response.ok) {
-        throw new Error(`Failed to download plugin: ${response.status}`);
+      const response = await fetch(parsed, { redirect: 'manual', signal: AbortSignal.timeout(30000) });
+      if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
+        const redirected = await assertSafeUrl(new URL(response.headers.get('location'), parsed).href, {
+          allowHosts: ['raw.githubusercontent.com', 'github.com', 'objects.githubusercontent.com']
+        });
+        const redirectedResponse = await fetch(redirected, { signal: AbortSignal.timeout(30000) });
+        if (!redirectedResponse.ok) throw new Error(`Failed to download plugin: ${redirectedResponse.status}`);
+        await streamResponseToFile(redirectedResponse, tempPath, 50 * 1024 * 1024);
+      } else {
+        if (!response.ok) throw new Error(`Failed to download plugin: ${response.status}`);
+        await streamResponseToFile(response, tempPath, 50 * 1024 * 1024);
       }
-      const arrayBuffer = await response.arrayBuffer();
-      fs.writeFileSync(tempPath, Buffer.from(arrayBuffer));
-      const plugin = pluginManager.installFromZip(tempPath);
-      fs.unlink(tempPath, () => {});
-      res.json({ message: 'Plugin installed successfully', plugin });
+      try {
+        const plugin = pluginManager.installFromZip(tempPath);
+        res.json({ message: 'Plugin installed successfully', plugin });
+      } finally {
+        try { fs.unlinkSync(tempPath); } catch {}
+      }
     } catch (err) {
       res.status(400).json({ error: err.message });
     }

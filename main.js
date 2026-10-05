@@ -9,7 +9,7 @@
  * ADDED: Auto-update system with hot reload capability
  */
 
-const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, shell, screen, powerMonitor, session } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, shell, screen, powerMonitor, session, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const findFreePort = require('find-free-port');
@@ -25,44 +25,24 @@ const updateManager = require('./src/backend/updateManager');
 // OPTIONAL OPTIMIZATIONS
 // ============================================================================
 
-let cleanupTempFiles, clearCacheOnUpdate, validateWindowBounds, createStartupTimer, managePowerState;
+let cleanupTempFiles, clearCacheOnUpdate, createStartupTimer, managePowerState;
 try {
-    ({ cleanupTempFiles, clearCacheOnUpdate, validateWindowBounds, createStartupTimer, managePowerState } = require('@yawlabs/electron-optimize'));
+    ({ cleanupTempFiles, clearCacheOnUpdate, createStartupTimer, managePowerState } = require('@yawlabs/electron-optimize'));
 } catch (e) {
     console.warn('@yawlabs/electron-optimize not installed');
 }
 
 // ============================================================================
-// PERFORMANCE OPTIMIZATIONS
+// PERFORMANCE / RENDERING
 // ============================================================================
-
-const isLinux = process.platform === 'linux';
-
-try {
-    app.commandLine.appendSwitch('enable-gpu-rasterization');
-    app.commandLine.appendSwitch('enable-zero-copy');
-    app.commandLine.appendSwitch('ignore-gpu-blocklist');
-    app.commandLine.appendSwitch('enable-accelerated-video-decode');
-
-    if (isLinux) {
-        // Avoid Vulkan-specific rendering on Linux AppImage builds where drivers may be unstable.
-        // Keep GPU acceleration active but disable Vulkan path to reduce lag and crashes.
-        app.commandLine.appendSwitch('disable-features', 'Vulkan');
-        console.warn('Linux detected; Vulkan disabled for compatibility, GPU acceleration remains enabled.');
-    } else {
-        app.commandLine.appendSwitch('enable-features', 'Vulkan,UseSkiaRenderer');
-    }
-
-    app.commandLine.appendSwitch('max_old_space_size', '4096');
-} catch (e) {
-    console.warn('Performance optimization flags failed:', e && e.message);
-}
+// Electron enables hardware acceleration by default. Avoid forcing experimental
+// Chromium flags here: they can hurt stability, battery life, or driver compatibility.
 
 // ============================================================================
 // AUTO-UPDATER
 // ============================================================================
 
-const { startUpdateChecker, onUpdateCheck, getCurrentVersion, fetchLatestVersion } = require('./src/backend/updater');
+const { startUpdateChecker, onUpdateCheck, getCurrentVersion } = updater;
 
 // ============================================================================
 // GLOBAL ERROR HANDLERS
@@ -79,6 +59,80 @@ process.on('uncaughtException', (error) => {
 // ============================================================================
 // SINGLE INSTANCE LOCK
 // ============================================================================
+
+const KORAI_SCHEME = 'korai';
+const KORAI_HOST = 'app';
+const FRONTEND_ROOT = path.resolve(__dirname, 'src', 'frontend');
+
+protocol.registerSchemesAsPrivileged([{
+    scheme: KORAI_SCHEME,
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
+}]);
+
+let koraiProtocolRegistered = false;
+
+function getAssetContentType(filePath) {
+    const ext = path.extname(filePath).toLowerCase();
+    return ({
+        '.html': 'text/html; charset=utf-8',
+        '.css': 'text/css; charset=utf-8',
+        '.js': 'text/javascript; charset=utf-8',
+        '.json': 'application/json; charset=utf-8',
+        '.svg': 'image/svg+xml',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.webp': 'image/webp',
+        '.gif': 'image/gif',
+        '.ico': 'image/x-icon',
+        '.woff': 'font/woff',
+        '.woff2': 'font/woff2',
+        '.ttf': 'font/ttf',
+        '.eot': 'application/vnd.ms-fontobject'
+    }[ext] || 'application/octet-stream');
+}
+
+function isPathInside(baseDir, candidatePath) {
+    const base = path.resolve(baseDir);
+    const candidate = path.resolve(candidatePath);
+    const relative = path.relative(base, candidate);
+    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function registerKoraiProtocol() {
+    if (koraiProtocolRegistered) return;
+    protocol.handle(KORAI_SCHEME, async (request) => {
+        try {
+            const url = new URL(request.url);
+            if (url.hostname !== KORAI_HOST) return new Response('Not found', { status: 404 });
+
+            let relativePath = decodeURIComponent(url.pathname).replace(/^\/+/, '');
+            if (!relativePath) relativePath = 'index.html';
+            const candidate = path.resolve(FRONTEND_ROOT, relativePath);
+            if (!isPathInside(FRONTEND_ROOT, candidate)) {
+                return new Response('Forbidden', { status: 403 });
+            }
+            const stat = await fs.promises.stat(candidate).catch(() => null);
+            if (!stat || !stat.isFile()) return new Response('Not found', { status: 404 });
+            if (stat.size > 25 * 1024 * 1024) return new Response('Asset too large', { status: 413 });
+
+            const data = await fs.promises.readFile(candidate);
+            return new Response(data, {
+                status: 200,
+                headers: {
+                    'Content-Type': getAssetContentType(candidate),
+                    'Cache-Control': /^text\/(html|javascript|css)$/.test(getAssetContentType(candidate)) ? 'no-cache, no-store, must-revalidate' : 'private, max-age=86400',
+                    'X-Content-Type-Options': 'nosniff',
+                    'Referrer-Policy': 'no-referrer'
+                }
+            });
+        } catch (error) {
+            console.error('[protocol] asset error:', error);
+            return new Response('Internal asset error', { status: 500 });
+        }
+    });
+    koraiProtocolRegistered = true;
+}
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -105,6 +159,34 @@ let startupTimer = null;
 let updatePollingTimer = null;
 let powerCleanup = null;
 let windowCreationPromise = null;
+let updateListenerRegistered = false;
+
+function isTrustedRenderer(event) {
+    const sender = event?.sender;
+    if (!sender || sender.isDestroyed?.()) return false;
+    return sender === mainWindow?.webContents || sender === miniPlayerWindow?.webContents;
+}
+
+function registerIpcListener(channel, handler) {
+    ipcMain.on(channel, (event, ...args) => {
+        if (!isTrustedRenderer(event)) {
+            console.warn(`[security] Blocked IPC listener: ${channel}`);
+            return;
+        }
+        try {
+            return handler(event, ...args);
+        } catch (error) {
+            console.error(`[ipc:${channel}]`, error);
+        }
+    });
+}
+
+function registerIpcHandler(channel, handler) {
+    ipcMain.handle(channel, async (event, ...args) => {
+        if (!isTrustedRenderer(event)) throw new Error('Untrusted IPC sender');
+        return handler(event, ...args);
+    });
+}
 
 const { startServer } = require('./src/backend/server');
 
@@ -513,16 +595,18 @@ async function createSystemTray() {
 // ============================================================================
 
 function startHealthCheck() {
+    if (healthCheckInterval) return;
     healthCheckInterval = setInterval(async () => {
+        if (!serverPort) return;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 2500);
         try {
-            const fetchModule = await import('node-fetch');
-            const fetch = fetchModule.default;
-            const response = await fetch(`http://127.0.0.1:${serverPort}/api/health`);
-            if (!response.ok) {
-                console.warn('⚠️ Server health check failed');
-            }
+            const response = await fetch(`http://127.0.0.1:${serverPort}/api/health`, { signal: controller.signal });
+            if (!response.ok) console.warn('⚠️ Server health check failed');
         } catch (err) {
-            console.error('❌ Server appears to be down!');
+            console.warn('⚠️ Server health check error:', err?.message || err);
+        } finally {
+            clearTimeout(timer);
         }
     }, 30000);
 }
@@ -549,11 +633,12 @@ async function sendUpdateStatusToRenderer() {
     });
     
     try {
-        const updateInfo = await fetchLatestVersion(true);
+        const updateInfo = await updater.fetchLatestVersion(true);
         mainWindow.webContents.send('update-status', {
             hasUpdate: updateInfo.hasUpdate || false,
             currentVersion: currentVersion || 'unknown',
-            latestVersion: updateInfo.version || null,
+            latestVersion: updateInfo.latestVersion || null,
+            canUpdate: updateInfo.canUpdate !== false,
             url: updateInfo.url || null,
             error: updateInfo.error || null
         });
@@ -646,6 +731,7 @@ async function scanDirectoryRecursively(dirPath, audioExtensions, files, maxDept
 // ============================================================================
 
 async function initializeHttpServer(userDataPath) {
+    if (httpServer && httpServer.listening) return httpServer;
     const maxAttempts = 5;
     let lastError;
 
@@ -683,55 +769,39 @@ async function createWindow() {
         // Start health check after server is running
         startHealthCheck();
 
-        ipcMain.handle('get-server-port', () => {
-            return serverPort;
-        });
 
         // Base window options
         const windowOptions = {
-            width: 1300,
-            height: 850,
-            minWidth: 1000,
-            minHeight: 700,
+            width: 1360,
+            height: 860,
+            minWidth: 1080,
+            minHeight: 680,
+            center: true,
             frame: false,
-            show: true,
+            show: false,
+            backgroundColor: '#090b0e',
             titleBarStyle: 'default',
             webPreferences: {
                 nodeIntegration: false,
                 contextIsolation: true,
+                sandbox: true,
                 preload: path.join(__dirname, 'preload.js'),
-                zoomFactor: 0.4,
                 backgroundThrottling: true,
                 v8CacheOptions: 'code',
                 enablePreferredSizeMode: true
             }
         };
 
-        // Platform-specific visual improvements
-        if (process.platform === 'darwin') {
-            windowOptions.transparent = true;
-            windowOptions.vibrancy = 'under-window';
-        } else if (process.platform === 'win32') {
-            windowOptions.transparent = true;
-            windowOptions.backgroundMaterial = 'mica';
-        }
-
-        // Enable experimental Blink features
-        try {
-            windowOptions.webPreferences.enableBlinkFeatures = 'OverlayScrollbars';
-        } catch (e) {}
-        
         mainWindow = new BrowserWindow(windowOptions);
 
-        const setZoom = () => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.setZoomFactor(0.4);
-                mainWindow.webContents.setZoomLevel(-1.32);
-            }
-        };
-        
-        setZoom();
-        
+        mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+            openExternalSafely(url);
+            return { action: 'deny' };
+        });
+        mainWindow.webContents.on('will-navigate', (event, url) => {
+            if (!isTrustedAppUrl(url)) event.preventDefault();
+        });
+
         mainWindow.webContents.on('before-input-event', (event, input) => {
             const isZoomShortcut = (input.control || input.meta) && 
                 (input.key === '+' || input.key === '-' || input.key === '0' || 
@@ -739,39 +809,39 @@ async function createWindow() {
             
             if (isZoomShortcut) {
                 event.preventDefault();
-                setZoom();
                 return;
             }
         });
 
-        mainWindow.webContents.on('zoom-changed', (event, zoomDirection) => {
-            event.preventDefault();
-            setZoom();
-        });
 
-        const htmlPath = path.join(__dirname, 'src/frontend/index.html');
-        mainWindow.loadFile(htmlPath);
+        mainWindow.loadURL(`korai://${KORAI_HOST}/index.html`);
+
+        mainWindow.once('ready-to-show', () => {
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
+        });
 
         mainWindow.webContents.on('did-finish-load', () => {
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('server-port', serverPort);
-                setZoom();
-                
                 sendUpdateStatusToRenderer();
                 
-                onUpdateCheck((updateInfo) => {
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        const currentVersion = getCurrentVersion();
-                        mainWindow.webContents.send('update-status', {
-                            hasUpdate: updateInfo.hasUpdate || false,
-                            currentVersion: currentVersion || 'unknown',
-                            latestVersion: updateInfo.version || null,
-                            url: updateInfo.url || null,
-                            error: updateInfo.error || null
-                        });
-                    }
-                });
-                
+                if (!updateListenerRegistered) {
+                    onUpdateCheck((updateInfo) => {
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('update-status', {
+                                hasUpdate: Boolean(updateInfo?.hasUpdate),
+                                currentVersion: getCurrentVersion() || 'unknown',
+                                latestVersion: updateInfo?.latestVersion || null,
+                                url: updateInfo?.url || null,
+                                canUpdate: updateInfo?.canUpdate !== false,
+                                needsFullCheck: Boolean(updateInfo?.needsFullCheck),
+                                error: updateInfo?.error || null
+                            });
+                        }
+                    });
+                    updateListenerRegistered = true;
+                }
+
                 if (pendingFiles.length > 0) {
                     setTimeout(() => processPendingFiles(), 500);
                 }
@@ -826,23 +896,51 @@ async function createWindow() {
 }
 
 // ============================================================================
+// IPC / EXTERNAL-URL SECURITY
+// ============================================================================
+
+function isTrustedAppUrl(input) {
+    try {
+        const url = new URL(input);
+        return url.protocol === `${KORAI_SCHEME}:` && url.hostname === KORAI_HOST && isPathInside(FRONTEND_ROOT, path.resolve(FRONTEND_ROOT, decodeURIComponent(url.pathname).replace(/^\/+/, '')));
+    } catch {
+        return false;
+    }
+}
+
+function openExternalSafely(input) {
+    try {
+        const url = new URL(String(input));
+        if (url.protocol !== 'https:') throw new Error('Only HTTPS external URLs are allowed');
+        if (url.username || url.password) throw new Error('External URL credentials are not allowed');
+        return shell.openExternal(url.toString());
+    } catch (error) {
+        console.warn('[security] Refused external URL:', error.message);
+        return Promise.resolve(false);
+    }
+}
+
+// Register once; createWindow() can be called again on macOS.
+registerIpcHandler('get-server-port', () => serverPort);
+
+// ============================================================================
 // IPC HANDLERS
 // ============================================================================
 
-ipcMain.on('tray-update-state', (event, { isPlaying, track }) => {
+registerIpcListener('tray-update-state', (event, { isPlaying, track }) => {
     updateTrayPlaybackState(isPlaying, track);
 });
 
-ipcMain.on('tray-language-changed', (event, lang) => {
+registerIpcListener('tray-language-changed', (event, lang) => {
     saveTrayLanguage(lang);
     rebuildTrayMenu();
 });
 
-ipcMain.on('open-external', (event, url) => {
-    shell.openExternal(url);
+registerIpcListener('open-external', (event, url) => {
+    void openExternalSafely(url);
 });
 
-ipcMain.handle('check-update-status', async () => {
+registerIpcHandler('check-update-status', async () => {
     try {
         const result = await updateManager.checkAndPrepareUpdate();
         return result;
@@ -852,7 +950,7 @@ ipcMain.handle('check-update-status', async () => {
     }
 });
 
-ipcMain.on('apply-update', async (event, updateInfo) => {
+registerIpcListener('apply-update', async (event, updateInfo) => {
     console.log('[main] Starting update application...');
     
     try {
@@ -898,11 +996,11 @@ ipcMain.on('apply-update', async (event, updateInfo) => {
     }
 });
 
-ipcMain.handle('get-update-progress', () => {
+registerIpcHandler('get-update-progress', () => {
     return updater.getUpdateProgress();
 });
 
-ipcMain.on('restart-app', () => {
+registerIpcListener('restart-app', () => {
     app.relaunch();
     app.exit(0);
 });
@@ -911,7 +1009,7 @@ ipcMain.on('restart-app', () => {
 // MINI-PLAYER FUNCTIONS
 // ============================================================================
 
-ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
+registerIpcListener('open-mini-player', (event, currentTrack, isPlaying) => {
     if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
         miniPlayerWindow.show();
         miniPlayerWindow.focus();
@@ -923,8 +1021,8 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
     const { width } = primaryDisplay.workAreaSize;
 
     miniPlayerWindow = new BrowserWindow({
-        width: 380,
-        height: 68,
+        width: 460,
+        height: 92,
         frame: false,
         transparent: false,
         backgroundColor: '#0a0a0a',
@@ -936,10 +1034,19 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
+            sandbox: true,
             preload: path.join(__dirname, 'preload.js'),
             backgroundThrottling: true,
             v8CacheOptions: 'code'
         }
+    });
+
+    miniPlayerWindow.webContents.setWindowOpenHandler(({ url }) => {
+        openExternalSafely(url);
+        return { action: 'deny' };
+    });
+    miniPlayerWindow.webContents.on('will-navigate', (event, url) => {
+        if (!isTrustedAppUrl(url)) event.preventDefault();
     });
 
     miniPlayerWindow.setBackgroundColor('#0a0a0a');
@@ -948,26 +1055,14 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
         miniPlayerWindow.setVisibleOnAllWorkspaces(true);
     }
 
-    const setMiniZoom = () => {
-        if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
-            miniPlayerWindow.webContents.setZoomFactor(0.4);
-            miniPlayerWindow.webContents.setZoomLevel(-1.32);
-        }
-    };
-    
-    setMiniZoom();
+    miniPlayerWindow.setPosition(Math.floor((width - 460) / 2), 18);
 
-    miniPlayerWindow.setPosition(Math.floor((width - 380) / 2), 20);
-
-    const htmlPath = path.join(__dirname, 'src/frontend/index.html');
-    miniPlayerWindow.loadURL(`file://${htmlPath}?mode=mini`);
+    miniPlayerWindow.loadURL(`korai://${KORAI_HOST}/index.html?mode=mini`);
 
     miniPlayerWindow.webContents.on('did-finish-load', () => {
         if (lastTrackState && miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
             miniPlayerWindow.webContents.send('state-updated', lastTrackState);
         }
-        setMiniZoom();
-        
         miniPlayerWindow.webContents.insertCSS(`
             html, body {
                 margin: 0;
@@ -975,23 +1070,34 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
                 width: 100%;
                 height: 100%;
                 overflow: hidden;
-                border-radius: 32px;
+                border-radius: 18px;
                 background: #0a0a0a !important;
             }
             body { -webkit-app-region: drag; }
             button { -webkit-app-region: no-drag; }
             .hero-ambient-glow, .hero-particle, .hero-particle-field { display: none !important; }
             .miniplayer-floating-card {
-                width: 100%;
-                height: 100%;
-                border-radius: 32px;
+                position: fixed !important;
+                inset: 0 !important;
+                width: 100% !important;
+                max-width: none !important;
+                height: 100% !important;
+                border-radius: 0 !important;
                 overflow: hidden;
-                background: rgba(6,8,10,0.88) !important;
+                background: #0d1114 !important;
                 background-image: none !important;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.6), 0 2px 10px rgba(0,0,0,0.35 inset);
-                border: 1px solid rgba(255,255,255,0.04);
+                box-shadow: none !important;
+                border: 0 !important;
             }
-            .cover-glow-effect, .mini-timeline-progress, .mini-timeline-fill { box-shadow: none !important; background: rgba(255,255,255,0.04) !important; }
+            .cover-glow-effect, .mini-timeline-progress { box-shadow: none !important; }
+            .mini-timeline-fill { background: #20d968 !important; }
+            .miniplayer-glass-content { box-sizing: border-box; height: calc(100% - 3px); padding: 10px 14px !important; gap: 12px !important; }
+            .mini-art-box { width: 52px !important; height: 52px !important; flex: 0 0 52px !important; border-radius: 11px !important; }
+            .mini-track-info { min-width: 0; }
+            .mini-track-info h5 { font-size: 12px !important; }
+            .mini-track-info p { font-size: 9px !important; }
+            .mini-controls { margin-left: auto; gap: 4px !important; }
+            .mini-timeline-bar { height: 3px !important; background: #252d31 !important; }
         `);
     });
 
@@ -1025,7 +1131,7 @@ ipcMain.on('open-mini-player', (event, currentTrack, isPlaying) => {
     }
 });
 
-ipcMain.on('close-mini-player', () => {
+registerIpcListener('close-mini-player', () => {
     if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
         lastTrackState = null;
         miniPlayerWindow.close();
@@ -1037,7 +1143,7 @@ ipcMain.on('close-mini-player', () => {
     }
 });
 
-ipcMain.on('sync-state-to-mini', (event, data) => {
+registerIpcListener('sync-state-to-mini', (event, data) => {
     lastTrackState = data;
     if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
         miniPlayerWindow.webContents.send('state-updated', data);
@@ -1045,7 +1151,7 @@ ipcMain.on('sync-state-to-mini', (event, data) => {
     updateTrayPlaybackState(data.isPlaying, data.track);
 });
 
-ipcMain.on('control-from-mini', (event, command) => {
+registerIpcListener('control-from-mini', (event, command) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('execute-control', command);
     }
@@ -1055,7 +1161,7 @@ ipcMain.on('control-from-mini', (event, command) => {
 // FILE DIALOG HANDLERS (FIXED: Deep recursive directory scanning)
 // ============================================================================
 
-ipcMain.handle('select-audio-files', async () => {
+registerIpcHandler('select-audio-files', async () => {
     if (!mainWindow) return [];
     const result = await dialog.showOpenDialog(mainWindow, {
         properties: ['openFile', 'multiSelections'],
@@ -1067,7 +1173,7 @@ ipcMain.handle('select-audio-files', async () => {
 });
 
 // FIXED: Deep recursive directory scanner with improved error handling
-ipcMain.handle('select-audio-folder', async () => {
+registerIpcHandler('select-audio-folder', async () => {
     if (!mainWindow) return [];
 
     try {
@@ -1103,11 +1209,11 @@ ipcMain.handle('select-audio-folder', async () => {
 // WINDOW CONTROL HANDLERS
 // ============================================================================
 
-ipcMain.on('minimize-window', () => {
+registerIpcListener('minimize-window', () => {
     if (mainWindow) mainWindow.minimize();
 });
 
-ipcMain.on('maximize-window', () => {
+registerIpcListener('maximize-window', () => {
     if (mainWindow) {
         if (mainWindow.isMaximized()) {
             mainWindow.unmaximize();
@@ -1117,7 +1223,7 @@ ipcMain.on('maximize-window', () => {
     }
 });
 
-ipcMain.on('close-window', () => {
+registerIpcListener('close-window', () => {
     if (mainWindow) mainWindow.close();
 });
 
@@ -1125,7 +1231,7 @@ ipcMain.on('close-window', () => {
 // TAG EDITOR HANDLER
 // ============================================================================
 
-ipcMain.on('open-tag-editor', (event, trackId) => {
+registerIpcListener('open-tag-editor', (event, trackId) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('open-tag-editor', trackId);
     }
@@ -1135,10 +1241,8 @@ ipcMain.on('open-tag-editor', (event, trackId) => {
 // ADVANCED SEARCH HANDLER
 // ============================================================================
 
-ipcMain.handle('advanced-search', async (event, query) => {
+registerIpcHandler('advanced-search', async (event, query) => {
     try {
-        const fetchModule = await import('node-fetch');
-        const fetch = fetchModule.default;
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/search/advanced`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1155,7 +1259,7 @@ ipcMain.handle('advanced-search', async (event, query) => {
 // PLAYLIST EXPORT/IMPORT HANDLERS
 // ============================================================================
 
-ipcMain.handle('export-playlist', async (event, playlistId, format) => {
+registerIpcHandler('export-playlist', async (event, playlistId, format) => {
     const result = await dialog.showSaveDialog(mainWindow, {
         title: 'Export Playlist',
         defaultPath: `playlist.${format}`,
@@ -1167,8 +1271,6 @@ ipcMain.handle('export-playlist', async (event, playlistId, format) => {
     if (result.canceled || !result.filePath) return null;
     
     try {
-        const fetchModule = await import('node-fetch');
-        const fetch = fetchModule.default;
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/playlists/${playlistId}/export`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1181,10 +1283,8 @@ ipcMain.handle('export-playlist', async (event, playlistId, format) => {
     }
 });
 
-ipcMain.handle('import-playlist', async (event, filePath, format) => {
+registerIpcHandler('import-playlist', async (event, filePath, format) => {
     try {
-        const fetchModule = await import('node-fetch');
-        const fetch = fetchModule.default;
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/playlists/import`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1201,7 +1301,7 @@ ipcMain.handle('import-playlist', async (event, filePath, format) => {
 // LIBRARY EXPORT HANDLER
 // ============================================================================
 
-ipcMain.handle('export-library', async () => {
+registerIpcHandler('export-library', async () => {
     const result = await dialog.showSaveDialog(mainWindow, {
         title: 'Export Library',
         defaultPath: `korai_library_${Date.now()}.csv`,
@@ -1213,8 +1313,6 @@ ipcMain.handle('export-library', async () => {
     if (result.canceled || !result.filePath) return null;
     
     try {
-        const fetchModule = await import('node-fetch');
-        const fetch = fetchModule.default;
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/library/export`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1231,10 +1329,8 @@ ipcMain.handle('export-library', async () => {
 // CUE SHEET HANDLER
 // ============================================================================
 
-ipcMain.handle('parse-cue', async (event, cuePath) => {
+registerIpcHandler('parse-cue', async (event, cuePath) => {
     try {
-        const fetchModule = await import('node-fetch');
-        const fetch = fetchModule.default;
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/cue/parse`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1251,10 +1347,8 @@ ipcMain.handle('parse-cue', async (event, cuePath) => {
 // PLAYBACK SETTINGS HANDLERS
 // ============================================================================
 
-ipcMain.handle('get-playback-settings', async () => {
+registerIpcHandler('get-playback-settings', async () => {
     try {
-        const fetchModule = await import('node-fetch');
-        const fetch = fetchModule.default;
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/playback/settings`);
         return await response.json();
     } catch (err) {
@@ -1262,10 +1356,8 @@ ipcMain.handle('get-playback-settings', async () => {
     }
 });
 
-ipcMain.handle('set-playback-settings', async (event, settings) => {
+registerIpcHandler('set-playback-settings', async (event, settings) => {
     try {
-        const fetchModule = await import('node-fetch');
-        const fetch = fetchModule.default;
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/playback/settings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1278,7 +1370,7 @@ ipcMain.handle('set-playback-settings', async (event, settings) => {
     }
 });
 
-ipcMain.on('set-crossfade', (event, duration) => {
+registerIpcListener('set-crossfade', (event, duration) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('crossfade-changed', duration);
     }
@@ -1288,10 +1380,8 @@ ipcMain.on('set-crossfade', (event, duration) => {
 // REAL BPM DETECTION HANDLER
 // ============================================================================
 
-ipcMain.handle('detect-real-bpm', async (event, trackId) => {
+registerIpcHandler('detect-real-bpm', async (event, trackId) => {
     try {
-        const fetchModule = await import('node-fetch');
-        const fetch = fetchModule.default;
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/tracks/${trackId}/detect-bpm`, {
             method: 'POST'
         });
@@ -1306,16 +1396,14 @@ ipcMain.handle('detect-real-bpm', async (event, trackId) => {
 // GLOBAL SHORTCUT HANDLER
 // ============================================================================
 
-ipcMain.on('register-global-shortcut', (event, command) => {
+registerIpcListener('register-global-shortcut', (event, command) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('global-shortcut', command);
     }
 });
 
-ipcMain.handle('import-playlist-auto', async (event, filePath) => {
+registerIpcHandler('import-playlist-auto', async (event, filePath) => {
     try {
-        const fetchModule = await import('node-fetch');
-        const fetch = fetchModule.default;
         const response = await fetch(`http://127.0.0.1:${serverPort}/api/playlists/import-auto`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1328,21 +1416,31 @@ ipcMain.handle('import-playlist-auto', async (event, filePath) => {
     }
 });
 
-ipcMain.handle('show-open-dialog', async (event, options) => {
+registerIpcHandler('show-open-dialog', async (event, options) => {
     const result = await dialog.showOpenDialog(mainWindow, options);
     return result;
 });
 
-ipcMain.handle('get-data-path', () => {
+registerIpcHandler('get-data-path', () => {
     return app.getPath('userData');
 });
 
-ipcMain.handle('get-app-version', () => {
+registerIpcHandler('get-app-version', () => {
     return app.getVersion();
 });
 
-ipcMain.on('open-folder', (event, folderPath) => {
-    shell.showItemInFolder(folderPath);
+registerIpcListener('open-folder', (event, folderPath) => {
+    if (!folderPath || typeof folderPath !== 'string' || !path.isAbsolute(folderPath)) return;
+    try {
+        const stat = fs.statSync(folderPath);
+        if (stat.isDirectory()) {
+            void shell.openPath(folderPath);
+        } else if (stat.isFile()) {
+            shell.showItemInFolder(folderPath);
+        }
+    } catch (error) {
+        console.warn('[open-folder] Unable to open path:', error.message);
+    }
 });
 
 // ============================================================================
@@ -1352,6 +1450,7 @@ ipcMain.on('open-folder', (event, folderPath) => {
 handleFileOpen();
 
 app.whenReady().then(async () => {
+    registerKoraiProtocol();
     try {
         if (createStartupTimer) {
             try { startupTimer = createStartupTimer(); startupTimer.mark && startupTimer.mark('main-process-init'); } catch(e){}
@@ -1370,9 +1469,6 @@ app.whenReady().then(async () => {
                     },
                     onResume() {
                         console.debug('⚡ System resume detected - restarting timers after network stabilizes');
-                        if (!updatePollingTimer) {
-                            updatePollingTimer = setInterval(() => {}, 60000);
-                        }
                     }
                 });
             } catch (e) { console.warn('managePowerState failed:', e && e.message); }

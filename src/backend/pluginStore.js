@@ -1,117 +1,107 @@
-// pluginStore - placeholder plugin marketplace client
+// KORAI plugin catalog client.
+// The catalog is intentionally data-only: plugins are never executed until the
+// normal permission + worker lifecycle validates/loads them locally.
+
+const fs = require('fs');
+const path = require('path');
+const { assertSafeUrl } = require('./securityUtils');
+
+const DEFAULT_REMOTE_REGISTRY = 'https://raw.githubusercontent.com/Behdad-kanaani/korai-player/main/plugins/registry.json';
 
 class PluginStore {
-  constructor() {
-    this.storeUrl = 'https://korai-plugins.example.com/api'; // TODO: Implement real backend
-    this.localRegistry = {}; // Cache of available plugins
-    this.ratings = {}; // User ratings cache
+  constructor(opts = {}) {
+    this.appRoot = opts.appRoot || path.resolve(__dirname, '..', '..');
+    this.registryPath = opts.registryPath || path.join(this.appRoot, 'plugins', 'registry.json');
+    this.remoteRegistryUrl = opts.remoteRegistryUrl || DEFAULT_REMOTE_REGISTRY;
+    this.remoteEnabled = opts.remoteEnabled !== false;
+    this.cacheTtlMs = Number.isFinite(opts.cacheTtlMs) ? Math.max(0, opts.cacheTtlMs) : 5 * 60 * 1000;
+    this.cache = { loadedAt: 0, plugins: [] };
   }
 
-  /**
-   * Get featured plugins from store
-   */
-  async getFeaturedPlugins() {
-    return [
-      {
-        id: 'com.korai.track-logger',
-        name: ' Track Logger',
-        version: '1.0.0',
-        author: 'KORAI Team',
-        description: 'Log every track played with timestamps',
-        downloads: 1250,
-        rating: 4.8,
-        tags: ['logging', 'analytics'],
-        featured: true,
-        downloadUrl: 'https://example.com/track-logger.zip'
-      },
-      {
-        id: 'com.korai.bpm-display',
-        name: ' BPM Display',
-        version: '1.2.0',
-        author: 'Music Dev',
-        description: 'Show BPM detection results with visual display',
-        downloads: 2100,
-        rating: 4.9,
-        tags: ['bpm', 'analysis'],
-        featured: true,
-        downloadUrl: 'https://example.com/bpm-display.zip'
-      },
-      {
-        id: 'com.korai.audio-visualizer',
-        name: ' Audio Visualizer',
-        version: '2.0.0',
-        author: 'Audio Artist',
-        description: 'Real-time audio waveform visualization with spectrum analyzer',
-        downloads: 3500,
-        rating: 4.7,
-        tags: ['visualization', 'audio'],
-        featured: true,
-        downloadUrl: 'https://example.com/visualizer.zip'
-      },
-      {
-        id: 'com.korai.playlist-suggester',
-        name: ' Smart Suggester',
-        version: '1.5.0',
-        author: 'AI Dev',
-        description: 'AI-powered playlist suggestions based on your listening habits',
-        downloads: 1890,
-        rating: 4.6,
-        tags: ['ai', 'playlist', 'recommendations'],
-        featured: true,
-        downloadUrl: 'https://example.com/suggester.zip'
-      },
-      {
-        id: 'com.korai.equalizer-pro',
-        name: '️ Equalizer Pro',
-        version: '3.1.0',
-        author: 'Audio Labs',
-        description: '10-band parametric equalizer with presets',
-        downloads: 2750,
-        rating: 4.9,
-        tags: ['audio', 'effects', 'equalizer'],
-        featured: true,
-        downloadUrl: 'https://example.com/equalizer.zip'
+  readLocalRegistry() {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(this.registryPath, 'utf8'));
+      return Array.isArray(parsed) ? parsed : Array.isArray(parsed?.plugins) ? parsed.plugins : [];
+    } catch {
+      return [];
+    }
+  }
+
+  normalizePlugin(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    if (typeof raw.id !== 'string' || typeof raw.name !== 'string' || typeof raw.version !== 'string') return null;
+    if (!/^[a-zA-Z0-9._-]+(?:\/[a-zA-Z0-9._-]+)?$/.test(raw.id)) return null;
+    return {
+      id: raw.id,
+      name: raw.name.slice(0, 120),
+      version: raw.version,
+      author: typeof raw.author === 'string' ? raw.author.slice(0, 120) : 'Unknown author',
+      description: typeof raw.description === 'string' ? raw.description.slice(0, 600) : '',
+      tags: Array.isArray(raw.tags) ? raw.tags.filter(v => typeof v === 'string').slice(0, 12) : [],
+      featured: Boolean(raw.featured),
+      installable: Boolean(raw.installable),
+      downloadUrl: typeof raw.downloadUrl === 'string' ? raw.downloadUrl : null,
+      homepage: typeof raw.homepage === 'string' ? raw.homepage : null,
+      source: raw.source === 'github' ? 'github' : 'catalog'
+    };
+  }
+
+  async loadCatalog(force = false) {
+    if (!force && Date.now() - this.cache.loadedAt < this.cacheTtlMs) return this.cache.plugins;
+
+    let rawPlugins = this.readLocalRegistry();
+    if (this.remoteEnabled) {
+      try {
+        const safeUrl = await assertSafeUrl(this.remoteRegistryUrl, {
+          allowHosts: ['raw.githubusercontent.com']
+        });
+        const response = await fetch(safeUrl, { signal: AbortSignal.timeout(8000) });
+        if (response.ok) {
+          const remote = await response.json();
+          const remotePlugins = Array.isArray(remote) ? remote : Array.isArray(remote?.plugins) ? remote.plugins : [];
+          rawPlugins = remotePlugins.length ? remotePlugins : rawPlugins;
+        }
+      } catch (error) {
+        // Offline-first: a local catalog remains usable and no fake entries are injected.
+        console.warn('[pluginStore] Remote catalog unavailable:', error.message);
       }
-    ];
+    }
+
+    const seen = new Set();
+    const plugins = [];
+    for (const raw of rawPlugins) {
+      const plugin = this.normalizePlugin(raw);
+      if (!plugin || seen.has(plugin.id)) continue;
+      seen.add(plugin.id);
+      plugins.push(plugin);
+    }
+
+    this.cache = { loadedAt: Date.now(), plugins };
+    return plugins;
   }
 
-  /**
-   * Search plugins by query
-   */
+  async getFeaturedPlugins() {
+    const plugins = await this.loadCatalog();
+    return plugins.filter(plugin => plugin.featured || plugin.installable);
+  }
+
   async searchPlugins(query) {
-    const all = await this.getFeaturedPlugins();
-    const q = query.toLowerCase();
-    return all.filter(p => 
-      p.name.toLowerCase().includes(q) ||
-      p.description.toLowerCase().includes(q) ||
-      p.tags.some(t => t.includes(q))
-    );
+    const q = String(query || '').trim().toLowerCase();
+    const plugins = await this.loadCatalog();
+    if (!q) return plugins.filter(plugin => plugin.featured || plugin.installable);
+    return plugins.filter(plugin => [plugin.id, plugin.name, plugin.author, plugin.description, ...plugin.tags]
+      .some(value => String(value || '').toLowerCase().includes(q)));
   }
 
-  /**
-   * Get plugin details
-   */
   async getPluginDetails(id) {
-    const plugins = await this.getFeaturedPlugins();
-    return plugins.find(p => p.id === id);
+    if (typeof id !== 'string') return null;
+    const plugins = await this.loadCatalog();
+    return plugins.find(plugin => plugin.id === id) || null;
   }
 
-  /**
-   * Rate a plugin (1-5 stars)
-   */
-  async ratePlugin(id, stars) {
-    if (stars < 1 || stars > 5) throw new Error('Rating must be 1-5');
-    this.ratings[id] = stars;
-    // In real app, send to server
-    return { success: true, rating: stars };
-  }
-
-  /**
-   * Check for plugin updates
-   */
   async checkUpdates(installedPlugins) {
     const updates = [];
-    for (const installed of installedPlugins) {
+    for (const installed of Array.isArray(installedPlugins) ? installedPlugins : []) {
       const available = await this.getPluginDetails(installed.id);
       if (available && this.compareVersions(available.version, installed.version) > 0) {
         updates.push({
@@ -126,11 +116,10 @@ class PluginStore {
   }
 
   compareVersions(v1, v2) {
-    const parts1 = v1.split('.').map(Number);
-    const parts2 = v2.split('.').map(Number);
+    const a = String(v1 || '').split('.').map(part => Number.parseInt(part, 10) || 0);
+    const b = String(v2 || '').split('.').map(part => Number.parseInt(part, 10) || 0);
     for (let i = 0; i < 3; i++) {
-      if ((parts1[i] || 0) > (parts2[i] || 0)) return 1;
-      if ((parts1[i] || 0) < (parts2[i] || 0)) return -1;
+      if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0) ? 1 : -1;
     }
     return 0;
   }

@@ -27,15 +27,9 @@ let isMiniPlayerOpen = false;
 let currentActiveSection = 'home';
 let currentActivePlaylistId = null;
 let currentLanguage = localStorage.getItem('user_lang') || 'en';
-let currentSkin = localStorage.getItem('user_skin') || 'default';
-if (currentSkin !== 'default' && currentSkin !== 'liquid-glass') {
-    currentSkin = 'default';
-}
 let currentVinylRotation = 0;
 let repeatOneMode = false;
 let lastVinylUpdateTime = 0;
-let importProgressElement = null;
-let importProgressInterval = null;
 let originalQueueBackup = [];
 let vinylRotationInterval = null;
 let vinylRotationRAFId = null;
@@ -188,7 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // Lightweight Performance Observability
 // - Long Tasks via PerformanceObserver
 // - Click / Key latency via RAF timing
-// - Batched, non-blocking sender to local telemetry endpoint when available
+// - Batched, non-blocking sender to local local diagnostics endpoint when available
 // =========================
 
 const __perfBuffer = [];
@@ -211,38 +205,57 @@ function __enqueuePerf(metric) {
  */
 window.showSongInfo = function() {
     if (!currentTrack) {
-        showNotification('No track is currently playing', 'warning');
+        showNotification(t('notificationNoTrackPlaying'), 'warning');
         return;
     }
     const modal = document.getElementById('songInfoModal');
     const contentDiv = document.getElementById('songInfoContent');
     if (!modal || !contentDiv) return;
-    const coverUrl = currentTrack.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${currentTrack.id}/cover?t=${currentTrack.updatedAt || currentTrack.id}` : null;
+    const coverUrl = currentTrack.hasCover
+        ? `http://127.0.0.1:${apiPort}/api/tracks/${encodeURIComponent(currentTrack.id)}/cover?t=${encodeURIComponent(currentTrack.updatedAt || currentTrack.id)}`
+        : null;
+    const metadataRow = (label, value) => `
+        <div class="song-info-field">
+            <span>${label}</span>
+            <strong>${escapeHtml(value == null || value === '' ? '—' : value)}</strong>
+        </div>
+    `;
     let lyricsHtml = '';
     if (currentTrack.lyrics) {
-        lyricsHtml = `<div class="song-info-lyrics"><strong>${t('lyrics') || 'Lyrics'}:</strong><br>${escapeHtml(currentTrack.lyrics).replace(/\n/g, '<br>')}</div>`;
+        lyricsHtml = `
+            <section class="song-info-lyrics">
+                <h5><i class="fa-solid fa-align-left"></i> ${t('lyrics') || 'Lyrics'}</h5>
+                <p>${escapeHtml(currentTrack.lyrics).replace(/\r?\n/g, '<br>')}</p>
+            </section>
+        `;
     } else {
-        lyricsHtml = `<div class="song-info-lyrics"><em>${t('noLyrics')}</em></div>`;
+        lyricsHtml = `<section class="song-info-lyrics is-empty"><p><i class="fa-regular fa-file-lines"></i> ${t('noLyrics')}</p></section>`;
     }
     contentDiv.innerHTML = `
-        <div class="song-info-cover">
-            ${coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music"></i>'}
-        </div>
-        <div class="song-info-details">
-            <p><strong>${t('trackTitle') || 'Title'}:</strong> ${escapeHtml(currentTrack.title || '—')}</p>
-            <p><strong>${t('artist') || 'Artist'}:</strong> ${escapeHtml(currentTrack.artist || '—')}</p>
-            <p><strong>${t('album') || 'Album'}:</strong> ${escapeHtml(currentTrack.album || '—')}</p>
-            <p><strong>${t('genre') || 'Genre'}:</strong> ${escapeHtml(currentTrack.genre || '—')}</p>
-            <p><strong>BPM:</strong> ${currentTrack.bpm || '—'}</p>
-            <p><strong>${t('energy') || 'Energy'}:</strong> ${currentTrack.energy ? Math.round(currentTrack.energy * 100) + '%' : '—'}</p>
-            <p><strong>${t('duration') || 'Duration'}:</strong> ${formatTime(currentTrack.duration)}</p>
-            <p><strong>${t('codec') || 'Codec'}:</strong> ${currentTrack.codec ? currentTrack.codec.toUpperCase() : '—'}</p>
-            <p><strong>${t('bitrate') || 'Bitrate'}:</strong> ${currentTrack.bitrate ? Math.round(currentTrack.bitrate / 1000) + ' kbps' : '—'}</p>
-            <p><strong>${t('sampleRate') || 'Sample Rate'}:</strong> ${currentTrack.sampleRate ? (currentTrack.sampleRate / 1000).toFixed(1) + ' kHz' : '—'}</p>
+        <div class="song-info-layout">
+            <div class="song-info-cover">
+                ${coverUrl ? `<img src="${coverUrl}" alt="${escapeHtml(currentTrack.title || t('trackTitle'))}">` : '<i class="fa-solid fa-music"></i>'}
+                <span class="song-info-cover-glow"></span>
+            </div>
+            <div class="song-info-main">
+                <span class="song-info-eyebrow">${t('nowPlaying')}</span>
+                <h3>${escapeHtml(currentTrack.title || t('untitled'))}</h3>
+                <p class="song-info-artist">${escapeHtml(currentTrack.artist || t('unknownArtist'))}</p>
+                <div class="song-info-details">
+                    ${metadataRow(t('album') || 'Album', currentTrack.album)}
+                    ${metadataRow(t('genre') || 'Genre', currentTrack.genre)}
+                    ${metadataRow(t('duration') || 'Duration', formatTime(currentTrack.duration))}
+                    ${metadataRow(t('bpmBadge') || 'BPM', currentTrack.bpm)}
+                    ${metadataRow(t('energy') || 'Energy', Number.isFinite(Number(currentTrack.energy)) && currentTrack.energy !== null ? `${Math.round(currentTrack.energy * 100)}%` : null)}
+                    ${metadataRow(t('codec') || 'Codec', currentTrack.codec ? currentTrack.codec.toUpperCase() : null)}
+                    ${metadataRow(t('bitrate') || 'Bitrate', currentTrack.bitrate ? `${Math.round(currentTrack.bitrate / 1000)} kbps` : null)}
+                    ${metadataRow(t('sampleRate') || 'Sample Rate', currentTrack.sampleRate ? `${(currentTrack.sampleRate / 1000).toFixed(1)} kHz` : null)}
+                </div>
+            </div>
         </div>
         ${lyricsHtml}
     `;
-    modal.style.display = 'flex';
+    showAnimatedModal(modal);
 };
 
 /**
@@ -250,7 +263,7 @@ window.showSongInfo = function() {
  */
 window.closeSongInfoModal = function() {
     const modal = document.getElementById('songInfoModal');
-    if (modal) modal.style.display = 'none';
+    if (modal) hideAnimatedModal(modal);
 };
 
 /**
@@ -258,7 +271,7 @@ window.closeSongInfoModal = function() {
  */
 window.extractVocalFromCurrentTrack = async function() {
     if (!currentTrack) {
-        showNotification('No track is currently playing', 'warning');
+        showNotification(t('notificationNoTrackPlaying'), 'warning');
         return;
     }
 
@@ -311,14 +324,14 @@ function __flushPerfBuffer() {
     (async () => {
         try {
             if (!apiPort) return; // not initialized yet
-            await fetch(`http://127.0.0.1:${apiPort}/api/telemetry/perf`, {
+            await fetch(`http://127.0.0.1:${apiPort}/api/diagnostics/perf`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ metrics: payload })
             });
         } catch (err) {
             // Server may not exist in dev; swallow errors and keep payload dropped
-            console.debug('Perf telemetry not sent (endpoint unavailable)');
+            console.debug('Performance diagnostics not sent (endpoint unavailable)');
         }
     })();
 }
@@ -386,6 +399,35 @@ function formatTime(seconds) {
 }
 
 // Find a track in `tracks` array by matching file path (normalize slashes and case)
+
+function getTrackBpm(track) {
+    const bpm = Number(track?.bpm);
+    return Number.isFinite(bpm) && bpm > 0 ? Math.round(bpm) : null;
+}
+
+function formatBpm(track) {
+    const bpm = getTrackBpm(track);
+    return bpm === null ? '—' : `${bpm}`;
+}
+
+function formatSimilarity(track) {
+    const similarity = Number(track?.similarity);
+    return Number.isFinite(similarity) && similarity >= 0 ? `${Math.min(100, Math.round(similarity))}% match` : 'Personalized';
+}
+
+function getTrackEnergy(track) {
+    const energy = Number(track?.energy);
+    return Number.isFinite(energy) && energy >= 0 && energy <= 1 ? energy : null;
+}
+
+function shuffleInPlace(items) {
+    for (let i = items.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [items[i], items[j]] = [items[j], items[i]];
+    }
+    return items;
+}
+
 function findTrackByFilePath(filePath) {
     if (!filePath || !Array.isArray(tracks)) return null;
     const norm = normalizePath(filePath);
@@ -410,6 +452,12 @@ function normalizePath(p) {
 
 function t(key) {
     return translations[currentLanguage] && translations[currentLanguage][key] ? translations[currentLanguage][key] : key;
+}
+
+function tf(key, values = {}) {
+    return Object.entries(values).reduce((text, [name, value]) => {
+        return text.replaceAll(`{${name}}`, String(value));
+    }, t(key));
 }
 
 // Normalize genre label for grouping (remove urls, bracket tags, extra punctuation)
@@ -496,6 +544,32 @@ function showNotification(message, type = 'info') {
     }, 3000);
 }
 
+let languageTransitionTimeout;
+const modalCloseTimers = new WeakMap();
+
+function showAnimatedModal(modal) {
+    const closeTimer = modalCloseTimers.get(modal);
+    if (closeTimer) clearTimeout(closeTimer);
+    modal.classList.remove('is-closing');
+    modal.style.display = 'flex';
+    void modal.offsetWidth;
+    modal.classList.add('is-open');
+}
+
+function hideAnimatedModal(modal) {
+    const closeTimer = modalCloseTimers.get(modal);
+    if (closeTimer) clearTimeout(closeTimer);
+    modal.classList.remove('is-open');
+    modal.classList.add('is-closing');
+    modalCloseTimers.set(modal, setTimeout(() => {
+        if (modal.classList.contains('is-closing')) {
+            modal.style.display = 'none';
+            modal.classList.remove('is-closing');
+        }
+        modalCloseTimers.delete(modal);
+    }, 190));
+}
+
 function showCustomDialog(title, message, onConfirm, showCancel = true) {
     if (isMiniWindowMode) return;
     const overlay = document.getElementById('dialogOverlay');
@@ -507,10 +581,10 @@ function showCustomDialog(title, message, onConfirm, showCancel = true) {
     titleEl.innerText = title;
     msgEl.innerText = message;
     cancelBtn.style.display = showCancel ? 'block' : 'none';
-    overlay.style.display = 'flex';
+    showAnimatedModal(overlay);
 
     const cleanUp = () => {
-        overlay.style.display = 'none';
+        hideAnimatedModal(overlay);
         confirmBtn.onclick = null;
         cancelBtn.onclick = null;
     };
@@ -521,6 +595,7 @@ function showCustomDialog(title, message, onConfirm, showCancel = true) {
 
 function translatePage() {
     document.querySelectorAll('[data-translate]').forEach(el => {
+        if (window.currentTrack && ['playerTitle', 'playerArtist', 'miniTitle', 'miniArtist', 'fsTitle', 'fsArtist'].includes(el.id)) return;
         const key = el.getAttribute('data-translate');
         const translatedText = t(key);
         if (translatedText && translatedText !== key) {
@@ -544,18 +619,30 @@ function translatePage() {
         const key = el.getAttribute('data-translate-title');
         el.title = t(key);
     });
+
+    document.querySelectorAll('[data-translate-aria]').forEach(el => {
+        const key = el.getAttribute('data-translate-aria');
+        el.setAttribute('aria-label', t(key));
+    });
+
+    document.querySelectorAll('[data-translate-tooltip]').forEach(el => {
+        const key = el.getAttribute('data-translate-tooltip');
+        el.setAttribute('data-tooltip', t(key));
+    });
 }
 
 // Player connection status helpers
+window.playerConnectionState = null;
 window.updatePlayerConnectionUI = function(connected) {
     const el = document.getElementById('playerConnectionStatus');
+    window.playerConnectionState = !!connected;
     if (!el) return;
     if (connected) {
-        el.textContent = currentLanguage === 'fa' ? 'متصل به پلیر' : 'Connected to player';
+        el.textContent = t('playerConnected');
         el.classList.remove('disconnected');
         el.classList.add('connected');
     } else {
-        el.textContent = currentLanguage === 'fa' ? 'به پلیر وصل نیست' : 'Player disconnected';
+        el.textContent = t('playerDisconnected');
         el.classList.remove('connected');
         el.classList.add('disconnected');
     }
@@ -580,115 +667,85 @@ function renderAlbums() {
     if (!mainSection) return;
 
     if (tracks.length === 0) {
-        mainSection.innerHTML = `<div class="empty-illustration-state"><i class="fa-solid fa-cubes"></i><h3>${t('emptyAlbumsState') || 'No Albums Found'}</h3><p>${t('emptyAlbumsDesc') || 'Add music to see your albums.'}</p></div>`;
+        mainSection.innerHTML = `<div class="empty-state-premium"><i class="fa-solid fa-cubes"></i><h3>${t('emptyAlbumsState') || 'No Albums Found'}</h3><p>${t('emptyAlbumsDesc') || 'Add music to see your albums.'}</p><button class="import-hero-btn" onclick="handleImport()"><i class="fa-solid fa-plus"></i><span>${currentLanguage === 'fa' ? 'افزودن موسیقی' : 'Import music'}</span></button></div>`;
         return;
     }
 
-    // Group albums
     const albumsMap = new Map();
     tracks.forEach(track => {
-        const albumName = track.album || 'Unknown Album';
-        if (!albumsMap.has(albumName)) {
-            albumsMap.set(albumName, { name: albumName, artist: track.artist, tracks: [], coverUrl: null });
-        }
+        const albumName = String(track.album || 'Unknown Album').trim() || 'Unknown Album';
+        const artistName = String(track.artist || 'Unknown Artist').trim() || 'Unknown Artist';
+        if (!albumsMap.has(albumName)) albumsMap.set(albumName, { name: albumName, artist: artistName, tracks: [], coverUrl: null });
         const album = albumsMap.get(albumName);
         album.tracks.push(track);
-        if (!album.coverUrl && track.hasCover) {
-            album.coverUrl = `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover`;
-        }
+        if (!album.coverUrl && track.hasCover) album.coverUrl = `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover`;
     });
 
-    const albums = Array.from(albumsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const albums = Array.from(albumsMap.values()).sort((a, b) => a.name.localeCompare(b.name, currentLanguage === 'fa' ? 'fa' : 'en', { sensitivity: 'base' }));
 
-    // Sliding window container with top/bottom controls
     mainSection.innerHTML = `
-        <div class="spotify-row-title"><h3><i class="fa-solid fa-cubes"></i> ${t('albumsTitle') || 'Albums'} (${albums.length})</h3></div>
-        <div id="loadPrevAlbumsContainer" style="text-align:center; margin-bottom:12px; display:none;"><button id="loadPrevAlbumsBtn">${currentLanguage === 'fa' ? 'آلبوم‌های قبلی...' : 'Load previous...'}</button></div>
-        <div class="albums-grid" id="albumsGrid" style="min-height:200px;"></div>
-        <div id="loadMoreAlbumsContainer" style="text-align:center; margin-top:18px;"><button id="loadMoreAlbumsBtn">${currentLanguage === 'fa' ? 'بارگذاری آلبوم‌های بیشتر...' : 'Load more albums...'}</button></div>
-    `;
+        <div class="albums-page">
+            <div class="albums-page-head">
+                <div><h2>${t('albumsTitle') || 'Albums'}</h2><p>${albums.length} ${currentLanguage === 'fa' ? 'آلبوم از' : 'albums from'} ${tracks.length} ${t('tracksCount') || 'tracks'}</p></div>
+                <div class="album-summary">
+                    <span class="album-summary-chip"><i class="fa-solid fa-layer-group"></i><strong>${albums.length}</strong> ${currentLanguage === 'fa' ? 'آلبوم' : 'albums'}</span>
+                    <span class="album-summary-chip"><i class="fa-solid fa-music"></i><strong>${tracks.length}</strong> ${currentLanguage === 'fa' ? 'آهنگ' : 'tracks'}</span>
+                </div>
+            </div>
+            <div class="albums-grid" id="albumsGrid"></div>
+            <div class="albums-more-row" id="albumsMoreRow"><button class="albums-page-btn" id="loadMoreAlbumsBtn"></button></div>
+        </div>`;
 
     const grid = document.getElementById('albumsGrid');
-    const loadPrevContainer = document.getElementById('loadPrevAlbumsContainer');
-    const loadPrevBtn = document.getElementById('loadPrevAlbumsBtn');
-    const loadMoreContainer = document.getElementById('loadMoreAlbumsContainer');
-    const loadMoreBtn = document.getElementById('loadMoreAlbumsBtn');
+    const moreRow = document.getElementById('albumsMoreRow');
+    const moreBtn = document.getElementById('loadMoreAlbumsBtn');
+    if (!grid || !moreBtn) return;
 
-    const chunkSize = 24;
-    const maxVisible = 48;
+    const chunkSize = 20;
+    let visible = Math.min(chunkSize, albums.length);
 
-    let windowStart = 0;
-    let windowEnd = Math.min(albums.length, chunkSize);
+    const renderChunk = () => {
+        grid.innerHTML = albums.slice(0, visible).map(album => {
+            const coverHtml = album.coverUrl
+                ? `<img src="${album.coverUrl}" alt="${escapeHtml(album.name)}" loading="lazy">`
+                : `<i class="fa-solid fa-cubes"></i>`;
+            return `
+                <article class="album-card" data-album-name="${escapeHtml(album.name)}">
+                    <div class="album-cover-wrap">
+                        <div class="album-cover">${coverHtml}</div>
+                        <span class="album-card-ghost">${album.tracks.length} ${currentLanguage === 'fa' ? 'تراک' : 'tracks'}</span>
+                        <span class="album-card-play" aria-hidden="true"><i class="fa-solid fa-play"></i></span>
+                    </div>
+                    <div class="album-card-info">
+                        <div class="album-name truncate-text">${escapeHtml(album.name)}</div>
+                        <div class="album-artist">${escapeHtml(album.artist)}</div>
+                        <div class="album-tracks-count">${album.tracks.length} ${t('tracksCount') || 'tracks'}</div>
+                    </div>
+                </article>`;
+        }).join('');
 
-    function updateAlbumsDOM() {
-        grid.innerHTML = '';
-        const visibleChunk = albums.slice(windowStart, windowEnd);
-        let html = '';
-        visibleChunk.forEach(album => {
-            const coverHtml = album.coverUrl ? `<img class="lazy-cover" data-src="${album.coverUrl}" alt="${escapeHtml(album.name)}" loading="lazy">` : '<i class="fa-solid fa-cubes"></i>';
-            html += `
-                <div class="album-card" data-album-name="${escapeHtml(album.name)}">
-                    <div class="album-cover">${coverHtml}</div>
-                    <div class="album-name truncate-text">${escapeHtml(album.name)}</div>
-                    <div class="album-tracks-count">${album.tracks.length} ${t('tracksCount') || 'tracks'}</div>
-                </div>
-            `;
+        grid.querySelectorAll('.album-card').forEach(card => {
+            card.addEventListener('click', () => showAlbumDetail(card.dataset.albumName || 'Unknown Album'));
+            card.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    showAlbumDetail(card.dataset.albumName || 'Unknown Album');
+                }
+            });
+            card.setAttribute('tabindex', '0');
+            card.setAttribute('role', 'button');
         });
-        grid.innerHTML = html;
 
-        // lazy images for visible cards
-        try {
-            const imgs = Array.from(grid.querySelectorAll('img.lazy-cover'));
-            if ('IntersectionObserver' in window) {
-                const obs = new IntersectionObserver((entries, observer) => {
-                    entries.forEach(en => {
-                        if (en.isIntersecting) {
-                            const img = en.target;
-                            if (img.dataset && img.dataset.src) img.src = img.dataset.src;
-                            img.classList.remove('lazy-cover');
-                            observer.unobserve(img);
-                        }
-                    });
-                }, { rootMargin: '200px' });
-                imgs.forEach(i => obs.observe(i));
-            } else {
-                imgs.forEach(i => { if (i.dataset && i.dataset.src) i.src = i.dataset.src; });
-            }
-        } catch (e) {}
-
-        // show/hide prev button
-        loadPrevContainer.style.display = windowStart > 0 ? 'block' : 'none';
-        // show/hide load more button when there are more albums
-        if (loadMoreContainer) {
-            loadMoreContainer.style.display = windowEnd < albums.length ? 'block' : 'none';
+        if (visible < albums.length) {
+            moreRow.style.display = 'flex';
+            moreBtn.innerHTML = `<i class="fa-solid fa-chevron-down"></i> ${currentLanguage === 'fa' ? `نمایش ${Math.min(chunkSize, albums.length - visible)} آلبوم دیگر` : `Show ${Math.min(chunkSize, albums.length - visible)} more`}`;
+        } else {
+            moreRow.style.display = 'none';
         }
-    }
+    };
 
-    // Load more (forward)
-    if (loadMoreBtn) {
-        loadMoreBtn.onclick = () => {
-            windowEnd = Math.min(albums.length, windowEnd + chunkSize);
-            if (windowEnd - windowStart > maxVisible) {
-                windowStart += chunkSize;
-            }
-            updateAlbumsDOM();
-            grid.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        };
-    }
-
-    // Load previous (backward)
-    if (loadPrevBtn) {
-        loadPrevBtn.onclick = () => {
-            windowStart = Math.max(0, windowStart - chunkSize);
-            windowEnd = windowStart + maxVisible;
-            if (windowEnd > albums.length) windowEnd = albums.length;
-            updateAlbumsDOM();
-            grid.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        };
-    }
-
-    // initial render
-    updateAlbumsDOM();
+    moreBtn.onclick = () => { visible = Math.min(albums.length, visible + chunkSize); renderChunk(); };
+    renderChunk();
 }
 
 // Show all tracks of a selected album
@@ -699,60 +756,46 @@ function showAlbumDetail(albumName) {
     const mainSection = document.getElementById('dynamicSectionContainer');
     if (!mainSection) return;
 
-    let albumCover = null;
-    for (const track of albumTracks) {
-        if (track.hasCover) { albumCover = `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover`; break; }
-    }
+    const albumCover = albumTracks.find(track => track.hasCover)
+        ? `http://127.0.0.1:${apiPort}/api/tracks/${albumTracks.find(track => track.hasCover).id}/cover`
+        : null;
 
-    const coverHtml = albumCover ? `<img src="${albumCover}" alt="${escapeHtml(albumName)}">` : '<i class="fa-solid fa-cubes"></i>';
-
-    // Flat list structure instead of heavy tables
-    let listHtml = '';
-    albumTracks.forEach((track, index) => {
+    const listHtml = albumTracks.map((track, index) => {
         const isActive = currentTrackId === track.id;
-        const indexText = isActive && isPlaying ? '<i class="fa-solid fa-pause"></i>' : (index + 1);
-        listHtml += `
-            <li class="album-track-item ${isActive ? 'active' : ''}" data-track-id="${track.id}" data-track-index="${index}">
-                <span class="track-index">${indexText}</span>
-                <span class="track-title">${escapeHtml(track.title || 'Untitled')}</span>
-                <span class="track-duration">${formatTime(track.duration)}</span>
-            </li>`;
-    });
+        const indexText = isActive && isPlaying ? '<i class="fa-solid fa-pause"></i>' : String(index + 1);
+        return `<li class="album-track-item ${isActive ? 'active' : ''}" data-track-id="${track.id}" data-track-index="${index}">
+            <span class="track-index">${indexText}</span>
+            <span class="track-title">${escapeHtml(track.title || 'Untitled')}</span>
+            <span class="track-duration">${formatTime(track.duration)}</span>
+        </li>`;
+    }).join('');
 
     mainSection.innerHTML = `
-        <div class="album-detail-view simple-album-view">
-            <button class="back-to-albums-btn"><i class="fa-solid fa-arrow-right"></i> ${t('backToAlbums') || 'Back to Albums'}</button>
-            <div class="album-header simple">
-                <div class="album-header-cover">${coverHtml}</div>
-                <div class="album-header-info">
+        <div class="album-detail-page">
+            <div class="album-detail-toolbar"><button class="back-to-albums-btn"><i class="fa-solid fa-arrow-left"></i> ${t('backToAlbums') || 'Back to Albums'}</button></div>
+            <section class="album-detail-header">
+                <div class="album-detail-cover">${albumCover ? `<img src="${albumCover}" alt="${escapeHtml(albumName)}">` : '<i class="fa-solid fa-cubes"></i>'}</div>
+                <div class="album-detail-info">
+                    <span class="album-detail-kicker">ALBUM</span>
                     <h2>${escapeHtml(albumName)}</h2>
-                    <p>${albumTracks.length} ${t('tracksCount') || 'tracks'}</p>
-                    <div><button class="play-album-btn"><i class="fa-solid fa-play"></i> ${t('playAlbum') || 'Play All'}</button></div>
+                    <p>${escapeHtml(albumTracks[0]?.artist || 'Unknown Artist')} · ${albumTracks.length} ${t('tracksCount') || 'tracks'}</p>
+                    <button class="play-album-btn"><i class="fa-solid fa-play"></i> ${t('playAlbum') || 'Play All'}</button>
                 </div>
-            </div>
-            <div class="album-tracks-list"><ul class="album-track-list">${listHtml}</ul></div>
+            </section>
+            <section class="album-tracks-list"><ul class="album-track-list">${listHtml}</ul></section>
         </div>`;
 
-    // Wire small action buttons programmatically and use delegation for list interactions
     const backBtn = mainSection.querySelector('.back-to-albums-btn');
-    if (backBtn) backBtn.addEventListener('click', () => renderAlbums());
+    if (backBtn) backBtn.addEventListener('click', renderAlbums);
+    mainSection.querySelectorAll('.album-track-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const id = Number(item.dataset.trackId);
+            if (Number.isFinite(id)) playTrack(id, 'album', albumName, albumTracks);
+        });
+    });
     const playAlbumBtn = mainSection.querySelector('.play-album-btn');
     if (playAlbumBtn) playAlbumBtn.addEventListener('click', () => playAlbum(albumName));
-
-    // contextmenu delegation for list (kept local for accuracy)
-    const listEl = mainSection.querySelector('.album-track-list');
-    if (listEl) {
-        listEl.addEventListener('contextmenu', (e) => {
-            const li = e.target.closest && e.target.closest('li');
-            if (!li) return;
-            const id = parseInt(li.dataset.trackId);
-            if (!id) return;
-            e.preventDefault();
-            showPlaylistContextMenu(id, e.clientX, e.clientY);
-        });
-    }
 }
-
 
 // Play entire album starting from first track
 function playAlbum(albumName) {
@@ -764,11 +807,11 @@ function playAlbum(albumName) {
 
 function updateBodyClasses() {
     const dirClass = currentLanguage === 'fa' ? 'rtl' : 'ltr';
-    const skinClass = `theme-${currentSkin}`;
     const miniClass = isMiniWindowMode ? 'mini-window-active' : '';
-    document.body.className = `${skinClass} ${dirClass} ${miniClass}`;
+    document.body.className = `theme-default ${dirClass} ${miniClass}`;
     // Apply direction to HTML elements
     document.documentElement.dir = currentLanguage === 'fa' ? 'rtl' : 'ltr';
+    document.documentElement.lang = currentLanguage;
     document.body.dir = currentLanguage === 'fa' ? 'rtl' : 'ltr';
 }
 
@@ -783,15 +826,18 @@ function changeClientLanguage(targetLang) {
     }
     translatePage();
     switchSection(currentActiveSection);
+    if (typeof window.updatePlayerConnectionUI === 'function' && window.playerConnectionState !== null) {
+        window.updatePlayerConnectionUI(window.playerConnectionState);
+    }
     renderQueue();
     if (typeof updateAITooltips === 'function') updateAITooltips();
-}
-
-function applyGlobalSkin(skinName) {
-    if (skinName !== 'default' && skinName !== 'liquid-glass') skinName = 'default';
-    currentSkin = skinName;
-    localStorage.setItem('user_skin', skinName);
-    updateBodyClasses();
+    document.body.classList.remove('language-transitioning');
+    void document.body.offsetWidth;
+    document.body.classList.add('language-transitioning');
+    clearTimeout(languageTransitionTimeout);
+    languageTransitionTimeout = setTimeout(() => {
+        document.body.classList.remove('language-transitioning');
+    }, 520);
 }
 
 // =============================================================================
@@ -893,7 +939,10 @@ function updateVinylRotationRAF() {
 
 function setVolume(v) {
     if (isMiniWindowMode) return;
-    volume = parseFloat(v);
+    const requestedVolume = Number(v);
+    volume = Number.isFinite(requestedVolume)
+        ? Math.min(1, Math.max(0, requestedVolume))
+        : 0.7;
     if (audioElement) audioElement.volume = volume;
     const slider = document.getElementById('volumeSlider');
     if (slider) slider.value = volume;
@@ -924,15 +973,15 @@ function toggleRepeat() {
     if (repeatOneMode) {
         repeatOneMode = false;
         repeatMode = false;
-        showNotification('Repeat disabled', 'info');
+        showNotification(t('notificationRepeatOff'), 'info');
     } else if (repeatMode) {
         repeatOneMode = true;
         repeatMode = true;
-        showNotification('Repeat One (single track)', 'info');
+        showNotification(t('notificationRepeatOne'), 'info');
     } else {
         repeatMode = true;
         repeatOneMode = false;
-        showNotification('Repeat All (playlist)', 'info');
+        showNotification(t('notificationRepeatAll'), 'info');
     }
     updateRepeatUI();
 }
@@ -1223,7 +1272,9 @@ function setPlaySource(sourceType, sourceId = null, sourceTracksArray = null) {
     } else {
         queue = [...tracks];
     }
-    
+
+    const activeId = window.currentTrackId ?? currentTrackId ?? null;
+    queueIndex = activeId == null ? -1 : queue.findIndex(track => track.id == activeId);
     renderQueue();
 }
 
@@ -1236,18 +1287,61 @@ function renderQueue() {
     }
     let html = '';
     queue.forEach((track, idx) => {
-        html += `<div class="queue-drawer-item ${idx === queueIndex ? 'active' : ''}" data-idx="${idx}" onclick="playFromQueue(${idx})">
+        html += `<div class="queue-drawer-item ${idx === queueIndex ? 'active' : ''}" data-idx="${idx}" draggable="true" role="listitem" tabindex="0" onclick="playFromQueue(${idx})">
+            <span class="queue-drag-handle" aria-hidden="true"><i class="fa-solid fa-grip-vertical"></i></span>
             <span class="queue-index-no">${idx + 1}</span>
             <div class="queue-meta-data">
                 <h5>${escapeHtml(track.title || 'Untitled')}</h5>
                 <p>${escapeHtml(track.artist || 'Unknown Artist')}</p>
             </div>
-            <button class="remove-from-queue-btn" onclick="event.stopPropagation(); removeFromQueue(${idx});">
+            <button class="remove-from-queue-btn" type="button" aria-label="Remove from queue" onclick="event.stopPropagation(); removeFromQueue(${idx});">
                 <i class="fa-solid fa-trash"></i>
             </button>
         </div>`;
     });
     listEl.innerHTML = html;
+
+    let dragIndex = -1;
+    listEl.querySelectorAll('.queue-drawer-item').forEach((item) => {
+        const idx = Number(item.dataset.idx);
+        item.addEventListener('dragstart', (event) => {
+            dragIndex = idx;
+            item.classList.add('dragging');
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', String(idx));
+        });
+        item.addEventListener('dragend', () => {
+            dragIndex = -1;
+            item.classList.remove('dragging');
+            listEl.querySelectorAll('.queue-drawer-item').forEach(node => node.classList.remove('drag-over'));
+        });
+        item.addEventListener('dragover', (event) => {
+            event.preventDefault();
+            if (dragIndex < 0 || dragIndex === idx) return;
+            item.classList.add('drag-over');
+            event.dataTransfer.dropEffect = 'move';
+        });
+        item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
+        item.addEventListener('drop', (event) => {
+            event.preventDefault();
+            item.classList.remove('drag-over');
+            if (dragIndex < 0 || dragIndex === idx || dragIndex >= queue.length) return;
+            const [moved] = queue.splice(dragIndex, 1);
+            queue.splice(idx, 0, moved);
+            if (queueIndex === dragIndex) queueIndex = idx;
+            else if (dragIndex < queueIndex && idx >= queueIndex) queueIndex--;
+            else if (dragIndex > queueIndex && idx <= queueIndex) queueIndex++;
+            dragIndex = -1;
+            renderQueue();
+            savePlaybackState();
+        });
+        item.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                playFromQueue(idx);
+            }
+        });
+    });
     // highlight recently focused item (gentle pulse)
     try {
         const recentEl = listEl.querySelector(`.queue-drawer-item[data-idx="${queueIndex}"]`);
@@ -1330,11 +1424,11 @@ async function emergencyAudioRecovery() {
             await playTrack(currentTrackId);
         }
         
-        showNotification('Audio system recovered', 'success');
+        showNotification(t('notificationAudioRecovered'), 'success');
         
     } catch (e) {
         console.error('Emergency recovery failed:', e);
-        showNotification('Audio system error. Please restart the app.', 'error');
+        showNotification(t('notificationAudioSystemError'), 'error');
     } finally {
         emergencyRecoveryInProgress = false;
     }
@@ -1379,6 +1473,11 @@ function removeFromQueue(idx) {
 function toggleQueue() {
     isQueueOpen = !isQueueOpen;
     const panel = document.getElementById('queuePanel');
+    const dspPanel = document.getElementById('dspPanel');
+    if (isQueueOpen) {
+        hidePlaylistContextMenu();
+        if (dspPanel) dspPanel.classList.remove('open');
+    }
     if (panel) panel.classList.toggle('open', isQueueOpen);
 }
 
@@ -1519,7 +1618,7 @@ async function nextTrackEnhanced() {
         }
     } catch (err) {
         console.error('Error in nextTrackEnhanced:', err);
-        showNotification('Error changing track', 'warning');
+        showNotification(t('notificationTrackChangeFailed'), 'warning');
     } finally {
         // Small delay before allowing next transition
         setTimeout(() => {
@@ -1612,7 +1711,7 @@ function setGaplessMode(enabled) {
     if (window.electronAPI && window.electronAPI.setPlaybackSettings) {
         window.electronAPI.setPlaybackSettings({ gapless: enabled, crossfade: crossfadeDuration });
     }
-    showNotification(gaplessEnabled ? 'Gapless playback enabled' : 'Gapless playback disabled', 'info');
+    showNotification(gaplessEnabled ? t('notificationGaplessEnabled') : t('notificationGaplessDisabled'), 'info');
 }
 
 function setCrossfadeMode(duration) {
@@ -1620,7 +1719,7 @@ function setCrossfadeMode(duration) {
     if (window.electronAPI && window.electronAPI.setCrossfade) {
         window.electronAPI.setCrossfade(crossfadeDuration);
     }
-    showNotification(`Crossfade set to ${crossfadeDuration} seconds`, 'success');
+    showNotification(tf('notificationCrossfadeSet', { seconds: crossfadeDuration }), 'success');
 }
 
 // =============================================================================
@@ -1661,8 +1760,11 @@ function setupAudioNodes() {
                 const currentText = document.getElementById('currentTimeK');
                 if (currentText) currentText.innerText = formatTime(current);
 
+                const progressPercent = total > 0 ? Math.max(0, Math.min(100, (current / total) * 100)) : 0;
                 const fill = document.getElementById('progressFillK');
-                if (fill && total > 0) fill.style.width = `${(current / total) * 100}%`;
+                if (fill) fill.style.width = `${progressPercent}%`;
+                const progressBar = document.getElementById('progressBarK');
+                if (progressBar) progressBar.setAttribute('aria-valuenow', progressPercent.toFixed(1));
 
                 const fsFill = document.getElementById('fsMirrorProgressFill');
                 if (fsFill && total > 0) fsFill.style.width = `${(current / total) * 100}%`;
@@ -1710,7 +1812,7 @@ function setupAudioNodes() {
 
             el.addEventListener('error', (e) => {
                 console.error('Audio error:', e);
-                showNotification('Audio file not found or access denied', 'error');
+                showNotification(t('notificationAudioFileUnavailable'), 'error');
                 setPlayState(false);
             });
 
@@ -2183,7 +2285,7 @@ function setSleepTimer(minutes) {
     const display = document.getElementById('sleepTimerVal');
     const cancelBtn = document.getElementById('cancelSleepBtn');
     if (cancelBtn) cancelBtn.style.display = 'block';
-    showNotification(`Sleep timer set to ${minutes} minutes.`, 'success');
+    showNotification(tf('notificationSleepTimerSet', { minutes }), 'success');
 }
 
 function cancelSleepTimer() {
@@ -2280,7 +2382,7 @@ async function saveTagChanges() {
         lyrics: document.getElementById('tagLyrics').value
     };
     
-    showNotification('Saving metadata...', 'info');
+    showNotification(t('notificationMetadataSaving'), 'info');
     
     try {
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/${currentTrack.id}/tags`, {
@@ -2295,14 +2397,14 @@ async function saveTagChanges() {
         const trackInList = tracks.find(t => t.id === currentTrack.id);
         if (trackInList) Object.assign(trackInList, updatedData);
         
-        showNotification('Metadata saved successfully!', 'success');
+        showNotification(t('notificationMetadataSaved'), 'success');
         closeTagEditor();
         updatePlayerUI();
         if (currentActiveSection === 'library') renderLibrary();
         
     } catch (err) {
         console.error('Tag save error:', err);
-        showNotification('Failed to save metadata', 'error');
+        showNotification(t('notificationMetadataSaveFailed'), 'error');
     }
 }
 
@@ -2318,7 +2420,7 @@ function importCueSheet() {
         const file = e.target.files[0];
         if (!file) return;
         
-        showNotification('Parsing CUE sheet...', 'info');
+        showNotification(t('notificationCueParsing'), 'info');
         
         try {
             const res = await fetch(`http://127.0.0.1:${apiPort}/api/cue/parse`, {
@@ -2331,7 +2433,7 @@ function importCueSheet() {
             const data = await res.json();
             
             if (data.tracks && data.tracks.length > 0) {
-                showNotification(`Found ${data.tracks.length} tracks in CUE sheet`, 'success');
+                showNotification(tf('notificationCueTracksFound', { count: data.tracks.length }), 'success');
                 const playlistName = file.name.replace('.cue', '');
                 const newPlaylist = await fetch(`http://127.0.0.1:${apiPort}/api/playlists`, {
                     method: 'POST',
@@ -2340,21 +2442,21 @@ function importCueSheet() {
                 });
                 if (newPlaylist.ok) {
                     await loadPlaylists();
-                    showNotification(`Created playlist from CUE sheet`, 'success');
+                    showNotification(t('notificationCuePlaylistCreated'), 'success');
                 }
             } else {
-                showNotification('No valid tracks found in CUE sheet', 'warning');
+                showNotification(t('notificationCueNoTracks'), 'warning');
             }
         } catch (err) {
             console.error('CUE import error:', err);
-            showNotification('Failed to parse CUE sheet', 'error');
+            showNotification(t('notificationCueParseFailed'), 'error');
         }
     };
     input.click();
 }
 
 async function exportLibraryToCSV() {
-    showNotification('Exporting library...', 'info');
+    showNotification(t('notificationLibraryExporting'), 'info');
     
     try {
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/library/export`, {
@@ -2364,10 +2466,10 @@ async function exportLibraryToCSV() {
         });
         if (!res.ok) throw new Error();
         const data = await res.json();
-        showNotification(`Library exported to: ${data.path || 'file'}`, 'success');
+        showNotification(tf('notificationLibraryExported', { path: data.path || 'file' }), 'success');
     } catch (err) {
         console.error('Export error:', err);
-        showNotification('Export failed', 'error');
+        showNotification(t('notificationExportFailed'), 'error');
     }
 }
 
@@ -2410,7 +2512,7 @@ function setupDragAndDrop() {
             if (!res.ok) throw new Error();
             const result = await res.json();
             showNotification(`${result.imported} ${t('dragSuccess')}`, 'success');
-            await loadTracks();
+            await loadTracks({ fresh: true });
             try {
                 if (result.imported > 0 && tracks.length > 0) {
                     // Prefer server-provided mapping when available
@@ -2490,11 +2592,12 @@ async function waitForAPI() {
     return true;
 }
 
-async function loadTracks() {
+async function loadTracks(options = {}) {
     if (isMiniWindowMode) return;
+    const forceFresh = Boolean(options && options.fresh);
     // 1) Pre-warmed start: render from local cache immediately, then sync in background
     try {
-        const cachedTracks = localStorage.getItem('korai_tracks_cache');
+        const cachedTracks = forceFresh ? null : localStorage.getItem('korai_tracks_cache');
         if (cachedTracks) {
             try {
                 tracks = JSON.parse(cachedTracks);
@@ -2504,7 +2607,7 @@ async function loadTracks() {
                 if (totalEl) totalEl.innerText = tracks.length;
                 if (likesEl) likesEl.innerText = tracks.filter(t => t.isLiked).length;
 
-                if (currentActiveSection === 'home') renderHomeDashboard();
+                if (currentActiveSection === 'home') window.renderHome?.();
                 else if (currentActiveSection === 'library') renderLibrary();
             } catch (e) {
                 console.warn('Invalid startup cache format', e);
@@ -2517,8 +2620,8 @@ async function loadTracks() {
     // 2) Background sync without blocking UI
     try {
         const [tracksRes, likedRes] = await Promise.all([
-            fetch(`http://127.0.0.1:${apiPort}/api/tracks`),
-            fetch(`http://127.0.0.1:${apiPort}/api/tracks/liked-status`).catch(() => null)
+            fetch(`http://127.0.0.1:${apiPort}/api/tracks?_=${Date.now()}`, { cache: 'no-store' }),
+            fetch(`http://127.0.0.1:${apiPort}/api/tracks/liked-status?_=${Date.now()}`, { cache: 'no-store' }).catch(() => null)
         ]);
 
             if (tracksRes && tracksRes.ok) {
@@ -2545,7 +2648,20 @@ async function loadTracks() {
             if (totalEl) totalEl.innerText = tracks.length;
             if (likesEl) likesEl.innerText = tracks.filter(t => t.isLiked).length;
 
-            if (currentActiveSection === 'home') renderHomeDashboard();
+            // Keep the current player object and queue in sync with the fresh library.
+            if (currentTrackId != null) {
+                const freshCurrent = tracks.find(t => t.id === currentTrackId);
+                if (freshCurrent) {
+                    currentTrack = freshCurrent;
+                    window.currentTrack = currentTrack;
+                    updatePlayerUI();
+                }
+            }
+            if (lastPlaySource.type === 'library') {
+                queue = [...tracks];
+                queueIndex = currentTrackId == null ? -1 : queue.findIndex(t => t.id === currentTrackId);
+            }
+            if (currentActiveSection === 'home') window.renderHome?.();
             else if (currentActiveSection === 'library') renderLibrary();
 
             console.debug('Library synced with server');
@@ -2607,7 +2723,7 @@ async function loadEnabledPluginCss() {
 async function loadPlaylists() {
     if (isMiniWindowMode) return;
     try {
-        const res = await fetch(`http://127.0.0.1:${apiPort}/api/playlists`);
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/playlists?_=${Date.now()}`, { cache: 'no-store' });
         if (!res.ok) throw new Error();
         playlists = await res.json();
         renderPlaylistsSidebar();
@@ -2715,7 +2831,7 @@ function promptCreatePlaylist() {
     }
     
     input.value = '';
-    modal.style.display = 'flex';
+    showAnimatedModal(modal);
     input.focus();
     
     const newConfirmBtn = confirmBtn.cloneNode(true);
@@ -2765,7 +2881,7 @@ function promptCreatePlaylist() {
 
 function closeCreatePlaylistModal() {
     const modal = document.getElementById('createPlaylistModal');
-    if (modal) modal.style.display = 'none';
+    if (modal) hideAnimatedModal(modal);
 }
 
 async function deletePlaylist(id) {
@@ -2776,11 +2892,11 @@ async function deletePlaylist(id) {
         try {
             const res = await fetch(`http://127.0.0.1:${apiPort}/api/playlists/${id}`, { method: 'DELETE' });
             if (res.ok) {
-                showNotification('Playlist deleted', 'info');
+                showNotification(t('notificationPlaylistDeleted'), 'info');
                 await loadPlaylists();
                 if (currentActiveSection === 'playlist' && currentActivePlaylistId === id) switchSection('home');
             }
-        } catch (e) { showNotification('Error deleting playlist', 'error'); }
+        } catch (e) { showNotification(t('notificationPlaylistDeleteFailed'), 'error'); }
     });
 }
 
@@ -2818,7 +2934,7 @@ function renderPlaylistView() {
                 <div class="table-song-meta"><span class="table-song-title">${escapeHtml(track.title || 'Untitled')}</span><span class="table-song-artist">${escapeHtml(track.artist || 'Unknown Artist')}</span></div>
             </td>
             <td class="track-album-cell">${escapeHtml(track.album || '—')}</td>
-            <td class="track-bpm-cell">${track.bpm || '120'}</td>
+            <td class="track-bpm-cell">${formatBpm(track)}</td>
             <td class="track-time-cell">${formatTime(track.duration)}</td>
             <td class="track-actions-cell"><button class="table-action-btn delete" title="${currentLanguage === 'fa' ? 'حذف' : 'Remove'}"><i class="fa-solid fa-minus"></i></button></td>
         </tr>`;
@@ -2832,11 +2948,11 @@ async function removeTrackFromPlaylist(playlistId, trackId) {
     try {
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/playlists/${playlistId}/tracks/${trackId}`, { method: 'DELETE' });
         if (res.ok) {
-            showNotification('Track removed from playlist', 'info');
+            showNotification(t('notificationTrackRemovedFromPlaylist'), 'info');
             await loadPlaylists();
             if (currentActiveSection === 'playlist') openPlaylist(playlistId);
         }
-    } catch (e) { showNotification('Error removing track from playlist', 'error'); }
+    } catch (e) { showNotification(t('notificationTrackRemoveFailed'), 'error'); }
 }
 
 function playTrackFromPlaylist(playlistId, trackId) {
@@ -2863,65 +2979,77 @@ function playArtist(artistName) {
 // CONTEXT MENU
 // =============================================================================
 
+function hidePlaylistContextMenu() {
+    const menu = document.getElementById('playlistContextMenu');
+    if (!menu) return;
+    menu.classList.add('is-hidden');
+    menu.hidden = true;
+    menu.removeAttribute('data-current-track-id');
+    if (window._contextMenuCloseHandler) {
+        document.removeEventListener('mousedown', window._contextMenuCloseHandler);
+        window._contextMenuCloseHandler = null;
+    }
+}
+
 function showPlaylistContextMenu(trackId, x, y) {
     if (isMiniWindowMode) return;
     const menu = document.getElementById('playlistContextMenu');
     const container = document.getElementById('contextPlaylistItems');
     if (!menu || !container) return;
-    
+
     menu.setAttribute('data-current-track-id', trackId);
-    
+
     if (playlists.length === 0) {
         container.innerHTML = `<div class="context-item empty">${currentLanguage === 'fa' ? 'پلی‌لیستی وجود ندارد' : 'No playlists available'}</div>`;
     } else {
-        let html = '';
-        playlists.forEach(pl => {
-            html += `<div class="context-item" onclick="addTrackToPlaylist(${pl.id}, ${trackId})"><i class="fa-solid fa-list"></i><span>${escapeHtml(pl.name)}</span></div>`;
-        });
-        container.innerHTML = html;
+        container.innerHTML = playlists.map(pl =>
+            `<div class="context-item" onclick="addTrackToPlaylist(${pl.id}, ${trackId}); hidePlaylistContextMenu();"><i class="fa-solid fa-list"></i><span>${escapeHtml(pl.name)}</span></div>`
+        ).join('');
     }
-    
-    const existingSeparator = document.querySelector('#playlistContextMenu .context-separator');
-    const existingEditBtn = document.querySelector('#playlistContextMenu .context-edit-item');
-    
-    if (!existingSeparator && !existingEditBtn) {
+
+    const existingSeparator = menu.querySelector('.context-separator');
+    const existingEditBtn = menu.querySelector('.context-edit-item');
+    if (!existingSeparator) {
         const separator = document.createElement('div');
         separator.className = 'context-separator';
-        separator.style.height = '1px';
-        separator.style.backgroundColor = 'var(--border-color)';
-        separator.style.margin = '6px 0';
-        
+        menu.appendChild(separator);
+    }
+    if (!existingEditBtn) {
         const editItem = document.createElement('div');
         editItem.className = 'context-item context-edit-item';
-        editItem.innerHTML = `<i class="fa-solid fa-pen"></i> <span>${currentLanguage === 'fa' ? 'ویرایش متادیتا' : 'Edit Tags'}</span>`;
+        editItem.innerHTML = `<i class="fa-solid fa-pen"></i><span>${currentLanguage === 'fa' ? 'ویرایش متادیتا' : 'Edit Tags'}</span>`;
         editItem.onclick = () => {
-            menu.style.display = 'none';
-            openTagEditorFromContext(parseInt(menu.getAttribute('data-current-track-id')));
+            const id = parseInt(menu.getAttribute('data-current-track-id'), 10);
+            hidePlaylistContextMenu();
+            if (Number.isFinite(id)) openTagEditorFromContext(id);
         };
-        
-        menu.appendChild(separator);
         menu.appendChild(editItem);
     }
-    
-    menu.style.display = 'block';
-    menu.style.top = `${y}px`;
-    menu.style.left = `${x}px`;
-    
-    // Use event delegation instead of adding/removing listeners
-    const closeContextMenu = (e) => {
-        if (!menu.contains(e.target)) {
-            menu.style.display = 'none';
-        }
+
+    menu.classList.remove('is-hidden');
+    menu.hidden = false;
+    // Force layout so the menu can be clamped to the viewport reliably.
+    void menu.offsetWidth;
+    const rect = menu.getBoundingClientRect();
+    const margin = 10;
+    const desiredX = Number.isFinite(Number(x)) ? Number(x) : margin;
+    const desiredY = Number.isFinite(Number(y)) ? Number(y) : margin;
+    const left = Math.min(Math.max(margin, desiredX), Math.max(margin, window.innerWidth - rect.width - margin));
+    const top = Math.min(Math.max(margin, desiredY), Math.max(margin, window.innerHeight - rect.height - margin));
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+
+    const closeContextMenu = (event) => {
+        if (!menu.contains(event.target)) hidePlaylistContextMenu();
     };
-    
-    // Remove any existing listener first to prevent memory leaks
-    document.removeEventListener('click', window._contextMenuCloseHandler);
+    if (window._contextMenuCloseHandler) {
+        document.removeEventListener('mousedown', window._contextMenuCloseHandler);
+    }
     window._contextMenuCloseHandler = closeContextMenu;
-    
-    setTimeout(() => {
-        document.addEventListener('click', closeContextMenu, { once: true });
-    }, 50);
+    setTimeout(() => document.addEventListener('mousedown', closeContextMenu), 0);
 }
+
+window.hidePlaylistContextMenu = hidePlaylistContextMenu;
 
 function openTagEditorFromContext(trackId) {
     const track = tracks.find(t => t.id === trackId);
@@ -2941,11 +3069,11 @@ async function addTrackToPlaylist(playlistId, trackId) {
         if (res.ok) {
             const data = await res.json();
             if (data.success) {
-                showNotification('Track added to playlist', 'success');
+                showNotification(t('notificationTrackAddedToPlaylist'), 'success');
                 await loadPlaylists();
-            } else { showNotification('Track already in playlist', 'info'); }
+            } else { showNotification(t('notificationTrackAlreadyInPlaylist'), 'info'); }
         }
-    } catch (e) { showNotification('Error adding to playlist', 'error'); }
+    } catch (e) { showNotification(t('notificationTrackAddFailed'), 'error'); }
 }
 
 // =============================================================================
@@ -2984,7 +3112,7 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
                     return;
                 } catch (playErr) {
                     if (playErr.name === 'NotSupportedError') {
-                        showNotification('فرمت فایل پشتیبانی نمی‌شود یا فایل خراب است.', 'error');
+                        showNotification(t('notificationUnsupportedFormat'), 'error');
                         return;
                     }
                 }
@@ -2995,7 +3123,7 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
                 currentTrack = window.currentTrack;
             }
             if (!currentTrack) {
-                showNotification('Track not found', 'error');
+                showNotification(t('notificationTrackNotFound'), 'error');
                 return;
             }
             window.currentTrackId = trackId;
@@ -3088,7 +3216,7 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
             } catch (e) {
                 console.warn('Media load warning:', e.message);
                 if (e.message.includes('NotSupportedError') || e.message.includes('media load error')) {
-                    showNotification('فرمت فایل پشتیبانی نمی‌شود.', 'error');
+                    showNotification(t('notificationUnsupportedFormat'), 'error');
                     setPlayState(false);
                     return;
                 }
@@ -3114,7 +3242,7 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
                 } catch (e) {
                     console.warn(`Play attempt ${attempt + 1} failed:`, e.name, e.message);
                     if (e.name === 'NotAllowedError' || e.name === 'NotSupportedError') {
-                        if (e.name === 'NotSupportedError') showNotification('فرمت فایل پشتیبانی نمی‌شود.', 'error');
+                        if (e.name === 'NotSupportedError') showNotification(t('notificationUnsupportedFormat'), 'error');
                         break;
                     }
                 }
@@ -3140,7 +3268,7 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
         } catch (err) {
             console.error('Play error:', err);
             if (!err.message.includes('NotSupported')) {
-                showNotification('Error playing audio: ' + (err.message || 'Unknown error'), 'error');
+                showNotification(tf('notificationAudioPlaybackError', { error: err.message || t('notificationUnknownError') }), 'error');
             }
             setPlayState(false);
             throw err;
@@ -3192,7 +3320,7 @@ function togglePlay() {
                             setTimeout(resolve, 3000);
                         });
                     } else {
-                        showNotification('No track selected', 'warning');
+                        showNotification(t('notificationNoTrackSelected'), 'warning');
                         return;
                     }
                 }
@@ -3216,12 +3344,12 @@ function togglePlay() {
                 } catch (err) {
                     console.error('Play failed:', err);
                     if (err.name === 'NotAllowedError') {
-                        showNotification('Playback requires user interaction first', 'warning');
+                        showNotification(t('notificationPlaybackNeedsInteraction'), 'warning');
                     } else if (err.name === 'NotSupportedError') {
-                        showNotification('Audio format not supported', 'error');
+                        showNotification(t('notificationPlaybackFormatUnsupported'), 'error');
                         setPlayState(false);
                     } else {
-                        showNotification('Playback failed: ' + err.message, 'warning');
+                        showNotification(tf('notificationPlaybackFailed', { error: err.message }), 'warning');
                     }
                     if (currentTrackId && err.name !== 'NotSupportedError') {
                         setTimeout(() => playTrack(currentTrackId), 500);
@@ -3301,8 +3429,8 @@ function updatePlayerUI() {
     if (fsArtist) fsArtist.innerText = currentTrack.artist || 'Unknown Artist';
     if (fsArt) fsArt.innerHTML = coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music fallback-icon" style="font-size:3rem;"></i>';
     if (fsBgBlur && coverUrl) fsBgBlur.style.backgroundImage = `url(${coverUrl})`;
-    if (fsBpm) fsBpm.innerHTML = `<i class="fa-solid fa-heartbeat"></i> ${currentTrack.bpm || '120'} BPM`;
-    if (fsEnergy) fsEnergy.innerHTML = `<i class="fa-solid fa-bolt"></i> ${currentTrack.energy ? Math.round(currentTrack.energy * 100) : '50'}% Energy`;
+    if (fsBpm) fsBpm.innerHTML = `<i class="fa-solid fa-heartbeat"></i> ${formatBpm(currentTrack)} BPM`;
+    if (fsEnergy) { const energy = getTrackEnergy(currentTrack); fsEnergy.innerHTML = `<i class="fa-solid fa-bolt"></i> ${energy === null ? '—' : Math.round(energy * 100) + '%'} Energy`; }
     
     if (fsLyrics) {
         if (currentTrack.lyrics) fsLyrics.innerHTML = `<div class="lyrics-text">${escapeHtml(currentTrack.lyrics).replace(/\n/g, '<br>')}</div>`;
@@ -3314,30 +3442,31 @@ function updatePlayerUI() {
 
     const specsEl = document.getElementById('playerSpecs');
     if (specsEl) {
-        const codec = (currentTrack.codec || 'MPEG').toUpperCase();
-        const kbps = currentTrack.bitrate ? `${Math.round(currentTrack.bitrate / 1000)} kbps` : '320 kbps';
-        const hz = currentTrack.sampleRate ? `${(currentTrack.sampleRate / 1000).toFixed(1)} kHz` : '44.1 kHz';
+        const rawCodec = String(currentTrack.codec || '').trim();
+        const codec = rawCodec && rawCodec.toLowerCase() !== 'unknown' ? rawCodec.toUpperCase() : '—';
+        const kbps = Number(currentTrack.bitrate) > 0 ? `${Math.round(currentTrack.bitrate / 1000)} kbps` : '—';
+        const hz = Number(currentTrack.sampleRate) > 0 ? `${(currentTrack.sampleRate / 1000).toFixed(1)} kHz` : '—';
         specsEl.innerText = `${codec} • ${kbps} • ${hz}`;
     }
 
-    // --- Update hero / home now-playing visuals so hero stays in sync with playback bar ---
+    // Keep the premium Home hero synchronized with the active playback state.
     try {
-        const heroArt = document.querySelector('.now-playing-art');
-        const heroCoverUrl = currentTrack && currentTrack.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${currentTrack.id}/cover` : null;
-        if (heroArt) {
-            heroArt.innerHTML = heroCoverUrl ? `<img src="${heroCoverUrl}" alt="Now Playing">` : '<div class="fallback-icon"><i class="fa-solid fa-compact-disc"></i></div>';
+        const heroCover = document.querySelector('.hero-art-cover');
+        const heroMeta = document.querySelector('.hero-now-playing-meta');
+        if (heroCover) {
+            heroCover.classList.toggle('playing', !!isPlaying);
+            const heroCoverUrl = currentTrack && currentTrack.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${currentTrack.id}/cover` : null;
+            heroCover.innerHTML = `${heroCoverUrl ? `<img src="${heroCoverUrl}" alt="${escapeHtml(currentTrack?.title || 'Now Playing')}" onerror="this.remove(); this.parentElement.classList.add('image-failed')">` : ''}<div class="fallback-icon hero-art-fallback"><i class="fa-solid fa-music"></i></div><div class="hero-art-status">${isPlaying ? '<span class="status-dot"></span> Playing' : 'Ready'}</div>`;
         }
-
-        const heroLabel = document.querySelector('.now-playing-label');
-        if (heroLabel) {
-            if (currentTrack) heroLabel.style.display = '';
-            else heroLabel.style.display = 'none';
+        if (heroMeta) {
+            heroMeta.innerHTML = `
+                <span class="hero-now-playing-eyebrow">NOW PLAYING</span>
+                <strong>${escapeHtml(currentTrack?.title || 'Nothing playing')}</strong>
+                <span>${escapeHtml(currentTrack?.artist || 'Choose a track from your library')}</span>
+            `;
         }
-
-        const heroPulse = document.querySelector('.now-playing-pulse');
-        if (heroPulse) heroPulse.classList.toggle('playing', !!isPlaying);
     } catch (e) {
-        // non-fatal
+        // Home hero updates are non-critical to playback.
     }
 
     // Update hero primary button icon/text state
@@ -3372,48 +3501,6 @@ function updatePlayerUI() {
 }
 
 // =============================================================================
-// IMPORT PROGRESS UI
-// =============================================================================
-
-function showImportProgress(fileCount) {
-    hideImportProgress();
-    
-    importProgressElement = document.createElement('div');
-    importProgressElement.id = 'importProgressOverlay';
-    importProgressElement.innerHTML = `<div class="import-progress-container"><div class="import-progress-card"><div class="import-spinner"><i class="fa-solid fa-compact-disc fa-spin"></i></div><h3 class="import-title">Importing Audio Files</h3><p class="import-subtitle">Analyzing ${fileCount} file(s)...</p><div class="import-progress-bar-wrapper"><div class="import-progress-bar-fill" id="importProgressFill" style="width:0%;"></div></div><p class="import-percentage" id="importPercentage">0%</p><div class="import-wave-bars"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div></div></div>`;
-    
-    document.body.appendChild(importProgressElement);
-    setTimeout(() => { if (importProgressElement) importProgressElement.classList.add('active'); }, 50);
-    
-    let progress = 0;
-    importProgressInterval = setInterval(() => {
-        if (progress < 90) {
-            progress += Math.random() * 8;
-            if (progress > 90) progress = 90;
-            updateImportProgress(progress, `Importing ${Math.floor(progress)}%...`);
-        }
-    }, 200);
-}
-
-function updateImportProgress(percent, message) {
-    const fill = document.getElementById('importProgressFill');
-    const percentText = document.getElementById('importPercentage');
-    const subtitle = document.querySelector('.import-subtitle');
-    if (fill) fill.style.width = `${Math.min(100, percent)}%`;
-    if (percentText) percentText.innerText = `${Math.min(100, Math.floor(percent))}%`;
-    if (subtitle && message) subtitle.innerText = message;
-}
-
-function hideImportProgress() {
-    if (importProgressInterval) { clearInterval(importProgressInterval); importProgressInterval = null; }
-    if (importProgressElement) {
-        importProgressElement.classList.remove('active');
-        importProgressElement.classList.add('fade-out');
-        setTimeout(() => { if (importProgressElement && importProgressElement.parentNode) importProgressElement.parentNode.removeChild(importProgressElement); importProgressElement = null; }, 400);
-    }
-}
-
-// =============================================================================
 // DELETE TRACK
 // =============================================================================
 
@@ -3425,12 +3512,12 @@ function deleteTrack(trackId, event) {
             try {
                 const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/${trackId}`, { method: 'DELETE' });
                 if (res.ok) {
-                    showNotification('Track removed', 'success');
+                    showNotification(t('notificationTrackRemoved'), 'success');
                     await loadTracks();
                     await loadPlaylists();
                     switchSection(currentActiveSection);
                 }
-            } catch { showNotification('Connection failed', 'error'); }
+            } catch { showNotification(t('notificationConnectionFailed'), 'error'); }
         });
 }
 
@@ -3614,13 +3701,13 @@ function renderLibrary(filteredTracks = null) {
                     </div>
                 </td>
                 <td class="track-album-cell">${escapeHtml(track.album || '—')}</td>
-                <td class="track-bpm-cell">${track.bpm || '120'}</td>
+                <td class="track-bpm-cell">${formatBpm(track)}</td>
                 <td class="track-time-cell">${formatTime(track.duration)}</td>
                 <td class="track-actions-cell">
                     <button class="table-action-btn like" title="${currentLanguage === 'fa' ? 'افزودن به لیست' : 'Add to list'}"><i class="fa-solid fa-plus"></i></button>
                     <button class="table-action-btn delete" title="${currentLanguage === 'fa' ? 'حذف' : 'Delete'}"><i class="fa-solid fa-trash"></i></button>
                 </td>
-            </table>`;
+            </tr>`;
         });
         tbody.insertAdjacentHTML('beforeend', rows);
         currentIndex += chunkSize;
@@ -3735,387 +3822,44 @@ function getWelcomeMessage() {
     }
 }
 
-function getTopPlayedTracks(limit = 6) {
-    return [...tracks].sort((a, b) => (b.playCount || 0) - (a.playCount || 0)).slice(0, limit);
-}
-
-function getDailySuggestions(limit = 8) {
-    if (tracks.length === 0) return [];
-    const oneMonthAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
-    const recentlyAdded = tracks.filter(t => (t.createdAt || 0) > oneMonthAgo);
-    const undiscovered = tracks.filter(t => (t.playCount || 0) < 3);
-    const highEnergy = tracks.filter(t => (t.energy || 0.5) > 0.7);
-    const combined = [...recentlyAdded, ...undiscovered, ...highEnergy];
-    const unique = [];
-    const seenIds = new Set();
-    for (const track of combined) { if (!seenIds.has(track.id)) { seenIds.add(track.id); unique.push(track); } }
-    for (let i = unique.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [unique[i], unique[j]] = [unique[j], unique[i]]; }
-    return unique.slice(0, limit);
-}
-
-/**
- * Render empty home dashboard with premium design
- */
-function renderEmptyHomeDashboard() {
-    const mainSection = document.getElementById('dynamicSectionContainer');
-    if (!mainSection) return;
-    mainSection.innerHTML = `
-        <div class="empty-home-state">
-            <div class="empty-home-illustration">
-                <div class="empty-home-disc">
-                    <i class="fa-solid fa-compact-disc"></i>
-                </div>
-            </div>
-            <h2 class="empty-home-title">Your Musical Journey Starts Here</h2>
-            <p class="empty-home-subtitle">
-                Import your favorite tracks to build your personal music library.<br>
-                KORAI will analyze and organize them for you.
-            </p>
-            <div class="empty-home-features">
-                <div class="empty-home-feature" onclick="switchSection('stats')">
-                    <div class="feature-icon-wrapper"><i class="fa-solid fa-chart-line"></i></div>
-                    <span>AI Analysis</span>
-                </div>
-                <div class="empty-home-feature" onclick="switchSection('library')">
-                    <div class="feature-icon-wrapper"><i class="fa-solid fa-waveform"></i></div>
-                    <span>Smart Playlists</span>
-                </div>
-                <div class="empty-home-feature" onclick="document.getElementById('songInfoBtn')?.click()">
-                    <div class="feature-icon-wrapper"><i class="fa-solid fa-microphone"></i></div>
-                    <span>Vocal Separator</span>
-                </div>
-                <div class="empty-home-feature" onclick="document.getElementById('dspToggleBtn')?.click()">
-                    <div class="feature-icon-wrapper"><i class="fa-solid fa-equalizer"></i></div>
-                    <span>Studio EQ</span>
-                </div>
-            </div>
-            <button class="empty-home-btn" onclick="handleImport()">
-                <i class="fa-solid fa-plus"></i>
-                <span>Import Your First Track</span>
-            </button>
-        </div>
-    `;
-}
-
-function renderHomeDashboard() {
-    const mainSection = document.getElementById('dynamicSectionContainer');
-    if (!mainSection) return;
-    const welcomeText = getWelcomeMessage();
-
-    // Now playing
-    const nowPlayingTrack = currentTrack || null;
-    const nowPlayingCover = nowPlayingTrack && nowPlayingTrack.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${nowPlayingTrack.id}/cover` : null;
-
-    // Featured / top played
-    const topTracks = [...tracks].sort((a, b) => (b.playCount || 0) - (a.playCount || 0)).slice(0, 8);
-
-    // Recently added
-    const recentTracks = [...tracks].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 5);
-
-    // Suggestions (high energy, low plays)
-    const suggestions = tracks.filter(t => (t.energy || 0.5) > 0.6 && (t.playCount || 0) < 5).sort(() => Math.random() - 0.5).slice(0, 6);
-
-    // Quick stats
-    const totalTracks = tracks.length;
-    const totalLikes = tracks.filter(t => t.isLiked).length;
-    const totalPlays = tracks.reduce((sum, t) => sum + (t.playCount || 0), 0);
-
-    // If no tracks are loaded and there is no current track, show empty library.
-    // If a track is currently playing (e.g., external state), still render the home hero so now-playing info is visible.
-    if (tracks.length === 0 && !currentTrack) {
-        renderEmptyHomeDashboard();
-        return;
-    }
-
-    // Build markup
-    let html = `
-        <div class="home-container-next">
-            <div class="hero-cinematic">
-                <div class="hero-gradient-bg"></div>
-                <div class="hero-content">
-                    <div class="hero-text-section">
-                        <div class="welcome-badge">
-                            <i class="fa-solid fa-waveform"></i>
-                            <span>${new Date().getHours() < 12 ? 'MORNING SESSION' : (new Date().getHours() < 18 ? 'AFTERNOON BEATS' : 'EVENING VIBES')}</span>
-                        </div>
-                        <h1 class="hero-title">${escapeHtml(welcomeText)}</h1>
-                        <p class="hero-subtitle">${t('smartRecommendations') || 'Personalized station based on your recent listening'}</p>
-                        <div id="playerConnectionStatus" class="player-connection-status">${currentLanguage === 'fa' ? 'در حال بررسی اتصال...' : 'Checking player...'}</div>
-                        <div class="hero-actions">
-                            <button id="heroPrimaryBtn" class="hero-primary-btn" onclick="heroPrimaryAction()">
-                                <i class="fa-solid fa-play"></i> ${t('playPause') || 'Play'}
-                            </button>
-                            <button class="hero-secondary-btn" onclick="switchSection('library')">
-                                <i class="fa-solid fa-music"></i> ${t('navLibText') || 'My Library'}
-                            </button>
-                            <button class="hero-secondary-btn" onclick="handleAiRecommendationsEnhanced()">
-                                <i class="fa-solid fa-brain"></i> AI Mix
-                            </button>
-                        </div>
-                    </div>
-                    <div class="hero-art-section">
-                        <div class="now-playing-pulse">
-                            <div class="pulse-ring"></div>
-                            <div class="pulse-ring"></div>
-                            <div class="pulse-ring"></div>
-                            <div class="now-playing-art">
-                                ${nowPlayingCover ? `<img src="${nowPlayingCover}" alt="Now Playing">` : '<div class="fallback-icon"><i class="fa-solid fa-compact-disc"></i></div>'}
-                            </div>
-                            ${nowPlayingTrack ? `<div class="now-playing-label">NOW PLAYING</div>` : ''}
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="quick-stats-row">
-                <div class="quick-stat-card">
-                    <div class="stat-icon"><i class="fa-solid fa-music"></i></div>
-                    <div class="stat-info">
-                        <h4>${totalTracks}</h4>
-                        <p>${t('totalTracksLabel') || 'Total Tracks'}</p>
-                    </div>
-                </div>
-                <div class="quick-stat-card">
-                    <div class="stat-icon"><i class="fa-solid fa-heart"></i></div>
-                    <div class="stat-info">
-                        <h4>${totalLikes}</h4>
-                        <p>${t('popularLabel') || 'Liked Tracks'}</p>
-                    </div>
-                </div>
-                <div class="quick-stat-card">
-                    <div class="stat-icon"><i class="fa-solid fa-headphones"></i></div>
-                    <div class="stat-info">
-                        <h4>${totalPlays.toLocaleString()}</h4>
-                        <p>${t('totalPlaysLabel') || 'Total Plays'}</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="mood-chips-row">
-                <div class="mood-chips-scroll">
-                    <div class="mood-chip" onclick="filterByMood('energetic')"><i class="fa-solid fa-bolt"></i> Energetic</div>
-                    <div class="mood-chip" onclick="filterByMood('chill')"><i class="fa-solid fa-cloud-moon"></i> Chill</div>
-                    <div class="mood-chip" onclick="filterByMood('focus')"><i class="fa-solid fa-brain"></i> Focus</div>
-                    <div class="mood-chip" onclick="filterByMood('workout')"><i class="fa-solid fa-dumbbell"></i> Workout</div>
-                    <div class="mood-chip" onclick="filterByMood('sad')"><i class="fa-solid fa-face-frown"></i> Melancholic</div>
-                    <div class="mood-chip" onclick="filterByMood('happy')"><i class="fa-solid fa-face-smile"></i> Happy</div>
-                    <div class="mood-chip" onclick="filterByMood('romantic')"><i class="fa-solid fa-heart"></i> Romantic</div>
-                    <div class="mood-chip" onclick="filterByMood('study')"><i class="fa-solid fa-book"></i> Study</div>
-                </div>
-            </div>
-    `;
-
-    // Featured
-    if (topTracks.length > 0) {
-        html += `
-            <div class="section-header-premium">
-                <div class="section-title-group">
-                    <h3><i class="fa-solid fa-chart-simple"></i> ${t('statsHero') || 'Most Played'}</h3>
-                    <span class="section-badge">HOT</span>
-                </div>
-                <span class="view-all-link-premium" onclick="switchSection('library')">
-                    ${t('allGenres') || 'View All'} <i class="fa-solid fa-arrow-right"></i>
-                </span>
-            </div>
-            <div class="featured-grid" id="featuredGrid">
-        `;
-
-        topTracks.forEach(track => {
-            const coverUrl = track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null;
-            html += `
-                <div class="featured-card" data-track-id="${track.id}" onclick="playTrack(${track.id}, 'library')" oncontextmenu="event.preventDefault(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
-                    <div class="featured-card-glow"></div>
-                    <div class="featured-card-image">
-                        ${coverUrl ? `<img src="${coverUrl}" alt="${escapeHtml(track.title)}">` : '<div class="fallback-icon"><i class="fa-solid fa-music"></i></div>'}
-                        <div class="play-overlay">
-                            <div class="play-button-circle"><i class="fa-solid fa-play"></i></div>
-                        </div>
-                    </div>
-                    <div class="featured-card-info">
-                        <h4>${escapeHtml(track.title || 'Untitled')}</h4>
-                        <p>${escapeHtml(track.artist || 'Unknown Artist')}</p>
-                        <div class="featured-card-meta">
-                            <span class="bpm"><i class="fa-solid fa-heartbeat"></i> ${track.bpm || '120'}</span>
-                            <span><i class="fa-regular fa-clock"></i> ${formatTime(track.duration)}</span>
-                            <span><i class="fa-solid fa-play"></i> ${(track.playCount || 0).toLocaleString()}</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-        });
-
-        html += `</div>`;
-    }
-
-    // Suggestions
-    if (suggestions.length > 0) {
-        html += `
-            <div class="section-header-premium">
-                <div class="section-title-group">
-                    <h3><i class="fa-solid fa-sparkles"></i> ${t('dailySuggestions') || 'Daily Discoveries'}</h3>
-                    <span class="section-badge">FRESH</span>
-                </div>
-                <span class="view-all-link-premium" onclick="handleAiRecommendationsEnhanced()">
-                    More <i class="fa-solid fa-arrow-right"></i>
-                </span>
-            </div>
-            <div class="featured-grid" id="suggestionsGrid">
-        `;
-
-        suggestions.forEach(track => {
-            const coverUrl = track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null;
-            html += `
-                <div class="featured-card" data-track-id="${track.id}" onclick="playTrack(${track.id}, 'library')" oncontextmenu="event.preventDefault(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
-                    <div class="featured-card-glow"></div>
-                    <div class="featured-card-image">
-                        ${coverUrl ? `<img src="${coverUrl}" alt="${escapeHtml(track.title)}">` : '<div class="fallback-icon"><i class="fa-solid fa-music"></i></div>'}
-                        <div class="play-overlay">
-                            <div class="play-button-circle"><i class="fa-solid fa-play"></i></div>
-                        </div>
-                    </div>
-                    <div class="featured-card-info">
-                        <h4>${escapeHtml(track.title || 'Untitled')}</h4>
-                        <p>${escapeHtml(track.artist || 'Unknown Artist')}</p>
-                        <div class="featured-card-meta">
-                            <span class="bpm"><i class="fa-solid fa-heartbeat"></i> ${track.bpm || '120'}</span>
-                            <span><i class="fa-regular fa-clock"></i> ${formatTime(track.duration)}</span>
-                            ${track.energy ? `<span><i class="fa-solid fa-bolt"></i> ${Math.round(track.energy * 100)}%</span>` : ''}
-                        </div>
-                    </div>
-                </div>
-            `;
-        });
-
-        html += `</div>`;
-    }
-
-    // Recent
-    if (recentTracks.length > 0) {
-        html += `
-            <div class="recent-activity-section">
-                <div class="section-header-premium">
-                    <div class="section-title-group">
-                        <h3><i class="fa-solid fa-clock-rotate-left"></i> ${t('recentActivity') || 'Recently Added'}</h3>
-                        <span class="section-badge">🆕 NEW</span>
-                    </div>
-                </div>
-                <div class="recent-track-list" id="recentList">
-        `;
-
-        recentTracks.forEach(track => {
-            const coverUrl = track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null;
-            const addedDate = track.createdAt ? new Date(track.createdAt).toLocaleDateString() : 'Recently';
-            html += `
-                <div class="recent-track-item" onclick="playTrack(${track.id}, 'library')" oncontextmenu="event.preventDefault(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
-                    <div class="recent-track-cover">
-                        ${coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music"></i>'}
-                    </div>
-                    <div class="recent-track-info">
-                        <h5>${escapeHtml(track.title || 'Untitled')}</h5>
-                        <p>${escapeHtml(track.artist || 'Unknown Artist')} • ${escapeHtml(track.album || 'Single')}</p>
-                    </div>
-                    <div class="recent-track-time">
-                        ${addedDate}
-                    </div>
-                    <div class="recent-track-play">
-                        <i class="fa-solid fa-play"></i>
-                    </div>
-                </div>
-            `;
-        });
-
-        html += `
-                </div>
-            </div>
-        `;
-    }
-
-    html += `</div>`;
-
-    mainSection.innerHTML = html;
-
-    // Start/refresh player connection checks (avoid duplicate intervals)
-    try { if (window._playerConnInterval) clearInterval(window._playerConnInterval); } catch (e) {}
-    if (typeof window.checkPlayerConnection === 'function') {
-        window.checkPlayerConnection();
-        window._playerConnInterval = setInterval(window.checkPlayerConnection, 10000);
-    }
-
-    // Staggered entrance for featured cards
-    const cards = document.querySelectorAll('.featured-card');
-    cards.forEach((card, index) => {
-        card.style.opacity = '0';
-        card.style.transform = 'translateY(20px)';
-        setTimeout(() => {
-            card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-            card.style.opacity = '1';
-            card.style.transform = 'translateY(0)';
-        }, index * 50);
-    });
-}
-
 // Mood filter helper (available globally below)
 function filterByMood(mood) {
     let filteredTracks = [];
     switch(mood) {
         case 'energetic':
-            filteredTracks = tracks.filter(t => (t.bpm || 120) > 130 && (t.energy || 0.5) > 0.6);
+            filteredTracks = tracks.filter(t => { const bpm = getTrackBpm(t); return bpm !== null && bpm > 130 && (getTrackEnergy(t) ?? -1) > 0.6; });
             break;
         case 'chill':
-            filteredTracks = tracks.filter(t => (t.bpm || 120) < 100);
+            filteredTracks = tracks.filter(t => { const bpm = getTrackBpm(t); return bpm !== null && bpm < 100; });
             break;
         case 'focus':
-            filteredTracks = tracks.filter(t => (t.bpm || 120) >= 100 && (t.bpm || 120) <= 130);
+            filteredTracks = tracks.filter(t => { const bpm = getTrackBpm(t); return bpm !== null && bpm >= 100 && bpm <= 130; });
             break;
         case 'workout':
-            filteredTracks = tracks.filter(t => (t.bpm || 120) > 140);
+            filteredTracks = tracks.filter(t => { const bpm = getTrackBpm(t); return bpm !== null && bpm > 140; });
             break;
         case 'sad':
-            filteredTracks = tracks.filter(t => (t.energy || 0.5) < 0.4);
+            filteredTracks = tracks.filter(t => (getTrackEnergy(t) ?? 2) < 0.4);
             break;
         case 'happy':
-            filteredTracks = tracks.filter(t => (t.energy || 0.5) > 0.7);
+            filteredTracks = tracks.filter(t => (getTrackEnergy(t) ?? -1) > 0.7);
             break;
         default:
             filteredTracks = tracks;
     }
 
+    const moodTranslation = t(`mood${mood.charAt(0).toUpperCase()}${mood.slice(1)}`);
+    const moodLabel = moodTranslation.startsWith('mood') ? mood : moodTranslation;
     if (filteredTracks.length > 0) {
         renderLibrary(filteredTracks);
         switchSection('library');
-        showNotification(`${mood.charAt(0).toUpperCase() + mood.slice(1)} mode activated - ${filteredTracks.length} tracks`, 'success');
+        showNotification(tf('notificationMoodActivated', { mood: moodLabel, count: filteredTracks.length }), 'success');
     } else {
-        showNotification(`No tracks found for ${mood} mood`, 'info');
+        showNotification(tf('notificationNoMoodTracks', { mood: moodLabel }), 'info');
     }
 }
 // Expose filterByMood globally
 window.filterByMood = filterByMood;
-
-function scrollCarousel(trackId, dir = 1) {
-    const el = document.getElementById(trackId);
-    if (!el) return;
-    const card = el.querySelector('.carousel-card');
-    const step = card ? card.offsetWidth + 16 : 240;
-    el.scrollBy({ left: dir * step, behavior: 'smooth' });
-}
-
-// Quick helper to start playing the daily suggestions station
-function playTopSuggestions() {
-    const list = getDailySuggestions(12);
-    if (!list || list.length === 0) { showNotification(currentLanguage === 'fa' ? 'هیچ پیشنهادی موجود نیست' : 'No suggestions available', 'info'); return; }
-    // Play the first track and enqueue the rest
-    const first = list[0];
-    try {
-        // Set play source as a playlist so setPlaySource will use the provided tracks
-        playTrack(first.id, 'playlist', 'home-suggestions', list);
-        // Ensure queue reflects the suggestions
-        lastPlaySource = { type: 'playlist', sourceId: 'home-suggestions', sourceTracks: [...list] };
-        queue = [...list];
-        queueIndex = 0;
-        renderQueue();
-        showNotification(currentLanguage === 'fa' ? 'در حال پخش پیشنهادها' : 'Playing suggestions', 'success');
-    } catch (e) { console.warn('playTopSuggestions failed', e); showNotification('Playback failed', 'error'); }
-}
 
 // Unified hero primary action: toggle play if a track exists, otherwise start suggestions
 function heroPrimaryAction() {
@@ -4248,16 +3992,16 @@ function showArtistDetail(artistName) {
 // =============================================================================
 
 async function handleAiRecommendationsEnhanced() {
-    if (!currentTrackId) { showNotification('Play a track first', 'warning'); return; }
-    showNotification('AI analyzing your taste...', 'info');
+    if (!currentTrackId) { showNotification(t('notificationPlayTrackFirst'), 'warning'); return; }
+    showNotification(t('notificationAIAnalyzing'), 'info');
     try {
         fetch(`http://127.0.0.1:${apiPort}/api/ai/interaction`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: currentTrackId, action: 'play' }) }).catch(e => console.error(e));
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/ai/recommend/personal/${currentTrackId}`);
         if (!res.ok) throw new Error();
         const data = await res.json();
-        if (!data.recommendations || data.recommendations.length === 0) { showNotification('No AI recommendations yet. Listen to more music!', 'info'); return; }
+        if (!data.recommendations || data.recommendations.length === 0) { showNotification(t('notificationNoAIRecommendations'), 'info'); return; }
         renderRecommendationsUI(data);
-    } catch (err) { console.error('AI error:', err); showNotification('AI recommendation failed', 'error'); }
+    } catch (err) { console.error('AI error:', err); showNotification(t('notificationAIRecommendationFailed'), 'error'); }
 }
 
 function renderRecommendationsUI(data) {
@@ -4269,7 +4013,7 @@ function renderRecommendationsUI(data) {
         recsHtml += `<div class="spotify-music-card" data-track-id="${track.id}" onclick="playTrack(${track.id})" oncontextmenu="event.preventDefault(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
             <div class="card-image-box">${coverUrl ? `<img src="${coverUrl}" alt="Cover" loading="lazy">` : '<i class="fa-solid fa-music"></i>'}<div class="hover-play-bubble"><i class="fa-solid fa-play"></i></div></div>
             <div class="card-details-info"><h4>${escapeHtml(track.title || 'Untitled')}</h4><p>${escapeHtml(track.artist || 'Unknown')}</p></div>
-            <div class="card-additional-meta"><span class="bpm-indicator"><i class="fa-solid fa-heartbeat"></i> ${track.bpm || '120'}</span><span class="similarity-badge" style="color: var(--accent-cyan);">${track.similarity || '?'}% match</span></div>
+            <div class="card-additional-meta"><span class="bpm-indicator"><i class="fa-solid fa-heartbeat"></i> ${formatBpm(track)}</span><span class="similarity-badge" style="color: var(--accent-cyan);">${formatSimilarity(track)}</span></div>
             <div class="recommend-reason"><small><i class="fa-solid ${track.similarityIcon || 'fa-brain'}"></i> ${track.reason || 'AI recommended'}</small></div>
         </div>`;
     }
@@ -4277,21 +4021,21 @@ function renderRecommendationsUI(data) {
 }
 
 async function getDiscoveryRecommendations() {
-    showNotification('Finding new music for you...', 'info');
+    showNotification(t('notificationFindingMusic'), 'info');
     try {
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/ai/discover`);
         if (!res.ok) throw new Error();
         const data = await res.json();
-        if (!data.recommendations || data.recommendations.length === 0) { showNotification('No new discoveries found', 'info'); return; }
+        if (!data.recommendations || data.recommendations.length === 0) { showNotification(t('notificationNoDiscoveries'), 'info'); return; }
         const mainSection = document.getElementById('dynamicSectionContainer');
         if (!mainSection) return;
         let discHtml = '';
         for (const track of data.recommendations) {
             const coverUrl = track.coverUrl ? `http://127.0.0.1:${apiPort}${track.coverUrl}` : null;
-            discHtml += `<div class="spotify-music-card" data-track-id="${track.id}" onclick="playTrack(${track.id})"><div class="card-image-box">${coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music"></i>'}<div class="hover-play-bubble"><i class="fa-solid fa-play"></i></div></div><div class="card-details-info"><h4>${escapeHtml(track.title || 'Untitled')}</h4><p>${escapeHtml(track.artist || 'Unknown')}</p></div><div class="card-additional-meta"><span class="bpm-indicator"><i class="fa-solid fa-heartbeat"></i> ${track.bpm || '120'}</span><span class="genre-badge" style="color: var(--spotify-text-muted);">${track.genre || 'Various'}</span></div><div class="recommend-reason"><small><i class="fa-solid fa-sparkles"></i> New discovery for you</small></div></div>`;
+            discHtml += `<div class="spotify-music-card" data-track-id="${track.id}" onclick="playTrack(${track.id})"><div class="card-image-box">${coverUrl ? `<img src="${coverUrl}" alt="Cover">` : '<i class="fa-solid fa-music"></i>'}<div class="hover-play-bubble"><i class="fa-solid fa-play"></i></div></div><div class="card-details-info"><h4>${escapeHtml(track.title || 'Untitled')}</h4><p>${escapeHtml(track.artist || 'Unknown')}</p></div><div class="card-additional-meta"><span class="bpm-indicator"><i class="fa-solid fa-heartbeat"></i> ${formatBpm(track)}</span><span class="genre-badge" style="color: var(--spotify-text-muted);">${track.genre || 'Various'}</span></div><div class="recommend-reason"><small><i class="fa-solid fa-sparkles"></i> New discovery for you</small></div></div>`;
         }
         mainSection.innerHTML = `<div class="spotify-row-title"><h3><i class="fa-solid fa-compass"></i> Discover New Music</h3><span class="view-all-link" onclick="handleAiRecommendationsEnhanced()">← Back to AI Recs</span></div><div class="cards-responsive-grid">${discHtml}</div>`;
-    } catch (err) { showNotification('Discovery failed', 'error'); }
+    } catch (err) { showNotification(t('notificationDiscoveryFailed'), 'error'); }
 }
 
 async function createSimilarPlaylistFromCurrent() {
@@ -4317,7 +4061,7 @@ async function createSimilarPlaylistFromCurrent() {
         const result = await res.json();
         
         if (result.success && result.playlist) {
-            showNotification(`Playlist "${result.playlist.name}" created with ${result.trackCount} tracks`, 'success');
+            showNotification(tf('notificationSimilarPlaylistCreated', { name: result.playlist.name, count: result.trackCount }), 'success');
             await loadPlaylists();
             setTimeout(() => { 
                 openPlaylist(result.playlist.id); 
@@ -4325,7 +4069,7 @@ async function createSimilarPlaylistFromCurrent() {
         } else if (result.message) {
             showNotification(result.message, 'warning');
         } else {
-            showNotification('No similar tracks found', 'warning');
+            showNotification(t('notificationNoSimilarTracks'), 'warning');
         }
     } catch (err) { 
         console.error('Create playlist error:', err); 
@@ -4363,7 +4107,7 @@ async function toggleLikeWithAI() {
         if (trackInList) trackInList.isLiked = wasLiked;
         if (currentTrack) currentTrack.isLiked = wasLiked;
         updatePlayerUI();
-        showNotification('Failed to update favorites', 'error');
+        showNotification(t('notificationFavoritesUpdateFailed'), 'error');
     }
 }
 
@@ -4376,7 +4120,7 @@ window.handleAiRecommendations = handleAiRecommendationsEnhanced;
 
 async function handleImport() {
     if (!window.electronAPI || typeof window.electronAPI.selectAudioFiles !== 'function') {
-        showNotification('Electron API not available', 'error');
+        showNotification(t('notificationElectronUnavailable'), 'error');
         return;
     }
 
@@ -4384,19 +4128,8 @@ async function handleImport() {
         const filePaths = await window.electronAPI.selectAudioFiles();
         if (!filePaths || filePaths.length === 0) return;
 
-        // Show loading modal
         showImportLoadingModal(filePaths.length);
-        let progressInterval = null;
-        let lastProgress = 0;
-
-        // Simulate progress animation (will be updated by actual server response)
-        progressInterval = setInterval(() => {
-            if (lastProgress < 90) {
-                lastProgress += Math.random() * 8;
-                if (lastProgress > 90) lastProgress = 90;
-                updateImportLoadingProgress(lastProgress, `Importing ${Math.floor(lastProgress)}%...`);
-            }
-        }, 300);
+        updateImportLoadingProgress(0, `Analyzing ${filePaths.length} selected file(s)...`);
 
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
             method: 'POST',
@@ -4404,106 +4137,73 @@ async function handleImport() {
             body: JSON.stringify({ filePaths })
         });
 
-        // Clear interval
-        if (progressInterval) clearInterval(progressInterval);
-
-        if (!res.ok) throw new Error();
+        if (!res.ok) {
+            let message = 'Import failed';
+            try { message = (await res.json()).error || message; } catch (_) {}
+            throw new Error(message);
+        }
 
         const result = await res.json();
-
-        // Update to 100% and show completion
         updateImportLoadingProgress(100, `Imported ${result.imported} track(s)!`);
 
-        // Delay hiding modal slightly to show completion
-                setTimeout(async () => {
-            hideImportLoadingModal();
-            showNotification(`Successfully added ${result.imported} tracks.`, 'success');
-                await loadTracks();
-                try {
-                        if (result.imported > 0 && tracks.length > 0) {
-                            // Prefer server-provided mapping when available
-                            if (Array.isArray(result.importedTracks) && result.importedTracks.length > 0) {
-                                let matched = null;
-                                for (const it of result.importedTracks) {
-                                    const ft = tracks.find(tt => tt.id === it.id || (tt.filePath && it.filePath && normalizePath(tt.filePath) === normalizePath(it.filePath)));
-                                    if (ft) { matched = ft; break; }
-                                }
-                                if (matched) {
-                                    console.debug('Autoplay matched by server mapping (select):', matched.id, matched.title);
-                                    tryAutoPlayTrack(matched.id).catch(e => console.debug('Autoplay failed', e));
-                                } else {
-                                    // Try to match by original file path(s)
-                                    let matched2 = null;
-                                    for (const fp of filePaths) {
-                                        const ft = findTrackByFilePath(fp);
-                                        if (ft) { matched2 = ft; break; }
-                                    }
-                                    if (matched2) {
-                                        console.debug('Autoplay matched by file path (select):', matched2.id, matched2.title);
-                                        tryAutoPlayTrack(matched2.id).catch(e => console.debug('Autoplay failed', e));
-                                    } else {
-                                        const newTracks = tracks.slice(-result.imported);
-                                        console.debug('Newly imported tracks (select fallback):', newTracks.map(t=>({ id: t.id, title: t.title })));
-                                        const lastTrack = newTracks[newTracks.length - 1] || newTracks[0];
-                                        if (lastTrack) tryAutoPlayTrack(lastTrack.id).catch(e => console.debug('Autoplay failed', e));
-                                    }
-                                }
-                            } else {
-                                let matched = null;
-                                for (const fp of filePaths) {
-                                    const ft = findTrackByFilePath(fp);
-                                    if (ft) { matched = ft; break; }
-                                }
-                                if (matched) {
-                                    console.debug('Autoplay matched by file path (select):', matched.id, matched.title);
-                                    tryAutoPlayTrack(matched.id).catch(e => console.debug('Autoplay failed', e));
-                                } else {
-                                    const newTracks = tracks.slice(-result.imported);
-                                    console.debug('Newly imported tracks (select fallback):', newTracks.map(t=>({ id: t.id, title: t.title })));
-                                    const lastTrack = newTracks[newTracks.length - 1] || newTracks[0];
-                                    if (lastTrack) tryAutoPlayTrack(lastTrack.id).catch(e => console.debug('Autoplay failed', e));
-                                }
-                            }
-                        }
-                } catch (e) { console.debug('Autoplay after import failed', e); }
-                switchSection(currentActiveSection);
-        }, 500);
+        // Let the completion state render, then immediately replace stale local data with server truth.
+        await new Promise(resolve => setTimeout(resolve, 140));
+        hideImportLoadingModal();
+        showNotification(tf('notificationTracksImported', { count: result.imported }), 'success');
 
+        await loadTracks({ fresh: true });
+        await loadPlaylists();
+
+        try {
+            if (result.imported > 0 && tracks.length > 0) {
+                let matched = null;
+                if (Array.isArray(result.importedTracks) && result.importedTracks.length > 0) {
+                    for (const it of result.importedTracks) {
+                        const ft = tracks.find(tt => tt.id === it.id || (tt.filePath && it.filePath && normalizePath(tt.filePath) === normalizePath(it.filePath)));
+                        if (ft) { matched = ft; break; }
+                    }
+                }
+                if (!matched) {
+                    for (const fp of filePaths) {
+                        const ft = findTrackByFilePath(fp);
+                        if (ft) { matched = ft; break; }
+                    }
+                }
+                if (!matched && result.imported > 0) {
+                    const importedTracks = tracks.slice(-result.imported);
+                    matched = importedTracks[importedTracks.length - 1] || importedTracks[0];
+                }
+                if (matched) await tryAutoPlayTrack(matched.id);
+            }
+        } catch (e) {
+            console.debug('Autoplay after import failed', e);
+        }
+
+        switchSection(currentActiveSection);
     } catch (err) {
         console.error('Import error:', err);
         hideImportLoadingModal();
-        showNotification('Import failed: ' + err.message, 'error');
+        showNotification(tf('notificationImportFailed', { error: err.message }), 'error');
     }
 }
 
 async function handleFolderImport() {
     if (!window.electronAPI || typeof window.electronAPI.selectAudioFolder !== 'function') {
-        showNotification('Electron API not available', 'error');
+        showNotification(t('notificationElectronUnavailable'), 'error');
         return;
     }
 
     try {
-        showNotification('Scanning folder...', 'info');
-
+        showNotification(t('notificationScanningFolder'), 'info');
         const filePaths = await window.electronAPI.selectAudioFolder();
 
         if (!filePaths || filePaths.length === 0) {
-            showNotification('No audio files found in selected folder. Supported formats: MP3, WAV, OGG, M4A, FLAC', 'warning');
+            showNotification(t('notificationNoAudioFiles'), 'warning');
             return;
         }
 
-        // Show loading modal
         showImportLoadingModal(filePaths.length);
-        let progressInterval = null;
-        let lastProgress = 0;
-
-        progressInterval = setInterval(() => {
-            if (lastProgress < 90) {
-                lastProgress += Math.random() * 8;
-                if (lastProgress > 90) lastProgress = 90;
-                updateImportLoadingProgress(lastProgress, `Importing ${Math.floor(lastProgress)}%...`);
-            }
-        }, 300);
+        updateImportLoadingProgress(0, `Analyzing ${filePaths.length} selected file(s)...`);
 
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
             method: 'POST',
@@ -4511,65 +4211,54 @@ async function handleFolderImport() {
             body: JSON.stringify({ filePaths })
         });
 
-        if (progressInterval) clearInterval(progressInterval);
-
         if (!res.ok) {
-            const error = await res.json();
-            throw new Error(error.error || 'Import failed');
+            let message = 'Import failed';
+            try { message = (await res.json()).error || message; } catch (_) {}
+            throw new Error(message);
         }
 
         const result = await res.json();
-
         updateImportLoadingProgress(100, `Imported ${result.imported} track(s)!`);
 
-        setTimeout(async () => {
-            hideImportLoadingModal();
-            showNotification(`Successfully imported ${result.imported} tracks.`, 'success');
-            await loadTracks();
-            try {
-                if (result.imported > 0 && tracks.length > 0) {
-                    // Prefer server-provided mapping when available
-                    if (Array.isArray(result.importedTracks) && result.importedTracks.length > 0) {
-                        let matched = null;
-                        for (const it of result.importedTracks) {
-                            const ft = tracks.find(tt => tt.id === it.id || (tt.filePath && it.filePath && normalizePath(tt.filePath) === normalizePath(it.filePath)));
-                            if (ft) { matched = ft; break; }
-                        }
-                        if (matched) {
-                            console.debug('Autoplay matched by server mapping (folder):', matched.id, matched.title);
-                            tryAutoPlayTrack(matched.id).catch(e => console.debug('Autoplay failed', e));
-                        } else {
-                            const newTracks = tracks.slice(-result.imported);
-                            const lastTrack = newTracks[newTracks.length - 1] || newTracks[0];
-                            if (lastTrack) tryAutoPlayTrack(lastTrack.id).catch(e => console.debug('Autoplay failed', e));
-                        }
-                    } else {
-                        let matched = null;
-                        for (const fp of filePaths) {
-                            const ft = findTrackByFilePath(fp);
-                            if (ft) { matched = ft; break; }
-                        }
-                        if (matched) {
-                            console.debug('Autoplay matched by file path (folder):', matched.id, matched.title);
-                            tryAutoPlayTrack(matched.id).catch(e => console.debug('Autoplay failed', e));
-                        } else {
-                            const newTracks = tracks.slice(-result.imported);
-                            const lastTrack = newTracks[newTracks.length - 1] || newTracks[0];
-                            if (lastTrack) tryAutoPlayTrack(lastTrack.id).catch(e => console.debug('Autoplay failed', e));
-                        }
+        await new Promise(resolve => setTimeout(resolve, 140));
+        hideImportLoadingModal();
+        showNotification(tf('notificationTracksImported', { count: result.imported }), 'success');
+
+        await loadTracks({ fresh: true });
+        await loadPlaylists();
+
+        try {
+            if (result.imported > 0 && tracks.length > 0) {
+                let matched = null;
+                if (Array.isArray(result.importedTracks) && result.importedTracks.length > 0) {
+                    for (const it of result.importedTracks) {
+                        const ft = tracks.find(tt => tt.id === it.id || (tt.filePath && it.filePath && normalizePath(tt.filePath) === normalizePath(it.filePath)));
+                        if (ft) { matched = ft; break; }
                     }
                 }
-            } catch (e) { console.debug('Autoplay after folder import failed', e); }
-            switchSection(currentActiveSection);
-        }, 500);
+                if (!matched) {
+                    for (const fp of filePaths) {
+                        const ft = findTrackByFilePath(fp);
+                        if (ft) { matched = ft; break; }
+                    }
+                }
+                if (!matched && result.imported > 0) {
+                    const importedTracks = tracks.slice(-result.imported);
+                    matched = importedTracks[importedTracks.length - 1] || importedTracks[0];
+                }
+                if (matched) await tryAutoPlayTrack(matched.id);
+            }
+        } catch (e) {
+            console.debug('Autoplay after folder import failed', e);
+        }
 
+        switchSection(currentActiveSection);
     } catch (err) {
         console.error('Folder import error:', err);
         hideImportLoadingModal();
-        showNotification(`Import failed: ${err.message}`, 'error');
+        showNotification(tf('notificationImportFailed', { error: err.message }), 'error');
     }
 }
-
 
 function promptDownloadFromUrl() {
     const modal = document.getElementById('downloadUrlModal');
@@ -4577,22 +4266,22 @@ function promptDownloadFromUrl() {
     const confirmBtn = document.getElementById('confirmDownloadBtn');
     if (!modal || !input || !confirmBtn) return;
     input.value = '';
-    modal.style.display = 'flex';
+    showAnimatedModal(modal);
     input.focus();
     confirmBtn.onclick = async () => {
         const url = input.value.trim();
-        if (!url) { showNotification('Please provide a valid URL', 'warning'); return; }
+        if (!url) { showNotification(t('notificationInvalidUrl'), 'warning'); return; }
         closeDownloadUrlModal();
-        showNotification('Configuring cloud request...', 'info');
+        showNotification(t('notificationConfiguringCloud'), 'info');
         try {
             const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/download`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
-            if (res.ok) { showNotification('Audio downloaded successfully', 'success'); await loadTracks(); switchSection(currentActiveSection); }
-            else { showNotification('Request failed', 'error'); }
-        } catch (e) { showNotification('Cloud capture aborted', 'error'); }
+            if (res.ok) { showNotification(t('notificationAudioDownloaded'), 'success'); await loadTracks({ fresh: true }); switchSection(currentActiveSection); }
+            else { showNotification(t('notificationRequestFailed'), 'error'); }
+        } catch (e) { showNotification(t('notificationCloudCaptureAborted'), 'error'); }
     };
 }
 
-function closeDownloadUrlModal() { const modal = document.getElementById('downloadUrlModal'); if (modal) modal.style.display = 'none'; }
+function closeDownloadUrlModal() { const modal = document.getElementById('downloadUrlModal'); if (modal) hideAnimatedModal(modal); }
 
 // =============================================================================
 // SECTION SWITCHING
@@ -4614,7 +4303,7 @@ window.switchSection = function(sectionName) {
         if (sectionName === 'albums') renderAlbums();
         if (sectionName === 'favorites' && navFavorites) navFavorites.classList.add('active');
         if (sectionName === 'stats' && navStats) navStats.classList.add('active');
-        if (sectionName === 'home') renderHomeDashboard();
+        if (sectionName === 'home') window.renderHome?.();
         if (sectionName === 'library') renderLibrary();
         if (sectionName === 'artists') renderArtists();
         if (sectionName === 'favorites') renderFavorites();
@@ -4720,7 +4409,7 @@ function setupEventListeners() {
     if (winCloseBtn) winCloseBtn.addEventListener('click', () => window.electronAPI.closeWindow());
 
     // =========================================================================
-    // LANGUAGE & SKIN
+    // LANGUAGE
     // =========================================================================
     const langToggleBtn = document.getElementById('langToggleBtn');
     if (langToggleBtn) {
@@ -4729,28 +4418,6 @@ function setupEventListeners() {
             changeClientLanguage(newLang);
         });
     }
-
-    const skinBtns = document.querySelectorAll('.skin-btn');
-    if (skinBtns.length) {
-        skinBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                const skinValue = btn.dataset.skin;
-                let newSkin = skinValue;
-                if (skinValue === 'apple') newSkin = 'liquid-glass';
-                if (skinValue !== 'default' && skinValue !== 'liquid-glass') newSkin = 'default';
-                skinBtns.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                applyGlobalSkin(newSkin);
-            });
-        });
-        
-        const activeSkinBtn = document.querySelector(`.skin-btn[data-skin="${currentSkin}"]`);
-        if (activeSkinBtn) {
-            skinBtns.forEach(b => b.classList.remove('active'));
-            activeSkinBtn.classList.add('active');
-        }
-    }
-
 
     // Listen for settings changes
     window.addEventListener('settings-changed', (e) => {
@@ -4948,15 +4615,15 @@ function setupEventListeners() {
             if (repeatOneMode) {
                 repeatOneMode = false;
                 repeatMode = false;
-                showNotification('Repeat disabled', 'info');
+                showNotification(t('notificationRepeatOff'), 'info');
             } else if (repeatMode) {
                 repeatOneMode = true;
                 repeatMode = true;
-                showNotification('Repeat One (single track)', 'info');
+                showNotification(t('notificationRepeatOne'), 'info');
             } else {
                 repeatMode = true;
                 repeatOneMode = false;
-                showNotification('Repeat All (playlist)', 'info');
+                showNotification(t('notificationRepeatAll'), 'info');
             }
             updateRepeatUI();
         });
@@ -4983,15 +4650,15 @@ function setupEventListeners() {
             if (repeatOneMode) {
                 repeatOneMode = false;
                 repeatMode = false;
-                showNotification('Repeat disabled', 'info');
+                showNotification(t('notificationRepeatOff'), 'info');
             } else if (repeatMode) {
                 repeatOneMode = true;
                 repeatMode = true;
-                showNotification('Repeat One (single track)', 'info');
+                showNotification(t('notificationRepeatOne'), 'info');
             } else {
                 repeatMode = true;
                 repeatOneMode = false;
-                showNotification('Repeat All (playlist)', 'info');
+                showNotification(t('notificationRepeatAll'), 'info');
             }
             updateRepeatUI();
         });
@@ -5062,12 +4729,35 @@ function setupEventListeners() {
     const dspPanel = document.getElementById('dspPanel');
     
     if (dspToggleBtn && dspPanel) {
-        dspToggleBtn.addEventListener('click', () => { dspPanel.classList.toggle('open'); });
+        dspToggleBtn.addEventListener('click', () => {
+            const willOpen = !dspPanel.classList.contains('open');
+            hidePlaylistContextMenu();
+            if (willOpen) {
+                const queuePanel = document.getElementById('queuePanel');
+                if (queuePanel) {
+                    queuePanel.classList.remove('open');
+                    isQueueOpen = false;
+                }
+            }
+            dspPanel.classList.toggle('open', willOpen);
+        });
     }
     if (closeDspBtn && dspPanel) {
-        closeDspBtn.addEventListener('click', () => { dspPanel.classList.remove('open'); });
+        closeDspBtn.addEventListener('click', () => dspPanel.classList.remove('open'));
     }
     
+    // Reset EQ
+    const resetEqBtn = document.getElementById('resetEqBtn');
+    if (resetEqBtn) resetEqBtn.addEventListener('click', () => {
+        for (let i = 0; i < 5; i++) {
+            const slider = document.getElementById(`eqSlider${i}`);
+            if (slider) slider.value = '0';
+            updateEqualizerBand(i, 0);
+        }
+        try { window.settingsStore?.set?.('eq', [0, 0, 0, 0, 0]); } catch (_) {}
+        showNotification(currentLanguage === 'fa' ? 'اکولایزر ریست شد' : 'Equalizer reset', 'success');
+    });
+
     // EQ Sliders
     for (let i = 0; i < 5; i++) {
         const slider = document.getElementById(`eqSlider${i}`);
@@ -5109,7 +4799,7 @@ function setupEventListeners() {
             input.onchange = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                showNotification('Importing playlist...', 'info');
+                showNotification(t('notificationPlaylistImporting'), 'info');
                 try {
                     const res = await fetch(`http://127.0.0.1:${apiPort}/api/playlists/import-auto`, {
                         method: 'POST',
@@ -5118,15 +4808,15 @@ function setupEventListeners() {
                     });
                     const data = await res.json();
                     if (data.success) {
-                        showNotification(`Playlist "${data.playlist.name}" imported with ${data.importedCount} tracks`, 'success');
+                        showNotification(tf('notificationPlaylistImported', { name: data.playlist.name, count: data.importedCount }), 'success');
                         await loadPlaylists();
                         setTimeout(() => openPlaylist(data.playlist.id), 500);
                     } else {
-                        showNotification('Import failed: ' + (data.error || 'Unknown'), 'error');
+                        showNotification(tf('notificationPlaylistImportFailed', { error: data.error || t('notificationUnknownError') }), 'error');
                     }
                 } catch (err) {
                     console.error('Import error:', err);
-                    showNotification('Import error', 'error');
+                    showNotification(t('notificationPlaylistImportError'), 'error');
                 }
             };
             input.click();
@@ -5274,7 +4964,7 @@ function setupEventListeners() {
                 
                 if (currentActiveSection === 'home') {
                     try {
-                        if (typeof renderHomeDashboard === 'function') renderHomeDashboard();
+                        window.renderHome?.();
                     } catch (e) { console.warn('Failed to re-render home after state update', e); }
                 }
                 
@@ -5404,14 +5094,14 @@ async function initVersionStatus() {
                 versionBadge.style.cursor = 'pointer';
                 versionBadge.onclick = () => {
                     if (updateInfo.url) window.electronAPI.openExternalLink(updateInfo.url);
-                    else showNotification('Download URL not available', 'warning');
+                    else showNotification(t('notificationDownloadUrlUnavailable'), 'warning');
                 };
             } else if (updateInfo.currentVersion && updateInfo.currentVersion !== 'unknown') {
                 versionBadge.textContent = `v${updateInfo.currentVersion}`;
                 versionBadge.classList.remove('update-available');
                 versionBadge.onclick = null;
             } else {
-                versionBadge.textContent = 'v1.5.0'; // fallback
+                versionBadge.textContent = 'v1.6.0';
             }
         });
     }
@@ -5428,7 +5118,7 @@ async function initVersionStatus() {
                     versionBadge.style.cursor = 'pointer';
                     versionBadge.onclick = () => {
                         if (status.url) window.electronAPI.openExternalLink(status.url);
-                        else showNotification('Download URL not available', 'warning');
+                        else showNotification(t('notificationDownloadUrlUnavailable'), 'warning');
                     };
                 } else if (status.currentVersion && status.currentVersion !== 'unknown') {
                     versionBadge.textContent = `v${status.currentVersion}`;
@@ -5569,7 +5259,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         initVersionStatus();
         if (window.electronAPI && window.electronAPI.onScanNoFilesFound) {
             window.electronAPI.onScanNoFilesFound((folderPath) => {
-                showNotification(`No audio files found in: ${folderPath}\nSupported: MP3, WAV, OGG, M4A, FLAC`, 'warning');
+                showNotification(tf('notificationNoAudioFilesInPath', { path: folderPath }), 'warning');
             });
         }
 
@@ -5579,7 +5269,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (window.electronAPI && window.electronAPI.onFilesOpened) {
             window.electronAPI.onFilesOpened(async (files) => {
                 if (!files || files.length === 0) return;
-                showImportProgress(files.length);
+                showImportLoadingModal(files.length);
                 try {
                     const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
                         method: 'POST',
@@ -5588,19 +5278,19 @@ window.addEventListener('DOMContentLoaded', async () => {
                     });
 
                     if (!res.ok) {
-                        hideImportProgress();
+                        hideImportLoadingModal();
                         const error = await res.json().catch(() => ({}));
-                        showNotification(`Import failed: ${error.error || 'Unknown error'}`, 'error');
+                        showNotification(tf('notificationImportFailed', { error: error.error || t('notificationUnknownError') }), 'error');
                         return;
                     }
 
                     const result = await res.json();
-                    updateImportProgress(100, `Imported ${result.imported} track(s)!`);
+                    updateImportLoadingProgress(100, `Imported ${result.imported} track(s)!`);
 
                     // Small delay to show completion state
                     setTimeout(async () => {
-                        hideImportProgress();
-                        showNotification(`Successfully imported ${result.imported} track(s)`, 'success');
+                        hideImportLoadingModal();
+                        showNotification(tf('notificationTracksImported', { count: result.imported }), 'success');
                         await loadTracks();
                         await loadPlaylists();
 
@@ -5628,8 +5318,8 @@ window.addEventListener('DOMContentLoaded', async () => {
                     }, 500);
                 } catch (err) {
                     console.error('File association import error:', err);
-                    hideImportProgress();
-                    showNotification('Error importing files opened from system', 'error');
+                    hideImportLoadingModal();
+                    showNotification(t('notificationSystemImportFailed'), 'error');
                 }
             });
         }
@@ -5656,7 +5346,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (importCueBtn) importCueBtn.addEventListener('click', importCueSheet);
 
         console.debug('KORAI Player initialized');
-    } catch (err) { console.error('Init error:', err); showNotification('Initialization failed', 'error'); }
+    } catch (err) { console.error('Init error:', err); showNotification(t('notificationInitializationFailed'), 'error'); }
 });
 
 if (window.electronAPI) {

@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>KORAI | Plugin Studio</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data:; connect-src 'self' http://127.0.0.1:* http://localhost:*; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data: https: blob: http://127.0.0.1:*; font-src 'self' https://cdnjs.cloudflare.com data:; media-src 'self' http://127.0.0.1:* https: blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+    <title data-translate="pluginPageTitle">KORAI | Plugin Studio</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="styles/pages.css">
     <style>
         /* =========================================
            PLUGIN STUDIO STYLES
@@ -690,8 +692,8 @@
                     <button class="filter-chip" data-filter="enabled" data-translate="pluginEnabled">Active</button>
                     <button class="filter-chip" data-filter="disabled" data-translate="pluginDisabled">Inactive</button>
                 </div>
-                <button class="install-btn" id="installPluginBtn" data-translate="pluginInstall">
-                    <i class="fa-solid fa-cloud-arrow-up"></i> Install Plugin
+                <button class="install-btn" id="installPluginBtn">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> <span data-translate="pluginInstall">Install Plugin</span>
                 </button>
             </div>
 
@@ -708,6 +710,7 @@
     <!-- ============================================================ -->
     <!-- JAVASCRIPT - Plugin Manager Logic with Translation Support -->
     <!-- ============================================================ -->
+    <script src="lang.js"></script>
     <script>
         // ============================================================
         // TRANSLATION HELPER
@@ -734,6 +737,10 @@
          * Translate all elements with data-translate attribute
          */
         function translatePage() {
+            const lang = localStorage.getItem('user_lang') === 'fa' ? 'fa' : 'en';
+            document.documentElement.lang = lang;
+            document.documentElement.dir = lang === 'fa' ? 'rtl' : 'ltr';
+
             document.querySelectorAll('[data-translate]').forEach(el => {
                 const key = el.getAttribute('data-translate');
                 const translated = t(key);
@@ -1179,10 +1186,10 @@
         // ============================================================
         // INIT
         // ============================================================
-        
+        translatePage();
+
         (async () => {
             apiBase = await resolveApiBase();
-            translatePage();
             loadPlugins();
         })();
     </script>

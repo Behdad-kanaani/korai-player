@@ -1,13 +1,13 @@
 // Change Logs plugin UI — shows a modal on first run per app version
 (function(){
   const CHANGELOG_HTML = `
-  <h3 style="margin:0 0 6px 0;">KORAI Player v1.4.0 - Summary</h3>
+  <h3 style="margin:0 0 6px 0;">KORAI Player v1.6.0 - Summary</h3>
   <div style="font-size:13px; color:var(--muted-color,#cbd5e1);">
   <strong>What's New</strong>
   <ul>
     <li>Plugins - Install third-party plugins</li>
-    <li>Audio effects - Echo, reverb, bass boost, etc.</li>
-    <li>New home page - Stats cards & smart recommendations</li>
+    <li>Hardened playback, persistence, plugin lifecycle, and download paths</li>
+    <li>Real waveform BPM estimation and improved recommendation data persistence</li>
     <li>Better library - Smooth scrolling & masonry layout</li>
   </ul>
   <strong>Improvements</strong>

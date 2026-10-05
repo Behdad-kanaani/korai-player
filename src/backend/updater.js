@@ -61,6 +61,41 @@ let versionCache = {
 };
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache
+const MAX_UPDATE_FILE_BYTES = 5 * 1024 * 1024;
+
+function canApplySourceUpdate() {
+    try {
+        const appPath = String(app.getAppPath() || '');
+        const packagedAsar = Boolean(app.isPackaged) && appPath.toLowerCase().endsWith('.asar');
+        return !packagedAsar;
+    } catch {
+        return false;
+    }
+}
+
+function validateUpdatePath(file) {
+    const relative = String(file || '').replace(/\\/g, '/');
+    if (!relative || relative.startsWith('/') || relative.includes('\0')) {
+        throw new Error(`Invalid update path: ${file}`);
+    }
+    const normalized = path.posix.normalize(relative);
+    if (normalized === '.' || normalized.startsWith('../') || normalized.includes('/../') || path.posix.isAbsolute(normalized)) {
+        throw new Error(`Unsafe update path: ${file}`);
+    }
+    if (normalized !== relative) throw new Error(`Non-normalized update path: ${file}`);
+    if (EXCLUDE_PATTERNS.some(pattern => pattern.test(normalized))) throw new Error(`Excluded update path: ${file}`);
+    const included = INCLUDE_PATTERNS.some(pattern => pattern.test(normalized));
+    if (!included) throw new Error(`Unsupported update file: ${file}`);
+    return normalized;
+}
+
+function safeJoin(base, relative) {
+    const fullPath = path.resolve(base, relative);
+    const basePath = path.resolve(base);
+    const rel = path.relative(basePath, fullPath);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Error(`Path escapes app root: ${relative}`);
+    return fullPath;
+}
 
 // ============================================================================
 // VERSION MANAGEMENT
@@ -165,7 +200,7 @@ function fetchGitHubJSON(url) {
  * Download a file from GitHub raw URL (NO RATE LIMIT)
  * Uses raw.githubusercontent.com which has no rate limit
  */
-function downloadFileFromGitHub(rawUrl) {
+function downloadFileFromGitHub(rawUrl, maxBytes = 2 * 1024 * 1024) {
     return new Promise((resolve, reject) => {
         const options = {
             headers: {
@@ -175,9 +210,23 @@ function downloadFileFromGitHub(rawUrl) {
         };
 
         https.get(rawUrl, options, (res) => {
+            const declared = Number(res.headers['content-length']);
+            if (Number.isFinite(declared) && declared > maxBytes) {
+                res.resume();
+                return reject(new Error(`Remote update file exceeds ${maxBytes} byte limit`));
+            }
             if (res.statusCode === 200) {
                 let data = '';
-                res.on('data', chunk => data += chunk);
+                let bytes = 0;
+                res.on('data', chunk => {
+                    bytes += chunk.length;
+                    if (bytes > maxBytes) {
+                        res.destroy();
+                        reject(new Error(`Remote update file exceeds ${maxBytes} byte limit`));
+                        return;
+                    }
+                    data += chunk;
+                });
                 res.on('end', () => resolve(data));
                 res.on('error', reject);
             } else if (res.statusCode === 404) {
@@ -415,6 +464,7 @@ async function performFullUpdateCheck() {
             latestVersion: latestVersion,
             latestSha: latestSha,
             changedFiles: changedFiles,
+            canUpdate: canApplySourceUpdate(),
             totalFiles: changedFiles.length,
             url: `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/tag/v${latestVersion}`,
             error: null,
@@ -479,219 +529,143 @@ function stopUpdateChecker() {
 // ============================================================================
 
 /**
- * Apply the update by downloading and replacing changed files
+ * Apply a source-tree update transaction. Packaged ASAR installs must use the
+ * official installer/release because application files are not safely mutable.
  */
 async function applyUpdate(updateInfo, progressCallback) {
-    if (isUpdating) {
-        throw new Error('Update already in progress');
+    if (isUpdating) throw new Error('Update already in progress');
+    if (!updateInfo) throw new Error('Update info is required');
+    if (!canApplySourceUpdate()) throw new Error('Automatic source updates are disabled for packaged installs.');
+
+    if (!Array.isArray(updateInfo.changedFiles) || updateInfo.changedFiles.length === 0) {
+        const fullInfo = await performFullUpdateCheck();
+        Object.assign(updateInfo, fullInfo);
     }
 
-    // Ensure we have the file list
-    if (!updateInfo.changedFiles || updateInfo.changedFiles.length === 0) {
-        // Perform full check to get file list
-        console.log('[updater] No file list provided, performing full update check...');
-        const fullInfo = await performFullUpdateCheck();
-        updateInfo.changedFiles = fullInfo.changedFiles;
-        updateInfo.latestSha = fullInfo.latestSha;
-        updateInfo.totalFiles = fullInfo.totalFiles;
+    const rawFiles = Array.isArray(updateInfo.changedFiles) ? updateInfo.changedFiles : [];
+    const filesToUpdate = [...new Set(rawFiles.map(validateUpdatePath))];
+    if (filesToUpdate.length === 0) throw new Error('No files to update');
+    if (!updateInfo.latestSha || !/^[0-9a-f]{40}$/i.test(updateInfo.latestSha)) {
+        throw new Error('Update commit SHA is missing or invalid');
     }
 
     isUpdating = true;
-    updateProgress.status = 'starting';
-    updateProgress.message = 'Initializing update...';
-    notifyProgress();
+    const appPath = app.getAppPath();
+    const userDataPath = app.getPath('userData');
+    const transactionDir = path.join(userDataPath, '.update-transaction');
+    const backupDir = path.join(transactionDir, 'backup');
+    const stageDir = path.join(transactionDir, 'stage');
+    const manifestPath = path.join(transactionDir, 'manifest.json');
+
+    const manifest = { version: 1, createdAt: Date.now(), files: [], latestSha: updateInfo.latestSha };
+
+    const emit = (status, progress, index, file, message) => {
+        updateProgress = { status, progress, totalFiles: filesToUpdate.length, fileIndex: index, currentFile: file || '', message: message || '' };
+        notifyProgress();
+        if (progressCallback) progressCallback({ ...updateProgress });
+    };
 
     try {
-        const appPath = app.getAppPath();
-        const userDataPath = app.getPath('userData');
-        const backupDir = path.join(userDataPath, '.update-backup');
+        await fs.promises.rm(transactionDir, { recursive: true, force: true });
+        await fs.promises.mkdir(backupDir, { recursive: true });
+        await fs.promises.mkdir(stageDir, { recursive: true });
 
-        // Create backup directory
-        if (!fs.existsSync(backupDir)) {
-            fs.mkdirSync(backupDir, { recursive: true });
-        }
+        emit('starting', 0, 0, '', 'Preparing update transaction...');
 
-        const filesToUpdate = updateInfo.changedFiles || [];
-        const totalFiles = filesToUpdate.length;
-
-        if (totalFiles === 0) {
-            throw new Error('No files to update');
-        }
-
-        // Step 1: Backup existing files
-        updateProgress.status = 'backup';
-        updateProgress.message = 'Backing up current files...';
-        notifyProgress();
-
+        // Backup every existing target while preserving its relative path.
         for (let i = 0; i < filesToUpdate.length; i++) {
-            const file = filesToUpdate[i];
-            const localPath = path.join(appPath, file);
-            const backupPath = path.join(backupDir, path.basename(file) + '.backup');
-
-            if (fs.existsSync(localPath)) {
-                try {
-                    fs.copyFileSync(localPath, backupPath);
-                } catch (err) {
-                    console.warn(`[updater] Could not backup ${file}:`, err.message);
-                }
+            const relative = filesToUpdate[i];
+            const localPath = safeJoin(appPath, relative);
+            const backupPath = safeJoin(backupDir, relative);
+            const hadFile = fs.existsSync(localPath);
+            if (hadFile) {
+                await fs.promises.mkdir(path.dirname(backupPath), { recursive: true });
+                await fs.promises.copyFile(localPath, backupPath);
             }
-
-            const progress = ((i + 1) / totalFiles) * 30;
-            updateProgress.progress = progress;
-            updateProgress.totalFiles = totalFiles;
-            updateProgress.fileIndex = i + 1;
-            updateProgress.currentFile = file;
-            updateProgress.message = `Backing up: ${file}`;
-            notifyProgress();
-
-            if (progressCallback) {
-                progressCallback(updateProgress);
-            }
+            manifest.files.push({ path: relative, hadFile });
+            await fs.promises.writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+            emit('backup', ((i + 1) / filesToUpdate.length) * 20, i + 1, relative, `Backing up: ${relative}`);
         }
 
-        // Step 2: Download and replace files
-        updateProgress.status = 'downloading';
-        updateProgress.message = 'Downloading updates...';
-        notifyProgress();
-
-        const downloadedFiles = [];
+        // Download every file from the exact commit SHA into staging first.
         for (let i = 0; i < filesToUpdate.length; i++) {
-            const file = filesToUpdate[i];
-            const rawUrl = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/${file}`;
-            const localPath = path.join(appPath, file);
-
-            try {
-                // Download the file content
-                const content = await downloadFileFromGitHub(rawUrl);
-
-                // Ensure directory exists
-                const dir = path.dirname(localPath);
-                if (!fs.existsSync(dir)) {
-                    fs.mkdirSync(dir, { recursive: true });
-                }
-
-                // Write the new file
-                fs.writeFileSync(localPath, content, 'utf8');
-                downloadedFiles.push(file);
-
-                console.log(`[updater] Updated: ${file}`);
-
-            } catch (err) {
-                console.error(`[updater] Failed to update ${file}:`, err.message);
-                // Continue with other files
-            }
-
-            const progress = 30 + ((i + 1) / totalFiles) * 60;
-            updateProgress.progress = progress;
-            updateProgress.totalFiles = totalFiles;
-            updateProgress.fileIndex = i + 1;
-            updateProgress.currentFile = file;
-            updateProgress.message = `Updating: ${file}`;
-            notifyProgress();
-
-            if (progressCallback) {
-                progressCallback(updateProgress);
-            }
+            const relative = filesToUpdate[i];
+            const stagePath = safeJoin(stageDir, relative);
+            await fs.promises.mkdir(path.dirname(stagePath), { recursive: true });
+            const rawUrl = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${updateInfo.latestSha}/${relative}`;
+            const content = await downloadFileFromGitHub(rawUrl, MAX_UPDATE_FILE_BYTES);
+            await fs.promises.writeFile(stagePath, content, 'utf8');
+            emit('downloading', 20 + ((i + 1) / filesToUpdate.length) * 45, i + 1, relative, `Downloaded: ${relative}`);
         }
 
-        // Step 3: Save the new commit SHA
-        if (updateInfo.latestSha) {
-            saveLastKnownCommit(updateInfo.latestSha);
+        // Commit stage atomically per-file; any failure triggers rollback.
+        for (let i = 0; i < filesToUpdate.length; i++) {
+            const relative = filesToUpdate[i];
+            const localPath = safeJoin(appPath, relative);
+            const stagePath = safeJoin(stageDir, relative);
+            await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+            const tempTarget = `${localPath}.korai-update-${process.pid}`;
+            await fs.promises.copyFile(stagePath, tempTarget);
+            await fs.promises.rename(tempTarget, localPath);
+            emit('applying', 65 + ((i + 1) / filesToUpdate.length) * 25, i + 1, relative, `Applied: ${relative}`);
         }
 
-        // Step 4: Update package.json version
-        try {
-            const packagePath = path.join(appPath, 'package.json');
-            if (fs.existsSync(packagePath)) {
-                const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
-                pkg.version = updateInfo.latestVersion;
-                fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2));
-                console.log(`[updater] Updated package.json version to ${updateInfo.latestVersion}`);
-            }
-        } catch (err) {
-            console.warn('[updater] Could not update package.json:', err.message);
+        if (updateInfo.latestVersion) {
+            const packagePath = safeJoin(appPath, 'package.json');
+            const pkg = JSON.parse(await fs.promises.readFile(packagePath, 'utf8'));
+            pkg.version = updateInfo.latestVersion;
+            await fs.promises.writeFile(packagePath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
         }
 
-        // Step 5: Cleanup backup
-        updateProgress.status = 'cleaning';
-        updateProgress.message = 'Cleaning up...';
-        updateProgress.progress = 95;
-        notifyProgress();
+        await saveLastKnownCommit(updateInfo.latestSha);
+        await fs.promises.writeFile(path.join(userDataPath, '.restart-required'), JSON.stringify({
+            timestamp: Date.now(),
+            version: updateInfo.latestVersion || getCurrentVersion(),
+            updatedFiles: filesToUpdate
+        }, null, 2));
 
-        try {
-            fs.rmSync(backupDir, { recursive: true, force: true });
-        } catch (err) {
-            console.warn('[updater] Could not cleanup backup:', err.message);
-        }
-
-        // Step 6: Mark as updated
-        updateProgress.status = 'complete';
-        updateProgress.progress = 100;
-        updateProgress.fileIndex = totalFiles;
-        updateProgress.totalFiles = totalFiles;
-        updateProgress.message = 'Update complete! Restarting...';
-        notifyProgress();
-
-        if (progressCallback) {
-            progressCallback(updateProgress);
-        }
-
-        // Store that we need to restart
-        try {
-            const restartFlag = path.join(userDataPath, '.restart-required');
-            fs.writeFileSync(restartFlag, JSON.stringify({
-                timestamp: Date.now(),
-                version: updateInfo.latestVersion || getCurrentVersion(),
-                updatedFiles: downloadedFiles
-            }));
-        } catch (err) {
-            console.warn('[updater] Could not create restart flag:', err.message);
-        }
-
+        emit('cleaning', 97, filesToUpdate.length, '', 'Cleaning update transaction...');
+        await fs.promises.rm(transactionDir, { recursive: true, force: true });
+        emit('complete', 100, filesToUpdate.length, '', 'Update ready. Restarting...');
         isUpdating = false;
-        return { success: true, updatedFiles: downloadedFiles };
-
+        return { success: true, updatedFiles: filesToUpdate };
     } catch (err) {
-        console.error('[updater] Update failed:', err);
+        console.error('[updater] Update failed; rolling back:', err.message);
+        try { rollbackUpdate(backupDir, appPath, manifestPath); } catch (rollbackError) {
+            console.error('[updater] Rollback failed:', rollbackError.message);
+        }
+        try { await fs.promises.rm(transactionDir, { recursive: true, force: true }); } catch {}
         updateProgress.status = 'error';
         updateProgress.message = `Update failed: ${err.message}`;
         notifyProgress();
-
-        if (progressCallback) {
-            progressCallback(updateProgress);
-        }
-
+        if (progressCallback) progressCallback({ ...updateProgress });
         isUpdating = false;
         throw err;
     }
 }
 
 /**
- * Rollback to previous version if update fails
+ * Roll back a source-tree update transaction.
  */
-function rollbackUpdate(backupDir, appPath) {
+function rollbackUpdate(backupDir, appPath, manifestPath = path.join(path.dirname(backupDir), 'manifest.json')) {
     try {
-        if (!fs.existsSync(backupDir)) return false;
-
-        const files = fs.readdirSync(backupDir);
+        if (!fs.existsSync(manifestPath)) return false;
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
         let restored = 0;
-
-        for (const file of files) {
-            if (file.endsWith('.backup')) {
-                const originalName = file.replace('.backup', '');
-                const backupPath = path.join(backupDir, file);
-                const targetPath = path.join(appPath, originalName);
-
-                if (fs.existsSync(backupPath)) {
-                    fs.copyFileSync(backupPath, targetPath);
-                    restored++;
-                }
+        for (const entry of manifest.files || []) {
+            const targetPath = safeJoin(appPath, validateUpdatePath(entry.path));
+            const backupPath = safeJoin(backupDir, validateUpdatePath(entry.path));
+            if (entry.hadFile && fs.existsSync(backupPath)) {
+                fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+                fs.copyFileSync(backupPath, targetPath);
+                restored++;
+            } else if (!entry.hadFile && fs.existsSync(targetPath)) {
+                fs.rmSync(targetPath, { force: true });
+                restored++;
             }
         }
-
-        console.log(`[updater] Rollback completed: ${restored} files restored`);
+        console.log(`[updater] Rollback completed: ${restored} entries restored`);
         return true;
-
     } catch (err) {
         console.error('[updater] Rollback failed:', err.message);
         return false;
@@ -777,5 +751,7 @@ module.exports = {
     performFullUpdateCheck,
     getChangedFiles,
     startUpdateChecker,
-    stopUpdateChecker
+    stopUpdateChecker,
+    canApplySourceUpdate,
+    validateUpdatePath
 };

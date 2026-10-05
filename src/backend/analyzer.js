@@ -2,6 +2,17 @@ const fs = require('fs');
 const mm = require('music-metadata');
 const path = require('path');
 
+function stableUnit(seed) {
+    const text = String(seed ?? '');
+    let hash = 2166136261;
+    for (let i = 0; i < text.length; i++) {
+        hash ^= text.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return ((hash >>> 0) % 100000) / 100000;
+}
+
+
 /**
  * UPGRADED: Advanced BPM detection from multiple signals
  * Uses pattern recognition and harmonic analysis
@@ -79,7 +90,7 @@ async function extractFeatureVector(filePath) {
         
         // Energy & intensity
         energy: energy,
-        energy_variance: Math.random() * 0.15 + 0.8, // Perceived energy variation
+        energy_variance: 0.8 + stableUnit(`${filePath}:variance`) * 0.15, // Perceived energy variation
         perceived_loudness: Math.min(1, -6 + (energy * 22)) / 20,
         
         // Spectral features (upgraded)
@@ -181,17 +192,17 @@ function calculateAdvancedAudioProfile(bpm, energy, duration, genre, features = 
         const electronicGenres = ['electronic', 'edm', 'synth', 'house', 'techno', 'trance'];
         
         if (vocalGenres.some(g => genreLower.includes(g))) {
-            vocalPresence = 0.72 + (Math.random() * 0.15);
+            vocalPresence = 0.72 + (stableUnit(`${filePath}:vocal`) * 0.15);
         } else if (genreLower.includes('instrumental')) {
-            vocalPresence = 0.05 + (Math.random() * 0.1);
+            vocalPresence = 0.05 + (stableUnit(`${filePath}:vocal`) * 0.1);
         } else if (electronicGenres.some(g => genreLower.includes(g))) {
-            vocalPresence = 0.25 + (Math.random() * 0.2);
+            vocalPresence = 0.25 + (stableUnit(`${filePath}:vocal`) * 0.2);
         }
         
         if (acousticGenres.some(g => genreLower.includes(g))) {
-            acousticness = 0.75 + (Math.random() * 0.2);
+            acousticness = 0.75 + (stableUnit(`${filePath}:acoustic`) * 0.2);
         } else if (electronicGenres.some(g => genreLower.includes(g))) {
-            acousticness = 0.02 + (Math.random() * 0.08);
+            acousticness = 0.02 + (stableUnit(`${filePath}:acoustic`) * 0.08);
         }
     }
     
@@ -514,11 +525,11 @@ async function analyzeAudioFile(filePath) {
         const electronicGenres = ['electronic', 'edm', 'synth', 'house', 'techno'];
         
         if (vocalGenres.some(g => genreTag.toLowerCase().includes(g))) {
-            vocalPresence = 0.72 + (Math.random() * 0.15);
+            vocalPresence = 0.72 + (stableUnit(`${filePath}:vocal`) * 0.15);
         } else if (instrumentalGenres.some(g => genreTag.toLowerCase().includes(g))) {
-            vocalPresence = 0.05 + (Math.random() * 0.1);
+            vocalPresence = 0.05 + (stableUnit(`${filePath}:vocal`) * 0.1);
         } else if (electronicGenres.some(g => genreTag.toLowerCase().includes(g))) {
-            vocalPresence = 0.25 + (Math.random() * 0.2);
+            vocalPresence = 0.25 + (stableUnit(`${filePath}:vocal`) * 0.2);
         }
     }
     
@@ -526,7 +537,7 @@ async function analyzeAudioFile(filePath) {
     const rawFeatures = {
         tempo_norm: Math.min(1, Math.max(0, (bpm - 60) / 160)),
         energy: energy,
-        energy_variance: Math.random() * 0.15 + 0.8,
+        energy_variance: 0.8 + stableUnit(`${filePath}:variance`) * 0.15,
         duration_norm: Math.min(1, duration / 600),
         bitrate_norm: Math.min(1, bitrate / 320000),
         perceived_loudness: Math.min(1, -6 + (energy * 22)) / 20,

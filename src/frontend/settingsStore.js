@@ -58,7 +58,6 @@ class SettingsStore {
             eq: [0, 0, 0, 0, 0],
 
             // Appearance
-            theme: 'default',
             direction: 'ltr',
             fontSize: 'medium',
             showAlbumArt: true,
@@ -161,9 +160,6 @@ class SettingsStore {
      */
     _applySetting(key, value, oldValue) {
         switch (key) {
-            case 'theme':
-                this._applyTheme(value);
-                break;
             case 'direction':
                 this._applyDirection(value);
                 break;
@@ -200,24 +196,6 @@ class SettingsStore {
     }
 
     // ---- Apply methods ----
-
-    _applyTheme(theme) {
-        document.body.classList.remove('theme-default', 'theme-liquid-glass');
-        document.body.classList.add('theme-' + theme);
-        
-        // Update theme buttons if they exist
-        document.querySelectorAll('.theme-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.theme === theme);
-        });
-
-        // Update skin selector in sidebar if exists
-        document.querySelectorAll('.skin-btn').forEach(btn => {
-            const skinValue = btn.dataset.skin;
-            let targetSkin = skinValue;
-            if (skinValue === 'apple') targetSkin = 'liquid-glass';
-            btn.classList.toggle('active', targetSkin === theme);
-        });
-    }
 
     _applyDirection(direction) {
         document.documentElement.dir = direction;
@@ -264,7 +242,10 @@ class SettingsStore {
 
     _applyDefaultVolume(volume) {
         if (typeof window.setVolume === 'function') {
-            const vol = volume / 100;
+            const percent = typeof volume === 'number' && Number.isFinite(volume)
+                ? Math.min(100, Math.max(0, volume))
+                : 70;
+            const vol = percent / 100;
             window.setVolume(vol);
         }
     }
@@ -455,7 +436,7 @@ class SettingsStore {
 
     getNumber(key, defaultValue = 0) {
         const val = this.get(key, defaultValue);
-        return typeof val === 'number' ? val : defaultValue;
+        return typeof val === 'number' && Number.isFinite(val) ? val : defaultValue;
     }
 
     getString(key, defaultValue = '') {

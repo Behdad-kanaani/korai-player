@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "plugins": [
+    {
+      "id": "korai/change-logs",
+      "name": "KORAI Change Logs",
+      "version": "1.0.0",
+      "author": "KORAI",
+      "description": "Built-in release and change log panel.",
+      "tags": [
+        "built-in",
+        "changelog"
+      ],
+      "featured": false,
+      "installable": false,
+      "source": "catalog",
+      "homepage": "https://github.com/Behdad-kanaani/korai-player"
+    }
+  ]
+}

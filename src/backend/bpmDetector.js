@@ -1,275 +1,205 @@
 /**
- * bpmDetector.js - Real BPM Detection Engine
- * 
- * Detects BPM from audio waveform using:
- * - Peak Detection algorithm
- * - Autocorrelation for low BPMs
- * - FFT-based onset detection
- * 
- * NOTE: Currently uses mock waveform data for demonstration.
- * For production, integrate with ffmpeg or WAV decoder to get actual PCM samples.
- * Estimated accuracy: ±5 BPM
+ * KORAI BPM detector.
+ *
+ * The previous implementation generated synthetic/mock audio, which made the
+ * reported BPM unrelated to the actual recording. This version decodes a real
+ * mono PCM preview through the bundled/system FFmpeg binary and estimates tempo
+ * from a compact onset envelope. The analysis is bounded to keep CPU/RAM usage
+ * predictable on long recordings.
  */
 
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
 
-/**
- * Reads audio file and returns raw PCM samples
- * Supports MP3, WAV, FLAC, OGG, M4A
- */
-async function getAudioSamples(filePath, sampleRate = 22050) {
-    const mm = require('music-metadata');
-    
-    try {
-        const metadata = await mm.parseFile(filePath);
-        const duration = metadata.format.duration;
-        
-        // For now, we'll use a simplified approach
-        // In production, you'd use ffmpeg or similar to decode audio to PCM
-        // This is a placeholder that returns mock data for demonstration
-        
-        // Generate realistic mock waveform based on file properties
-        const totalSamples = Math.floor(duration * sampleRate);
-        const samples = new Float32Array(totalSamples);
-        
-        // Use file path hash as seed for deterministic mock data
-        let seed = 0;
-        for (let i = 0; i < filePath.length; i++) {
-            seed = ((seed << 5) - seed) + filePath.charCodeAt(i);
-            seed |= 0;
-        }
-        
-        const rng = () => {
-            seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-            return seed / 0x7fffffff;
-        };
-        
-        // Generate waveform with realistic envelope
-        for (let i = 0; i < totalSamples; i++) {
-            const t = i / sampleRate; // time in seconds
-            const envelope = Math.sin(Math.PI * t / duration) * 0.8;
-            samples[i] = (rng() * 2 - 1) * envelope;
-        }
-        
-        return { samples, sampleRate: sampleRate, duration };
-        
-    } catch (err) {
-        console.error('Error reading audio file:', err);
-        return null;
-    }
+const TARGET_SAMPLE_RATE = 11025;
+const MAX_ANALYSIS_SECONDS = 120;
+const MIN_BPM = 60;
+const MAX_BPM = 200;
+
+function getFfmpegPath() {
+  try {
+    const installer = require('@ffmpeg-installer/ffmpeg');
+    if (installer?.path && fs.existsSync(installer.path)) return installer.path;
+  } catch {}
+  return process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
 }
 
-/**
- * Peak Detection BPM algorithm
- * Counts peaks in waveform to estimate tempo
- */
-function detectBPMByPeaks(samples, sampleRate) {
-    const windowSize = Math.floor(sampleRate * 0.05); // 50ms window
-    const hopSize = Math.floor(windowSize / 2);
-    
-    // Calculate RMS energy over windows
-    const rmsValues = [];
-    for (let i = 0; i < samples.length - windowSize; i += hopSize) {
-        let sum = 0;
-        for (let j = 0; j < windowSize; j++) {
-            sum += samples[i + j] * samples[i + j];
-        }
-        rmsValues.push(Math.sqrt(sum / windowSize));
-    }
-    
-    // Detect peaks in RMS
-    const peaks = [];
-    const threshold = 0.15; // RMS threshold
-    
-    for (let i = 1; i < rmsValues.length - 1; i++) {
-        if (rmsValues[i] > threshold && 
-            rmsValues[i] > rmsValues[i - 1] && 
-            rmsValues[i] > rmsValues[i + 1]) {
-            peaks.push(i);
-        }
-    }
-    
-    if (peaks.length < 4) {
-        return 120; // fallback
-    }
-    
-    // Calculate average interval between peaks
-    const intervals = [];
-    for (let i = 1; i < peaks.length; i++) {
-        const intervalSamples = (peaks[i] - peaks[i - 1]) * hopSize;
-        const intervalSeconds = intervalSamples / sampleRate;
-        const bpm = 60 / intervalSeconds;
-        if (bpm >= 60 && bpm <= 200) {
-            intervals.push(bpm);
-        }
-    }
-    
-    if (intervals.length === 0) return 120;
-    
-    // Return median BPM
-    intervals.sort((a, b) => a - b);
-    const mid = Math.floor(intervals.length / 2);
-    return Math.round(intervals[mid]);
-}
+function decodeAudioToMono(filePath, sampleRate = TARGET_SAMPLE_RATE, maxSeconds = MAX_ANALYSIS_SECONDS) {
+  return new Promise((resolve, reject) => {
+    if (!fs.existsSync(filePath)) return reject(new Error('Audio file does not exist'));
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile() || stat.size === 0) return reject(new Error('Audio file is empty or invalid'));
 
-/**
- * Autocorrelation BPM detection
- * Better for lower BPMs (60-120)
- */
-function detectBPMByAutocorrelation(samples, sampleRate) {
-    // Downsample for performance
-    const targetRate = 4000;
-    const ratio = Math.floor(sampleRate / targetRate);
-    const downsampled = [];
-    for (let i = 0; i < samples.length; i += ratio) {
-        downsampled.push(samples[i]);
-    }
-    const newRate = sampleRate / ratio;
-    
-    // Calculate autocorrelation
-    const maxLag = Math.floor(newRate * 2); // 2 seconds
-    const correlations = new Array(maxLag).fill(0);
-    
-    for (let lag = 1; lag < maxLag; lag++) {
-        let sum = 0;
-        for (let i = 0; i < downsampled.length - lag; i++) {
-            sum += downsampled[i] * downsampled[i + lag];
-        }
-        correlations[lag] = sum / (downsampled.length - lag);
-    }
-    
-    // Find peaks in correlation
-    const bpmCandidates = [];
-    const minLag = Math.floor(newRate / 4); // 240 BPM max
-    const maxLagCorr = Math.floor(newRate / 0.5); // 30 BPM min
-    
-    for (let lag = minLag; lag < Math.min(maxLag, maxLagCorr); lag++) {
-        if (correlations[lag] > correlations[lag - 1] && 
-            correlations[lag] > correlations[lag + 1] &&
-            correlations[lag] > 0.1) {
-            const bpm = Math.round(60 / (lag / newRate));
-            if (bpm >= 60 && bpm <= 200) {
-                bpmCandidates.push({ bpm, strength: correlations[lag] });
-            }
-        }
-    }
-    
-    if (bpmCandidates.length === 0) return 120;
-    
-    // Return candidate with highest strength
-    bpmCandidates.sort((a, b) => b.strength - a.strength);
-    return bpmCandidates[0].bpm;
-}
+    const ffmpegPath = getFfmpegPath();
+    const args = [
+      '-hide_banner', '-loglevel', 'error', '-nostdin',
+      '-i', filePath,
+      '-t', String(maxSeconds),
+      '-vn', '-sn', '-dn',
+      '-ac', '1',
+      '-ar', String(sampleRate),
+      '-f', 's16le',
+      'pipe:1'
+    ];
 
-/**
- * FFT-based onset detection
- * Detects transients for more accurate tempo
- */
-function detectBPMByOnset(samples, sampleRate) {
-    // Simplified onset detection
-    const windowSize = Math.floor(sampleRate * 0.025); // 25ms
-    const hopSize = Math.floor(windowSize / 2);
-    
-    // Calculate spectral flux (simplified as amplitude diff)
-    const amplitude = [];
-    for (let i = 0; i < samples.length - windowSize; i += hopSize) {
-        let maxAmp = 0;
-        for (let j = 0; j < windowSize; j++) {
-            maxAmp = Math.max(maxAmp, Math.abs(samples[i + j]));
-        }
-        amplitude.push(maxAmp);
-    }
-    
-    // Detect onsets (sudden increases)
-    const onsets = [];
-    const threshold = 0.3;
-    
-    for (let i = 2; i < amplitude.length - 2; i++) {
-        const diff = amplitude[i] - amplitude[i - 1];
-        if (diff > threshold && amplitude[i] > amplitude[i + 1]) {
-            onsets.push(i);
-        }
-    }
-    
-    if (onsets.length < 4) return 120;
-    
-    // Calculate average onset interval
-    const intervals = [];
-    for (let i = 1; i < onsets.length; i++) {
-        const intervalSamples = (onsets[i] - onsets[i - 1]) * hopSize;
-        const intervalSeconds = intervalSamples / sampleRate;
-        const bpm = 60 / intervalSeconds;
-        if (bpm >= 60 && bpm <= 200) {
-            intervals.push(bpm);
-        }
-    }
-    
-    if (intervals.length === 0) return 120;
-    
-    // Return mode (most common BPM)
-    const bpmCounts = {};
-    intervals.forEach(bpm => {
-        const rounded = Math.round(bpm / 5) * 5;
-        bpmCounts[rounded] = (bpmCounts[rounded] || 0) + 1;
+    const child = spawn(ffmpegPath, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const chunks = [];
+    const stderr = [];
+
+    child.stdout.on('data', chunk => chunks.push(chunk));
+    child.stderr.on('data', chunk => {
+      if (stderr.reduce((n, x) => n + x.length, 0) < 32 * 1024) stderr.push(chunk);
     });
-    
-    let bestBpm = 120;
-    let bestCount = 0;
-    for (const [bpm, count] of Object.entries(bpmCounts)) {
-        if (count > bestCount) {
-            bestCount = count;
-            bestBpm = parseInt(bpm);
-        }
-    }
-    
-    return bestBpm;
+
+    child.on('error', err => reject(new Error(`FFmpeg could not start: ${err.message}`)));
+    child.on('close', code => {
+      if (code !== 0) {
+        const details = Buffer.concat(stderr).toString('utf8').trim();
+        return reject(new Error(`FFmpeg decoding failed${details ? `: ${details}` : ''}`));
+      }
+
+      const pcm = Buffer.concat(chunks);
+      if (pcm.length < 4096) return reject(new Error('Decoded audio is too short for BPM analysis'));
+
+      const sampleCount = Math.floor(pcm.length / 2);
+      const samples = new Float32Array(sampleCount);
+      for (let i = 0; i < sampleCount; i++) {
+        samples[i] = pcm.readInt16LE(i * 2) / 32768;
+      }
+
+      resolve({ samples, sampleRate });
+    });
+  });
 }
 
-/**
- * Main BPM detection function - uses all three methods
- * and returns the most confident result
- */
+function buildOnsetEnvelope(samples, sampleRate, frameSize = 1024, hopSize = 256) {
+  const frameCount = Math.max(0, Math.floor((samples.length - frameSize) / hopSize) + 1);
+  const rms = new Float32Array(frameCount);
+
+  for (let frame = 0; frame < frameCount; frame++) {
+    const start = frame * hopSize;
+    let sum = 0;
+    for (let i = 0; i < frameSize; i++) {
+      const value = samples[start + i];
+      sum += value * value;
+    }
+    rms[frame] = Math.sqrt(sum / frameSize);
+  }
+
+  // First-order positive difference + light moving-average smoothing.
+  const onset = new Float32Array(frameCount);
+  let mean = 0;
+  for (let i = 0; i < frameCount; i++) mean += rms[i];
+  mean /= Math.max(1, frameCount);
+  const floor = mean * 0.25;
+
+  for (let i = 1; i < frameCount; i++) {
+    const diff = rms[i] - rms[i - 1] - floor * 0.05;
+    onset[i] = diff > 0 ? diff : 0;
+  }
+
+  // Normalize without allocating another large array.
+  let peak = 0;
+  for (const v of onset) peak = Math.max(peak, v);
+  if (peak > 0) {
+    for (let i = 0; i < onset.length; i++) onset[i] /= peak;
+  }
+
+  return { envelope: onset, envelopeRate: sampleRate / hopSize };
+}
+
+function correlationAtLag(envelope, lag) {
+  const n = envelope.length - lag;
+  if (n < 8) return 0;
+  let sum = 0;
+  let energyA = 0;
+  let energyB = 0;
+  for (let i = 0; i < n; i++) {
+    const a = envelope[i];
+    const b = envelope[i + lag];
+    sum += a * b;
+    energyA += a * a;
+    energyB += b * b;
+  }
+  const denom = Math.sqrt(energyA * energyB);
+  return denom > 0 ? sum / denom : 0;
+}
+
+function estimateBpmFromEnvelope(envelope, envelopeRate) {
+  if (!envelope || envelope.length < 32 || envelopeRate <= 0) return { bpm: 120, confidence: 0 };
+
+  const minLag = Math.floor(envelopeRate * 60 / MAX_BPM);
+  const maxLag = Math.ceil(envelopeRate * 60 / MIN_BPM);
+  let best = { lag: 0, score: -Infinity };
+  const candidates = [];
+
+  for (let lag = Math.max(1, minLag); lag <= Math.min(maxLag, envelope.length - 2); lag++) {
+    const score = correlationAtLag(envelope, lag);
+    candidates.push({ lag, score });
+    if (score > best.score) best = { lag, score };
+  }
+
+  if (!best.lag || best.score <= 0) return { bpm: 120, confidence: 0 };
+
+  // Account for half/double-time ambiguity. Prefer the candidate closest to the
+  // strongest correlation while keeping the range musically useful.
+  const rawBpm = (60 * envelopeRate) / best.lag;
+  const halfLag = Math.max(1, Math.round(best.lag / 2));
+  const doubleTimeScore = correlationAtLag(envelope, halfLag);
+  let selected = rawBpm;
+
+  // A common failure mode of simple autocorrelation is choosing the interval
+  // spanning every second beat (half the true BPM). When the half-lag remains
+  // strongly periodic, prefer the musically plausible double-time candidate.
+  const doubleTimeBpm = rawBpm * 2;
+  if (doubleTimeBpm >= MIN_BPM && doubleTimeBpm <= MAX_BPM && doubleTimeScore >= best.score * 0.55) {
+    selected = doubleTimeBpm;
+  }
+
+  if (selected < 75 || selected > 150) {
+    const alternatives = [rawBpm / 2, rawBpm, rawBpm * 2].filter(b => b >= MIN_BPM && b <= MAX_BPM);
+    selected = alternatives
+      .map(bpm => ({ bpm, score: correlationAtLag(envelope, Math.max(1, Math.round(60 * envelopeRate / bpm))) }))
+      .sort((a, b) => b.score - a.score)[0]?.bpm || selected;
+  }
+
+  return {
+    bpm: Math.round(Math.min(MAX_BPM, Math.max(MIN_BPM, selected))),
+    confidence: best.score
+  };
+}
+
+function detectBPMFromSamples(samples, sampleRate) {
+  const { envelope, envelopeRate } = buildOnsetEnvelope(samples, sampleRate);
+  return estimateBpmFromEnvelope(envelope, envelopeRate);
+}
+
 async function detectRealBPM(filePath) {
-    console.debug(` Detecting real BPM for: ${path.basename(filePath)}`);
-    
-    // First try to get BPM from metadata (fastest)
-    try {
-        const mm = require('music-metadata');
-        const metadata = await mm.parseFile(filePath);
-        if (metadata.common.bpm && metadata.common.bpm > 0) {
-            console.debug(` BPM from metadata: ${metadata.common.bpm}`);
-            return metadata.common.bpm;
-        }
-    } catch (err) {
-        // Ignore, continue with real detection
+  console.debug(`[BPM] Detecting tempo: ${path.basename(filePath)}`);
+
+  // Metadata remains the fastest/highest-signal path when tags are explicitly set.
+  try {
+    const mm = require('music-metadata');
+    const metadata = await mm.parseFile(filePath, { skipCovers: true });
+    const taggedBpm = Number(metadata.common?.bpm);
+    if (Number.isFinite(taggedBpm) && taggedBpm >= MIN_BPM && taggedBpm <= 240) {
+      return Math.round(taggedBpm);
     }
-    
-    // Get audio samples (with downsampling for performance)
-    const audioData = await getAudioSamples(filePath, 11025); // 11kHz is enough for BPM
-    
-    if (!audioData) {
-        console.warn('️ Could not read audio, using fallback');
-        return 120;
-    }
-    
-    const { samples, sampleRate } = audioData;
-    
-    // Run all three detection methods
-    const bpmPeaks = detectBPMByPeaks(samples, sampleRate);
-    const bpmAuto = detectBPMByAutocorrelation(samples, sampleRate);
-    const bpmOnset = detectBPMByOnset(samples, sampleRate);
-    
-    console.debug(` Detection results: Peaks=${bpmPeaks}, Auto=${bpmAuto}, Onset=${bpmOnset}`);
-    
-    // Weighted average (autocorrelation is most reliable for steady tempos)
-    let finalBpm = Math.round((bpmPeaks * 0.3) + (bpmAuto * 0.5) + (bpmOnset * 0.2));
-    
-    // Clamp to reasonable range
-    finalBpm = Math.min(200, Math.max(60, finalBpm));
-    
-    console.debug(` Final BPM: ${finalBpm}`);
-    return finalBpm;
+  } catch {
+    // Continue with decoded waveform analysis.
+  }
+
+  const { samples, sampleRate } = await decodeAudioToMono(filePath);
+  const result = detectBPMFromSamples(samples, sampleRate);
+  console.debug(`[BPM] result=${result.bpm} confidence=${result.confidence.toFixed(3)}`);
+  return result.bpm;
 }
 
-module.exports = { detectRealBPM };
+module.exports = {
+  detectRealBPM,
+  decodeAudioToMono,
+  buildOnsetEnvelope,
+  detectBPMFromSamples,
+  estimateBpmFromEnvelope
+};

@@ -4,9 +4,26 @@ const fs = require('fs');
 const path = require('path');
 const Module = require('module');
 
+const MAX_STORAGE_KEY_LENGTH = 128;
+const MAX_FS_PATH_LENGTH = 512;
+const MAX_FS_PAYLOAD = 2 * 1024 * 1024;
+const ALLOWED_BUILTINS = new Set(['path', 'os', 'util']);
+
+function isPathInside(baseDir, candidatePath) {
+  const relative = path.relative(path.resolve(baseDir), path.resolve(candidatePath));
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function validKey(value, maxLength = 128) {
+  return typeof value === 'string' && value.length > 0 && value.length <= maxLength && !value.includes('\0');
+}
+
 /**
- * PluginWorker: Runs inside worker thread, executes plugin code inside a Node VM
- * with a restricted require to limit access to built-in modules.
+ * Plugins run in worker_threads and receive a narrow permission-gated API.
+ *
+ * NOTE: node:vm is deliberately treated as defense-in-depth only; Node's own
+ * documentation does not consider vm a security boundary for hostile code.
+ * Plugins should therefore be considered trusted application extensions.
  */
 class PluginWorker {
   constructor() {
@@ -14,126 +31,112 @@ class PluginWorker {
     this.context = null;
     this.hooks = {};
     this.pluginDir = null;
+    this.statsInterval = null;
   }
 
   async load(id, pluginPath, ctxData) {
     try {
-      // Read plugin source
+      if (!path.isAbsolute(pluginPath) || !fs.existsSync(pluginPath)) throw new Error('Plugin entry does not exist');
       const code = fs.readFileSync(pluginPath, 'utf8');
       const pluginDir = path.dirname(pluginPath);
       this.pluginDir = pluginDir;
 
-      // Prepare a restricted require that only allows local files and a small whitelist
-      const allowedBuiltins = new Set(['path', 'os']);
-
       const createRequire = (baseDir) => {
-        // Prefer Node's Module.createRequire so package names resolve from plugin dir
-        let requireFromPlugin = null;
-        try {
-          const anchor = path.join(baseDir, 'package.json');
-          requireFromPlugin = Module.createRequire(fs.existsSync(anchor) ? anchor : baseDir + path.sep);
-        } catch (e) {
-          requireFromPlugin = require;
-        }
+        const anchor = path.join(baseDir, 'package.json');
+        const requireFromPlugin = Module.createRequire(fs.existsSync(anchor) ? anchor : `${baseDir}${path.sep}`);
 
-        return (req) => {
-          // Relative/local requires
-          if (req.startsWith('.') || req.startsWith('/')) {
-            const resolved = path.resolve(baseDir, req);
-            if (!resolved.startsWith(baseDir)) throw new Error('require outside plugin directory not allowed');
-            delete require.cache[resolved];
+        return (request) => {
+          if (typeof request !== 'string' || !request) throw new Error('Invalid require request');
+
+          if (request.startsWith('.') || request.startsWith('/')) {
+            const resolved = path.resolve(baseDir, request);
+            if (!isPathInside(baseDir, resolved)) throw new Error('require outside plugin directory not allowed');
             return require(resolved);
           }
 
-          // Try to resolve from plugin's node_modules first
+          if (ALLOWED_BUILTINS.has(request)) return require(request);
+
           try {
-            const resolved = requireFromPlugin.resolve(req);
-            // don't allow resolving to system root
-            if (resolved && resolved.indexOf(baseDir) === 0) {
-              delete require.cache[resolved];
-              return requireFromPlugin(req);
-            }
-          } catch (e) {
-            // ignore
+            const resolved = requireFromPlugin.resolve(request);
+            if (resolved && isPathInside(baseDir, resolved)) return requireFromPlugin(request);
+          } catch {
+            // Fall through to the explicit denial below.
           }
 
-          // Allow a small whitelist of built-ins
-          if (allowedBuiltins.has(req)) return require(req);
-
-          throw new Error('module not allowed in plugin sandbox: ' + req);
+          throw new Error(`module not allowed for plugin: ${request}`);
         };
       };
 
-      // Wrap code like CommonJS module
       const wrapper = `(function(exports, require, module, __filename, __dirname){\n${code}\n})`;
-      const script = new vm.Script(wrapper, { filename: pluginPath });
+      const script = new vm.Script(wrapper, { filename: pluginPath, displayErrors: true });
       const sandbox = {
-        console: console,
+        console: {
+          log: (...args) => parentPort.postMessage({ type: 'log', data: args }),
+          info: (...args) => parentPort.postMessage({ type: 'log', data: args }),
+          warn: (...args) => parentPort.postMessage({ type: 'log', data: args }),
+          error: (...args) => parentPort.postMessage({ type: 'log', data: args })
+        },
         setTimeout,
         clearTimeout,
+        setInterval,
+        clearInterval,
         Buffer
       };
 
-      // Explicitly remove dangerous globals that can be abused to escape the VM
+      // Block common dynamic-code escape primitives inside the VM context.
       sandbox.Function = undefined;
       sandbox.eval = undefined;
-      sandbox.Proxy = undefined;
-      sandbox.Reflect = undefined;
-      sandbox.WebAssembly = undefined;
       sandbox.global = undefined;
       sandbox.process = undefined;
       sandbox.require = undefined;
 
-      const context = vm.createContext(sandbox);
+      const context = vm.createContext(sandbox, {
+        name: `korai-plugin:${id}`,
+        codeGeneration: { strings: false, wasm: false }
+      });
       const fn = script.runInContext(context, { timeout: 1000, displayErrors: true });
-
       const module = { exports: {} };
       const localRequire = createRequire(pluginDir);
-      // expose a safe module.require to common code that may call it
       module.require = localRequire;
       fn(module.exports, localRequire, module, pluginPath, pluginDir);
 
-      const PluginClass = module.exports;
-
+      const PluginExport = module.exports;
       this.context = {
         id: ctxData.id,
         name: ctxData.name,
         version: ctxData.version,
-        permissions: ctxData.permissions,
+        permissions: Array.isArray(ctxData.permissions) ? [...ctxData.permissions] : [],
         api: this.createAPI(ctxData.id)
       };
 
-      // Instantiate or use exported object
-      if (typeof PluginClass === 'function') {
-        this.plugin = new PluginClass(this.context);
-      } else if (typeof PluginClass === 'object' && PluginClass.activate) {
-        this.plugin = PluginClass;
+      if (typeof PluginExport === 'function') {
+        this.plugin = new PluginExport(this.context);
+      } else if (PluginExport && typeof PluginExport === 'object' && typeof PluginExport.activate === 'function') {
+        this.plugin = PluginExport;
       } else {
-        throw new Error('Plugin must export class or object with activate method');
+        throw new Error('Plugin must export a class or object with activate()');
       }
 
-      // Call activate lifecycle hook with a safe timeout
       if (typeof this.plugin.activate === 'function') {
         await Promise.race([
           this.plugin.activate(this.context),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('activate timeout')), 4000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error('activate timeout')), 4000))
         ]);
       }
 
-      // Start periodic worker stats reporting to host (memory + cpu)
-      this._statsInterval = setInterval(() => {
+      this.statsInterval = setInterval(() => {
         try {
-          const mem = process.memoryUsage();
-          const cpu = process.cpuUsage();
-          parentPort.postMessage({ type: 'stats', data: { memory: mem, cpu: cpu } });
-        } catch (e) {}
+          parentPort.postMessage({
+            type: 'stats',
+            data: { memory: process.memoryUsage(), cpu: process.cpuUsage() }
+          });
+        } catch {}
       }, 5000);
 
-      // Collect hooks
-      for (const method of ['onLoad', 'onUnload', 'onTrackPlay', 'onTrackPause', 'onAudioProcess', 'onBpmDetect']) {
-        if (typeof this.plugin[method] === 'function') {
-          this.hooks[method] = true;
-        }
+      const candidateHooks = ['onLoad', 'onUnload', 'onTrackPlay', 'onTrackPause', 'onAudioProcess', 'onBpmDetect'];
+      this.hooks = {};
+      for (const hook of candidateHooks) {
+        if (typeof this.plugin[hook] === 'function') this.hooks[hook] = true;
       }
 
       parentPort.postMessage({ type: 'activate-ok', hooks: this.hooks });
@@ -147,136 +150,131 @@ class PluginWorker {
       if (this.plugin && typeof this.plugin.deactivate === 'function') {
         await Promise.race([
           this.plugin.deactivate(this.context),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('deactivate timeout')), 4000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error('deactivate timeout')), 4000))
         ]);
       }
-      if (this._statsInterval) {
-        clearInterval(this._statsInterval);
-        this._statsInterval = null;
-      }
-      this.plugin = null;
-      this.context = null;
-      this.hooks = {};
       parentPort.postMessage({ type: 'deactivate-ok' });
     } catch (error) {
       parentPort.postMessage({ type: 'deactivate-error', error: error.message || String(error) });
+    } finally {
+      if (this.statsInterval) clearInterval(this.statsInterval);
+      this.statsInterval = null;
+      this.plugin = null;
+      this.context = null;
+      this.hooks = {};
     }
   }
 
   async callHook(msgId, hookName, args) {
     const started = Date.now();
     try {
-      if (!this.plugin || typeof this.plugin[hookName] !== 'function') {
+      if (!validKey(hookName, 64) || !this.plugin || typeof this.plugin[hookName] !== 'function') {
         parentPort.postMessage({ type: 'hook-response', msgId, result: null });
-        // emit perf with zero duration
-        parentPort.postMessage({ type: 'perf', data: { hook: hookName, duration: 0, success: true } });
         return;
       }
 
       const result = await Promise.race([
         this.plugin[hookName](...args),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('hook timeout')), 4000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('hook timeout')), 4000))
       ]);
-
       const duration = Date.now() - started;
       parentPort.postMessage({ type: 'hook-response', msgId, result });
       parentPort.postMessage({ type: 'perf', data: { hook: hookName, duration, success: true } });
     } catch (error) {
       const duration = Date.now() - started;
-      parentPort.postMessage({ type: 'hook-response', msgId, error: error.message || String(error) });
-      parentPort.postMessage({ type: 'perf', data: { hook: hookName, duration, success: false, error: error.message || String(error) } });
+      const message = error.message || String(error);
+      parentPort.postMessage({ type: 'hook-response', msgId, error: message });
+      parentPort.postMessage({ type: 'perf', data: { hook: hookName, duration, success: false, error: message } });
     }
   }
 
   createAPI(pluginId) {
     return {
-      log: (msg) => {
-        parentPort.postMessage({ type: 'log', data: msg });
-      },
+      log: (message) => parentPort.postMessage({ type: 'log', data: message }),
       emit: (eventName, data) => {
-        parentPort.postMessage({ type: 'event', event: eventName, data });
+        if (validKey(eventName, 64)) parentPort.postMessage({ type: 'event', event: eventName, data });
       },
-          registerHook: (name) => {
-            if (typeof name === 'string' && name) parentPort.postMessage({ type: 'register-hook', hook: name });
-          },
-          requestPermission: (permission) => {
-            return new Promise((resolve) => {
-              const msgId = Math.random().toString(36).slice(2);
-              const handler = (msg) => {
-                if (msg && msg.type === 'request-permission-reply' && msg.msgId === msgId) {
-                  parentPort.removeListener('message', handler);
-                  resolve(msg.decision === 'granted');
-                }
-              };
-              parentPort.on('message', handler);
-              parentPort.postMessage({ type: 'request-permission', permission, msgId });
-              // fallback timeout
-              setTimeout(() => { parentPort.removeListener('message', handler); resolve(false); }, 30000);
-            });
-          },
+      registerHook: (name) => {
+        if (/^[a-zA-Z0-9_-]{1,64}$/.test(name)) parentPort.postMessage({ type: 'register-hook', hook: name });
+      },
+      requestPermission: (permission) => new Promise(resolve => {
+        if (!validKey(permission, 64)) return resolve(false);
+        const msgId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const handler = (message) => {
+          if (message?.type === 'request-permission-reply' && message.msgId === msgId) {
+            parentPort.removeListener('message', handler);
+            resolve(message.decision === 'granted');
+          }
+        };
+        parentPort.on('message', handler);
+        parentPort.postMessage({ type: 'request-permission', permission, msgId });
+        setTimeout(() => {
+          parentPort.removeListener('message', handler);
+          resolve(false);
+        }, 30000);
+      }),
       storage: {
-        // Simple storage API proxy - main thread should implement persistence
-        get: (key) => {
-          return new Promise((resolve) => {
-            const handler = (msg) => {
-              if (msg.type === 'storage-get-reply' && msg.key === key) {
-                parentPort.removeListener('message', handler);
-                resolve(msg.value);
-              }
-            };
-            parentPort.on('message', handler);
-            parentPort.postMessage({ type: 'storage-get', key });
-            // fallback timeout
-            setTimeout(() => { parentPort.removeListener('message', handler); resolve(null); }, 3000);
-          });
-        },
+        get: (key) => new Promise(resolve => {
+          if (!validKey(key, MAX_STORAGE_KEY_LENGTH)) return resolve(null);
+          const msgId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          const handler = message => {
+            if (message?.type === 'storage-get-reply' && message.msgId === msgId) {
+              parentPort.removeListener('message', handler);
+              resolve(message.value);
+            }
+          };
+          parentPort.on('message', handler);
+          parentPort.postMessage({ type: 'storage-get', key, msgId });
+          setTimeout(() => { parentPort.removeListener('message', handler); resolve(null); }, 3000);
+        }),
         set: (key, value) => {
+          if (!validKey(key, MAX_STORAGE_KEY_LENGTH)) return;
           parentPort.postMessage({ type: 'storage-set', key, value });
         }
       },
       fs: {
-        read: (p) => {
-          return new Promise((resolve) => {
-            const handler = (msg) => {
-              if (msg.type === 'fs-read-reply' && msg.path === p) {
-                parentPort.removeListener('message', handler);
-                if (msg.error) resolve({ error: msg.error }); else resolve({ content: msg.content });
-              }
-            };
-            parentPort.on('message', handler);
-            parentPort.postMessage({ type: 'fs-read', path: p });
-            setTimeout(() => { parentPort.removeListener('message', handler); resolve({ error: 'timeout' }); }, 5000);
-          });
-        },
-        write: (p, content) => {
-          return new Promise((resolve) => {
-            const handler = (msg) => {
-              if (msg.type === 'fs-write-reply' && msg.path === p) {
-                parentPort.removeListener('message', handler);
-                if (msg.error) resolve({ error: msg.error }); else resolve({ success: true });
-              }
-            };
-            parentPort.on('message', handler);
-            parentPort.postMessage({ type: 'fs-write', path: p, content });
-            setTimeout(() => { parentPort.removeListener('message', handler); resolve({ error: 'timeout' }); }, 5000);
-          });
-        }
+        read: (requestedPath) => new Promise(resolve => {
+          if (!validKey(requestedPath, MAX_FS_PATH_LENGTH)) return resolve({ error: 'invalid_path' });
+          const msgId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          const handler = message => {
+            if (message?.type === 'fs-read-reply' && message.msgId === msgId) {
+              parentPort.removeListener('message', handler);
+              resolve(message.error ? { error: message.error } : { content: message.content });
+            }
+          };
+          parentPort.on('message', handler);
+          parentPort.postMessage({ type: 'fs-read', path: requestedPath, msgId });
+          setTimeout(() => { parentPort.removeListener('message', handler); resolve({ error: 'timeout' }); }, 5000);
+        }),
+        write: (requestedPath, content) => new Promise(resolve => {
+          if (!validKey(requestedPath, MAX_FS_PATH_LENGTH) || typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > MAX_FS_PAYLOAD) {
+            return resolve({ error: 'invalid_payload' });
+          }
+          const msgId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          const handler = message => {
+            if (message?.type === 'fs-write-reply' && message.msgId === msgId) {
+              parentPort.removeListener('message', handler);
+              resolve(message.error ? { error: message.error } : { success: true });
+            }
+          };
+          parentPort.on('message', handler);
+          parentPort.postMessage({ type: 'fs-write', path: requestedPath, content, msgId });
+          setTimeout(() => { parentPort.removeListener('message', handler); resolve({ error: 'timeout' }); }, 5000);
+        })
       },
-      notify: (message, opts) => {
-        parentPort.postMessage({ type: 'notify', message, opts: opts || {} });
-      }
+      notify: (message, opts) => parentPort.postMessage({ type: 'notify', message, opts: opts || {} })
     };
   }
 }
 
 const worker = new PluginWorker();
 
-parentPort.on('message', async (msg) => {
-  if (msg.type === 'load') {
-    await worker.load(msg.id, msg.pluginPath, msg.context);
-  } else if (msg.type === 'unload') {
-    await worker.unload();
-  } else if (msg.type === 'call-hook') {
-    await worker.callHook(msg.msgId, msg.hookName, msg.args || []);
+parentPort.on('message', async msg => {
+  try {
+    if (msg?.type === 'load') await worker.load(msg.id, msg.pluginPath, msg.context || {});
+    else if (msg?.type === 'unload') await worker.unload();
+    else if (msg?.type === 'call-hook') await worker.callHook(msg.msgId, msg.hookName, Array.isArray(msg.args) ? msg.args : []);
+  } catch (error) {
+    parentPort.postMessage({ type: 'worker-error', error: error.message || String(error) });
   }
 });

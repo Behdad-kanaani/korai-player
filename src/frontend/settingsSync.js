@@ -49,9 +49,6 @@ class SettingsSync {
     applyAllSettings() {
         const settings = this.store.getAll();
 
-        // Theme
-        this.applyTheme(settings.theme);
-
         // Direction
         this.applyDirection(settings.direction);
 
@@ -91,9 +88,6 @@ class SettingsSync {
 
         // Dispatch events for specific components
         switch (key) {
-            case 'theme':
-                this.applyTheme(value);
-                break;
             case 'direction':
                 this.applyDirection(value);
                 break;
@@ -135,19 +129,6 @@ class SettingsSync {
 
     // ---- Apply methods (public for manual calls) ----
 
-    applyTheme(theme) {
-        document.body.classList.remove('theme-default', 'theme-liquid-glass');
-        document.body.classList.add('theme-' + theme);
-        
-        document.querySelectorAll('.theme-btn, .skin-btn').forEach(btn => {
-            const target = btn.dataset.theme || btn.dataset.skin;
-            if (target) {
-                const targetTheme = target === 'apple' ? 'liquid-glass' : target;
-                btn.classList.toggle('active', targetTheme === theme);
-            }
-        });
-    }
-
     applyDirection(direction) {
         document.documentElement.dir = direction;
         document.body.dir = direction;
@@ -181,7 +162,10 @@ class SettingsSync {
     }
 
     applyDefaultVolume(volume) {
-        const vol = volume / 100;
+        const percent = typeof volume === 'number' && Number.isFinite(volume)
+            ? Math.min(100, Math.max(0, volume))
+            : 70;
+        const vol = percent / 100;
         if (typeof window.setVolume === 'function') {
             window.setVolume(vol);
         }

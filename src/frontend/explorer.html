@@ -3,15 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.5, user-scalable=yes">
-  <title>Korai Explore</title>
-  
-  <!-- Premium Font: Plus Jakarta Sans -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  
-  <!-- FontAwesome -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data:; connect-src 'self' http://127.0.0.1:* http://localhost:*; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data: https: blob: http://127.0.0.1:*; font-src 'self' https://cdnjs.cloudflare.com data:; media-src 'self' http://127.0.0.1:* https: blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title data-translate="explorerBrand">KORAI Explore</title>
+<!-- FontAwesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="styles/pages.css">
   
   <style>
     /* =========================================
@@ -1045,11 +1041,11 @@
     <header class="top-bar">
       <div class="brand-logo">
         <i class="fa-solid fa-compass"></i>
-        <span>Korai Explore</span>
-        <span class="brand-attribution">Downloads sourced from MusicDel websites.</span>
+        <span data-translate="explorerBrand">KORAI Explore</span>
+        <span class="brand-attribution" data-translate="explorerBrandAttribution">Downloads are sourced from MusicDel.</span>
       </div>
       <button class="btn-back" onclick="history.back()">
-        <i class="fa-solid fa-arrow-left"></i> Back to Player
+        <i class="fa-solid fa-arrow-left"></i> <span data-translate="explorerBack">Back to player</span>
       </button>
     </header>
 
@@ -1057,13 +1053,13 @@
     <nav class="tabs-wrapper">
       <div class="tabs-container">
         <button class="tab-btn active" data-tab="search">
-          <i class="fa-solid fa-magnifying-glass"></i> Explore
+          <i class="fa-solid fa-magnifying-glass"></i> <span data-translate="explorerTabExplore">Explore</span>
         </button>
         <button class="tab-btn" data-tab="newreleases">
-          <i class="fa-solid fa-bolt"></i> Discover
+          <i class="fa-solid fa-bolt"></i> <span data-translate="explorerTabDiscover">Discover</span>
         </button>
         <button class="tab-btn" data-tab="liked">
-          <i class="fa-solid fa-heart"></i> Favorites
+          <i class="fa-solid fa-heart"></i> <span data-translate="explorerFavorites">Favorites</span>
         </button>
       </div>
     </nav>
@@ -1071,21 +1067,21 @@
     <!-- Tab 1: Global Search -->
     <main class="tab-content active" id="tab-search">
       <div class="section-hero">
-        <h2><i class="fa-solid fa-sparkles" style="color:var(--primary); font-size: 3rem; filter:drop-shadow(0 0 15px var(--primary-glow))"></i> Search the Universe</h2>
-        <p>Find your favorite tracks, artists, albums, and curated playlists in absolute quality.</p>
+        <h2><i class="fa-solid fa-sparkles" style="color:var(--primary); font-size: 3rem; filter:drop-shadow(0 0 15px var(--primary-glow))"></i> <span data-translate="explorerSearchTitle">Search the universe</span></h2>
+        <p data-translate="explorerSearchDesc">Find tracks, artists, albums, and playlists in great quality.</p>
       </div>
       <div class="search-box">
         <div class="search-input-wrap">
           <i class="fa-solid fa-search"></i>
-          <input type="text" id="searchInput" placeholder="Type a song, artist or album name..." autocomplete="off">
+          <input type="text" id="searchInput" data-translate-placeholder="explorerSearchPlaceholder" placeholder="Type a song, artist or album name..." autocomplete="off">
         </div>
-        <button class="btn-search" id="searchBtn">Search</button>
+        <button class="btn-search" id="searchBtn" data-translate="explorerSearchBtn">Search</button>
       </div>
       <div class="filters-container" id="filtersContainer">
         <!-- Dynamically injected via JS -->
       </div>
       
-      <div class="meta-bar" id="searchMeta"><span>Ready to explore new sounds.</span></div>
+      <div class="meta-bar" id="searchMeta"><span data-translate="explorerSearchHint">Ready to explore new sounds.</span></div>
       <div class="results-grid" id="searchGrid"></div>
       <div class="skeleton-grid" id="searchSkeleton"></div>
     </main>
@@ -1093,10 +1089,10 @@
     <!-- Tab 2: New Releases -->
     <main class="tab-content" id="tab-newreleases">
       <div class="section-hero">
-        <h2><i class="fa-solid fa-bolt" style="color:var(--primary); font-size: 3rem;"></i> Fresh Drops</h2>
-        <p>The hottest new releases and trending albums updated daily.</p>
+        <h2><i class="fa-solid fa-bolt" style="color:var(--primary); font-size: 3rem;"></i> <span data-translate="explorerFreshDrops">Fresh Drops</span></h2>
+        <p data-translate="explorerFreshDropsDesc">The hottest new releases and trending albums updated daily.</p>
       </div>
-      <div class="meta-bar" id="nrMeta"><span>Fetching latest hits...</span></div>
+      <div class="meta-bar" id="nrMeta"><span data-translate="explorerFetching">Fetching latest hits...</span></div>
       <div class="results-grid" id="nrGrid"></div>
       <div class="skeleton-grid" id="nrSkeleton"></div>
     </main>
@@ -1104,10 +1100,10 @@
     <!-- Tab 3: Favorites -->
     <main class="tab-content" id="tab-liked">
       <div class="section-hero">
-        <h2><i class="fa-solid fa-heart" style="color:var(--accent); font-size: 3rem; filter:drop-shadow(0 0 15px var(--accent-glow))"></i> Your Collection</h2>
-        <p>All the tracks you've loved and saved in one beautiful place.</p>
+        <h2><i class="fa-solid fa-heart" style="color:var(--accent); font-size: 3rem; filter:drop-shadow(0 0 15px var(--accent-glow))"></i> <span data-translate="explorerCollectionTitle">Your collection</span></h2>
+        <p data-translate="explorerLikedEmptyDesc">All the tracks you've loved and saved in one beautiful place.</p>
       </div>
-      <div class="meta-bar" id="likedMeta"><span>0 saved tracks</span></div>
+      <div class="meta-bar" id="likedMeta"><span></span></div>
       <div class="results-grid" id="likedGrid"></div>
     </main>
 
@@ -1119,10 +1115,10 @@
       <div class="musicdel-modal-header">
         <h3>
           <i class="fa-solid fa-music"></i>
-          MusicDel Engine
-          <span class="modal-subtitle">Advanced Multi-Strategy Search</span>
+          <span data-translate="explorerMusicDelTitle">MusicDel Engine</span>
+          <span class="modal-subtitle" data-translate="explorerMusicDelSubtitle">Advanced multi-strategy search</span>
         </h3>
-        <button class="musicdel-modal-close" id="musicdelModalClose">
+        <button class="musicdel-modal-close" id="musicdelModalClose" data-translate-title="explorerClose" aria-label="Close">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
@@ -1134,6 +1130,7 @@
 
   <div class="toast-container" id="toastContainer"></div>
 
+  <script src="lang.js"></script>
   <script>
     (async function() {
       'use strict';
@@ -1141,17 +1138,55 @@
       // ==========================================
       // Configuration & State Variables
       // ==========================================
-      const CLOUD_API = 'http://music.korai.ir';
       const LOCAL_API = await resolveApiBase();
       const LIKED_DATA_KEY = 'korai_liked_items';
       const LIKED_IDS_KEY = 'korai_explorer_likes';
       const ITEMS_PER_PAGE = 24;
+      const getLanguage = () => localStorage.getItem('user_lang') === 'fa' ? 'fa' : 'en';
+      const t = (key, values = {}) => {
+        const dictionary = window.translations || {};
+        let value = (dictionary[getLanguage()] && dictionary[getLanguage()][key]) ||
+          (dictionary.en && dictionary.en[key]) || key;
+        Object.entries(values).forEach(([name, replacement]) => {
+          value = value.replaceAll(`{${name}}`, String(replacement));
+        });
+        return value;
+      };
+      const applyLanguage = () => {
+        const language = getLanguage();
+        document.documentElement.lang = language;
+        document.documentElement.dir = language === 'fa' ? 'rtl' : 'ltr';
+        document.querySelectorAll('[data-translate]').forEach(element => {
+          element.textContent = t(element.dataset.translate);
+        });
+        document.querySelectorAll('[data-translate-placeholder]').forEach(element => {
+          element.placeholder = t(element.dataset.translatePlaceholder);
+        });
+        document.querySelectorAll('[data-translate-title]').forEach(element => {
+          element.title = t(element.dataset.translateTitle);
+          element.setAttribute('aria-label', element.title);
+        });
+      };
+      applyLanguage();
+      window.addEventListener('storage', event => {
+        if (event.key === 'user_lang') {
+          applyLanguage();
+          setupFilters();
+          if (state.activeTab === 'search' && state.lastSearchQuery) {
+            fetchGlobalSearch(state.lastSearchQuery);
+          } else if (state.activeTab === 'newreleases') {
+            loadDiscover();
+          } else if (state.activeTab === 'liked') {
+            renderLiked();
+          }
+        }
+      });
 
       const FILTERS = [
-        { id: 'songs', label: 'Songs', icon: 'fa-music' },
-        { id: 'albums', label: 'Albums', icon: 'fa-compact-disc' },
-        { id: 'artists', label: 'Artists', icon: 'fa-microphone' },
-        { id: 'playlists', label: 'Playlists', icon: 'fa-list' },
+        { id: 'songs', label: 'explorerSongs', icon: 'fa-music' },
+        { id: 'albums', label: 'explorerAlbums', icon: 'fa-compact-disc' },
+        { id: 'artists', label: 'explorerArtists', icon: 'fa-microphone' },
+        { id: 'playlists', label: 'explorerPlaylists', icon: 'fa-list' },
       ];
 
       let state = {
@@ -1159,7 +1194,6 @@
         filter: 'songs',
         likedSet: new Set(JSON.parse(localStorage.getItem(LIKED_IDS_KEY) || '[]')),
         likedItems: JSON.parse(localStorage.getItem(LIKED_DATA_KEY) || '[]'),
-        mockMode: false,
         lastSearchQuery: ''  
       };
 
@@ -1230,7 +1264,7 @@
         localStorage.setItem(LIKED_IDS_KEY, JSON.stringify([...state.likedSet]));
         localStorage.setItem(LIKED_DATA_KEY, JSON.stringify(state.likedItems));
         const metaEl = document.getElementById('likedMeta');
-        if(metaEl) metaEl.innerHTML = `<span><strong>${state.likedItems.length}</strong> saved tracks</span>`;
+        if(metaEl) metaEl.innerHTML = `<span>${t('explorerSavedTracksCount', { count: `<strong>${state.likedItems.length}</strong>` })}</span>`;
       };
 
       const toggleLike = async (item, btnEl) => {
@@ -1239,14 +1273,14 @@
           state.likedSet.add(item.id);
           if(!state.likedItems.some(i => i.id === item.id)) state.likedItems.push(item);
           btnEl.classList.add('liked');
-          btnEl.innerHTML = `<i class="fa-solid fa-heart"></i> Saved`;
-          showToast('Added to favorites', 'success');
+          btnEl.innerHTML = `<i class="fa-solid fa-heart"></i> ${t('explorerSaved')}`;
+          showToast(t('explorerAddedFavorite'), 'success');
         } else {
           state.likedSet.delete(item.id);
           state.likedItems = state.likedItems.filter(i => i.id !== item.id);
           btnEl.classList.remove('liked');
-          btnEl.innerHTML = `<i class="fa-regular fa-heart"></i> Save`;
-          showToast('Removed from favorites', 'info');
+          btnEl.innerHTML = `<i class="fa-regular fa-heart"></i> ${t('explorerSave')}`;
+          showToast(t('explorerRemovedFavorite'), 'info');
           if(state.activeTab === 'liked') renderLiked();
         }
         saveLikes();
@@ -1270,7 +1304,7 @@
             ${item.thumbnail ? `<img src="${item.thumbnail}" alt="${escapeHtml(item.title)}" loading="lazy">` 
                              : `<i class="fa-solid fa-music fallback-icon"></i>`}
             <div class="card-overlay">
-              <div class="btn-play-circle" data-url="${escapeHtml(item.url || '')}" title="Play / Preview">
+              <div class="btn-play-circle" data-url="${escapeHtml(item.url || '')}" title="${escapeHtml(t('explorerPlayPreview'))}" aria-label="${escapeHtml(t('explorerPlayPreview'))}">
                 <i class="fa-solid fa-play"></i>
               </div>
             </div>
@@ -1284,12 +1318,12 @@
             </div>
             <div class="card-actions">
               <button class="action-btn btn-like ${isLiked ? 'liked' : ''}">
-                <i class="fa-solid ${isLiked ? 'fa-heart' : 'fa-heart'}"></i> ${isLiked ? 'Saved' : 'Save'}
+                <i class="fa-solid fa-heart"></i> ${isLiked ? t('explorerSaved') : t('explorerSave')}
               </button>
               <button class="action-btn btn-import" 
                       data-track-title="${escapeHtml(item.title)}" 
                       data-track-artist="${escapeHtml(item.subtitle)}">
-                <i class="fa-solid fa-cloud-arrow-down"></i> Import
+                <i class="fa-solid fa-cloud-arrow-down"></i> ${t('explorerImport')}
               </button>
             </div>
           </div>
@@ -1318,9 +1352,9 @@
           const userQuery = state.lastSearchQuery || title;
           
           const queries = [
-            { label: 'First Word', query: firstWord, icon: 'fa-bold' },
-            { label: 'Your Search', query: userQuery, icon: 'fa-magnifying-glass' },
-            { label: 'Full Title', query: fullQuery, icon: 'fa-compact-disc' }
+            { label: t('explorerFirstWord'), query: firstWord, icon: 'fa-bold' },
+            { label: t('explorerYourSearch'), query: userQuery, icon: 'fa-magnifying-glass' },
+            { label: t('explorerFullTitle'), query: fullQuery, icon: 'fa-compact-disc' }
           ];
           
           openMusicDelModal(queries);
@@ -1329,12 +1363,12 @@
         return card;
       };
 
-      const renderEmptyState = (gridId, icon, title, desc, cssClass='') => {
+      const renderEmptyState = (gridId, icon, titleKey, descKey, cssClass='') => {
         document.getElementById(gridId).innerHTML = `
           <div class="empty-state ${cssClass}">
             <i class="fa-solid ${icon}"></i>
-            <h3>${title}</h3>
-            <p>${desc}</p>
+            <h3>${t(titleKey)}</h3>
+            <p>${descKey ? t(descKey) : ''}</p>
           </div>
         `;
       };
@@ -1348,7 +1382,7 @@
 
       const openMusicDelModal = (queries) => {
         if (!queries || queries.length === 0) {
-          showToast('No search queries available.', 'error');
+          showToast(t('explorerSearchQueriesMissing'), 'error');
           return;
         }
 
@@ -1368,7 +1402,7 @@
               <div class="musicdel-column-results" id="${colId}-results">
                 <div class="loading-spinner-small">
                   <i class="fa-solid fa-circle-notch"></i>
-                  <div>Searching database...</div>
+                  <div>${t('explorerSearchDatabase')}</div>
                 </div>
               </div>
             </div>
@@ -1407,7 +1441,7 @@
           });
 
           if (!res.ok) {
-            throw new Error(`Server responded with status: ${res.status}`);
+            throw new Error(t('explorerServerResponseError', { status: res.status }));
           }
 
           const data = await res.json();
@@ -1417,7 +1451,7 @@
             container.innerHTML = `
               <div class="empty-column">
                 <i class="fa-solid fa-ghost" style="display:block; font-size:2rem; margin-bottom:12px; opacity:0.2;"></i>
-                No results found
+                ${t('explorerNoResultsInColumn')}
               </div>
             `;
             return;
@@ -1436,7 +1470,7 @@
                   <div class="mini-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
                   <div class="mini-artist" title="${escapeHtml(item.subtitle)}">${escapeHtml(item.subtitle)}</div>
                 </div>
-                <button class="mini-download-btn">Import</button>
+                <button class="mini-download-btn">${t('explorerImport')}</button>
               </div>
             `;
           });
@@ -1460,8 +1494,8 @@
           container.innerHTML = `
             <div class="empty-column">
               <i class="fa-solid fa-triangle-exclamation" style="display:block; font-size:2rem; margin-bottom:12px; color:var(--accent);"></i>
-              Search failed
-              <div style="font-size:0.8rem; margin-top:8px; color:var(--text-dim);">${escapeHtml(err.message || 'Unknown error')}</div>
+              ${t('explorerSearchFailed')}
+              <div style="font-size:0.8rem; margin-top:8px; color:var(--text-dim);">${escapeHtml(err.message || t('explorerUnknownError'))}</div>
             </div>
           `;
         }
@@ -1483,7 +1517,7 @@
           });
 
           if (!proxyRes.ok) {
-            throw new Error(`Failed to fetch track page: ${proxyRes.status}`);
+            throw new Error(t('explorerDownloadPageFailed', { status: proxyRes.status }));
           }
 
           const html = await proxyRes.text();
@@ -1509,7 +1543,7 @@
           dlUrl = highQuality?.href || midQuality?.href || downloadLinks[0]?.href;
 
           if (!dlUrl) {
-            throw new Error('Download link not found on the track page.');
+            throw new Error(t('explorerDownloadLinkMissing'));
           }
 
           // Fix relative URLs
@@ -1517,7 +1551,7 @@
             dlUrl = 'https://musicdel.ir' + dlUrl;
           }
 
-          btn.innerHTML = 'DL...';
+          btn.textContent = t('explorerDownloadShort');
 
           // Step 2: Import directly using the download URL
           const importRes = await fetch(`${LOCAL_API}/api/tracks/import-from-url`, {
@@ -1531,7 +1565,7 @@
 
           if (!importRes.ok) {
             const errorData = await importRes.json().catch(() => ({}));
-            throw new Error(errorData.error || 'Failed to add track to library.');
+            throw new Error(errorData.error || t('explorerAddTrackFailed'));
           }
 
           const importData = await importRes.json();
@@ -1540,7 +1574,7 @@
           btn.classList.add('done');
           btn.disabled = true;
 
-          showToast(`"${importData.track?.title || title}" added to library.`, 'success');
+          showToast(`"${importData.track?.title || title}" ${t('explorerAddedLibrary')}`, 'success');
 
           // Refresh library if function exists (from app.js)
           if (typeof window.loadTracks === 'function') {
@@ -1550,9 +1584,9 @@
         } catch (err) {
           console.error('MusicDel import error:', err);
           btn.disabled = false;
-          btn.textContent = 'Retry';
+          btn.textContent = t('explorerRetry');
           btn.classList.remove('done');
-          showToast(err.message || 'An error occurred during import.', 'error');
+          showToast(err.message || t('explorerImportError'), 'error');
         }
       }
 
@@ -1568,27 +1602,31 @@
         const meta = document.getElementById('searchMeta');
         
         try {
-          const res = await fetch(`${CLOUD_API}/?action=search&q=${encodeURIComponent(query)}&filter=${state.filter}&limit=${ITEMS_PER_PAGE}`);
-          if(!res.ok) throw new Error('Server communication failed');
-          const data = await res.json();
+          const params = new URLSearchParams({
+            query: String(query || '').trim(),
+            filter: state.filter,
+            limit: String(ITEMS_PER_PAGE)
+          });
+          const res = await fetch(`${LOCAL_API}/api/search/global?${params.toString()}`);
+          const data = await res.json().catch(() => ({}));
+          if(!res.ok) throw new Error(data.error || t('explorerSearchFailedStatus', { status: res.status }));
           const results = data.results || data.items || [];
           
           grid.innerHTML = '';
           if(results.length === 0) {
-            renderEmptyState('searchGrid', 'fa-ghost', 'No results found', 'Please check the spelling or try a different keyword.', 'search');
+            renderEmptyState('searchGrid', 'fa-ghost', 'explorerNoResults', 'explorerNoResultsHint', 'search');
           } else {
             results.forEach(r => grid.appendChild(renderCard({
               id: r.id || r.videoId, title: r.title, subtitle: r.artist || r.subtitle,
               thumbnail: r.thumbnail, url: r.url, type: r.type, duration: r.duration
             })));
           }
-          meta.innerHTML = `<span><strong>${results.length}</strong> results found</span>`;
+          meta.innerHTML = `<span>${t('explorerResultsCount', { count: `<strong>${results.length}</strong>` })}</span>`;
         } catch(e) {
-          showToast('Search failed, using offline mock data (Demo)', 'error');
+          console.warn('Global search failed:', e);
           grid.innerHTML = '';
-          [1,2,3,4,5,6].forEach(i => grid.appendChild(renderCard({
-            id: `m${i}`, title: `Demo Track ${i}`, subtitle: 'Unknown Artist', type: 'song', url:'#'
-          })));
+          renderEmptyState('searchGrid', 'fa-triangle-exclamation', 'explorerSearchUnavailable', e.message || t('explorerOnlineSearchUnavailable'));
+          meta.innerHTML = `<span>${t('explorerTryLater')}</span>`;
         } finally {
           toggleSkeleton('searchGrid', 'searchSkeleton', false);
         }
@@ -1597,15 +1635,50 @@
       // ==========================================
       // Initialization & Tab Logic
       // ==========================================
+      const loadDiscover = async () => {
+        const grid = document.getElementById('nrGrid');
+        const meta = document.getElementById('nrMeta');
+        const skeleton = document.getElementById('nrSkeleton');
+        if (!grid || !meta) return;
+        toggleSkeleton('nrGrid', 'nrSkeleton', true);
+        meta.innerHTML = `<span>${t('explorerDiscoveryBuilding')}</span>`;
+        try {
+          const res = await fetch(`${LOCAL_API}/api/ai/discover`);
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || t('explorerDiscoveryFailedStatus', { status: res.status }));
+          const results = Array.isArray(data.recommendations) ? data.recommendations : [];
+          grid.innerHTML = '';
+          if (results.length === 0) {
+            renderEmptyState('nrGrid', 'fa-compass', 'explorerNothingToDiscover', 'explorerPlayForDiscovery', 'search');
+            meta.innerHTML = `<span>${t('explorerDiscoveryWaiting')}</span>`;
+          } else {
+            results.forEach(r => grid.appendChild(renderCard({
+              id: r.id, serverTrackId: r.id, title: r.title, subtitle: r.artist,
+              thumbnail: r.coverUrl ? `${LOCAL_API}${r.coverUrl}` : null,
+              url: `${LOCAL_API}/api/tracks/${encodeURIComponent(r.id)}/stream`,
+              type: 'local', duration: r.duration
+            })));
+            meta.innerHTML = `<span>${t('explorerTracksSelectedCount', { count: `<strong>${results.length}</strong>` })}</span>`;
+          }
+        } catch (e) {
+          console.warn('Discovery load failed:', e);
+          grid.innerHTML = '';
+          renderEmptyState('nrGrid', 'fa-triangle-exclamation', 'explorerDiscoveryUnavailable', e.message || t('explorerLocalServiceUnavailable'), 'search');
+          meta.innerHTML = `<span>${t('explorerTryAfterPlayback')}</span>`;
+        } finally {
+          if (skeleton) toggleSkeleton('nrGrid', 'nrSkeleton', false);
+        }
+      };
+
       const renderLiked = () => {
         const grid = document.getElementById('likedGrid');
         grid.innerHTML = '';
         if(state.likedItems.length === 0) {
-          renderEmptyState('likedGrid', 'fa-heart-crack', 'Your collection is empty', 'Start exploring and save tracks you love.', 'liked');
+          renderEmptyState('likedGrid', 'fa-heart-crack', 'explorerLikedEmpty', 'explorerLikedEmptyDesc', 'liked');
         } else {
           state.likedItems.forEach(i => grid.appendChild(renderCard(i)));
         }
-        document.getElementById('likedMeta').innerHTML = `<span><strong>${state.likedItems.length}</strong> saved tracks</span>`;
+        document.getElementById('likedMeta').innerHTML = `<span>${t('explorerSavedTracksCount', { count: `<strong>${state.likedItems.length}</strong>` })}</span>`;
       };
 
       const switchTab = (tabId) => {
@@ -1614,13 +1687,14 @@
         document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === `tab-${tabId}`));
         
         if(tabId === 'liked') renderLiked();
+        if(tabId === 'newreleases') loadDiscover();
       };
 
       const setupFilters = () => {
         const container = document.getElementById('filtersContainer');
         container.innerHTML = FILTERS.map(f => `
           <div class="filter-chip ${f.id === state.filter ? 'active' : ''}" data-id="${f.id}">
-            <i class="fa-solid ${f.icon}"></i> ${f.label}
+            <i class="fa-solid ${f.icon}"></i> ${t(f.label)}
           </div>
         `).join('');
         
@@ -1654,7 +1728,7 @@
         });
 
         // Placeholder Empty State for New Releases
-        renderEmptyState('nrGrid', 'fa-bolt', 'Coming Soon', 'This section will be populated with live top charts shortly.', 'search');
+        renderEmptyState('nrGrid', 'fa-bolt', 'explorerComingSoon', 'explorerComingSoonDesc', 'search');
         
         // Finalize setup
         saveLikes();

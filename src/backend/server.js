@@ -22,28 +22,187 @@ const { exportToM3U, exportToPLS, exportLibraryToCSV, exportPlaylistToCSV,
 const { getTracksFromCue, generateCueSheet } = require('./cueParser');
 const AudioSeparator = require('./audioSeparator');
 const os = require('os');
+const { spawn } = require('child_process');
 const PluginManager = require('./pluginManager');
 const PluginHost = require('./pluginHost');
 const { setupPluginRoutes } = require('./pluginRoutes');
 const PluginSettings = require('./pluginSettings');
 const PluginPerformanceMonitor = require('./pluginPerformanceMonitor');
-const { createRateLimiter, assertSafeUrl, resolveSafePath } = require('./securityUtils');
+const { createRateLimiter, assertSafeUrl, resolveSafePath, resolveExistingFile } = require('./securityUtils');
+
+const MAX_REMOTE_AUDIO_BYTES = 250 * 1024 * 1024;
+const MAX_PROXY_HTML_BYTES = 5 * 1024 * 1024;
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 30_000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+async function streamRemoteAudio(response, res) {
+    if (!response.body) throw new Error('Remote response has no body');
+    const contentLength = Number(response.headers.get('content-length'));
+    if (Number.isFinite(contentLength) && contentLength > MAX_REMOTE_AUDIO_BYTES) {
+        throw new Error('Remote audio file exceeds size limit');
+    }
+
+    res.statusCode = 200;
+    res.setHeader('Content-Type', response.headers.get('content-type') || 'audio/mpeg');
+    res.setHeader('Content-Disposition', `attachment; filename=\"musicdel_${Date.now()}.mp3\"`);
+    if (Number.isFinite(contentLength)) res.setHeader('Content-Length', String(contentLength));
+
+    const reader = response.body.getReader();
+    let bytes = 0;
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            bytes += value.byteLength;
+            if (bytes > MAX_REMOTE_AUDIO_BYTES) {
+                await reader.cancel();
+                if (!res.headersSent) res.status(413);
+                break;
+            }
+            if (!res.write(Buffer.from(value))) {
+                await new Promise(resolve => res.once('drain', resolve));
+            }
+        }
+    } finally {
+        try { await reader.cancel(); } catch {}
+        if (!res.writableEnded) res.end();
+    }
+}
+
+async function responseTextBounded(response, maxBytes) {
+    const declared = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > maxBytes) throw new Error('Remote response exceeds size limit');
+    let bytes = 0;
+    const chunks = [];
+    if (!response.body) return '';
+    const reader = response.body.getReader();
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        if (bytes > maxBytes) {
+            await reader.cancel();
+            throw new Error('Remote response exceeds size limit');
+        }
+        chunks.push(Buffer.from(value));
+    }
+    return Buffer.concat(chunks).toString('utf8');
+}
+
+async function writeResponseToFile(response, destPath, maxBytes = MAX_REMOTE_AUDIO_BYTES) {
+    const declared = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > maxBytes) throw new Error('Remote file exceeds size limit');
+    if (!response.body) throw new Error('Remote response has no body');
+    const tempPath = `${destPath}.part`;
+    let bytes = 0;
+    try {
+        await fs.promises.rm(tempPath, { force: true });
+        const output = fs.createWriteStream(tempPath, { flags: 'wx' });
+        const reader = response.body.getReader();
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                bytes += value.byteLength;
+                if (bytes > maxBytes) {
+                    await reader.cancel();
+                    throw new Error('Remote file exceeds size limit');
+                }
+                if (!output.write(Buffer.from(value))) await new Promise(resolve => output.once('drain', resolve));
+            }
+            await new Promise((resolve, reject) => output.end(err => err ? reject(err) : resolve()));
+        } catch (error) {
+            try { output.destroy(); } catch {}
+            throw error;
+        }
+        await fs.promises.rename(tempPath, destPath);
+        return { bytes };
+    } catch (error) {
+        try { await fs.promises.rm(tempPath, { force: true }); } catch {}
+        throw error;
+    }
+}
+
+function rangeFromHeader(value, fileSize) {
+    if (!value || !value.startsWith('bytes=')) return null;
+    if (value.includes(',')) throw new Error('Multiple byte ranges are not supported');
+    const [rawStart, rawEnd] = value.slice(6).split('-', 2);
+    let start;
+    let end;
+    if (rawStart === '') {
+        const suffixLength = Number.parseInt(rawEnd, 10);
+        if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) throw new Error('Invalid byte range');
+        start = Math.max(0, fileSize - suffixLength);
+        end = fileSize - 1;
+    } else {
+        start = Number.parseInt(rawStart, 10);
+        end = rawEnd === '' ? fileSize - 1 : Number.parseInt(rawEnd, 10);
+        if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start) throw new Error('Invalid byte range');
+        if (start >= fileSize) throw new Error('Range not satisfiable');
+        end = Math.min(end, fileSize - 1);
+    }
+    return { start, end };
+}
+
+function extensionFromContentType(contentType, fallback = '.mp3') {
+    const value = String(contentType || '').toLowerCase().split(';')[0].trim();
+    const map = {
+        'audio/mpeg': '.mp3', 'audio/mp3': '.mp3', 'audio/wav': '.wav', 'audio/x-wav': '.wav',
+        'audio/ogg': '.ogg', 'audio/mp4': '.m4a', 'audio/x-m4a': '.m4a', 'audio/flac': '.flac',
+        'audio/aac': '.aac', 'audio/x-ms-wma': '.wma'
+    };
+    return map[value] || fallback;
+}
+
+function resolveYtDlpExecutable() {
+    const configured = process.env.KORAI_YTDLP_PATH;
+    if (configured && fs.existsSync(configured)) return configured;
+    return process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+}
+
+function downloadWithYtDlp(url, outputPath) {
+    return new Promise((resolve, reject) => {
+        const executable = resolveYtDlpExecutable();
+        const args = ['--no-playlist', '--no-progress', '--extract-audio', '--audio-format', 'mp3', '--audio-quality', '0', '--output', outputPath, url];
+        const child = spawn(executable, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+        let stderr = '';
+        let timer = setTimeout(() => { try { child.kill('SIGTERM'); } catch {} reject(new Error('yt-dlp timeout')); }, 120_000);
+        child.stderr.on('data', chunk => { stderr += chunk.toString(); if (stderr.length > 4000) stderr = stderr.slice(-4000); });
+        child.on('error', err => { clearTimeout(timer); reject(err); });
+        child.on('close', code => {
+            clearTimeout(timer);
+            if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) return resolve(outputPath);
+            reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
+        });
+    });
+}
 
 const app = express();
 let serverUserDataPath = null;
 let userHistory = {};
+const perfDiagnostics = [];
+const MAX_PERF_DIAGNOSTICS = 500;
 
 const { safeAssign } = require('./securityUtils');
 
 app.use(cors({
     origin: (origin, cb) => {
-        // allow no-origin (e.g. file:// in Electron) and localhost origins
+        // Allow the local KORAI renderer, loopback API clients, and no-origin requests.
         if (!origin) return cb(null, true);
         const allowed = [
             'http://localhost',
             'http://127.0.0.1',
             'https://localhost',
-            'https://127.0.0.1'
+            'https://127.0.0.1',
+            'korai://app'
         ];
         try {
             const url = new URL(origin);
@@ -53,7 +212,7 @@ app.use(cors({
         cb(new Error('Not allowed by CORS'));
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Range', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Range', 'Authorization', 'Cache-Control']
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -84,9 +243,9 @@ app.post('/api/proxy/musicdel', async (req, res) => {
 
         console.debug(`Proxy request to: ${targetUrl.toString()}`);
 
-        const fetch = require('node-fetch');
+        
 
-        const response = await fetch(targetUrl, {
+        const response = await fetchWithTimeout(targetUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -104,7 +263,7 @@ app.post('/api/proxy/musicdel', async (req, res) => {
             });
         }
 
-        const html = await response.text();
+        const html = await responseTextBounded(response, MAX_PROXY_HTML_BYTES);
         
         // Add cache control headers to prevent caching
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -154,27 +313,29 @@ app.get('/api/proxy/musicdel/download', async (req, res) => {
 
         console.debug(`Proxy download from: ${targetUrl.toString()}`);
 
-        const fetch = require('node-fetch');
-        const response = await fetch(targetUrl, {
+        
+        const response = await fetchWithTimeout(targetUrl, {
+            redirect: 'manual',
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Accept': '*/*',
                 'Accept-Encoding': 'gzip, deflate, br',
                 'Accept-Language': 'fa-IR,fa;q=0.9,en-US;q=0.8,en;q=0.7'
-            },
-            timeout: 60000
-        });
+            }
+        }, 60_000);
 
+        if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
+            const redirectedUrl = await assertSafeUrl(new URL(response.headers.get('location'), targetUrl).href, {
+                allowHosts: ['musicdel.ir', 'www.musicdel.ir', 'dl.musicdel.ir']
+            });
+            const redirected = await fetchWithTimeout(redirectedUrl, { redirect: 'manual' }, 60_000);
+            if (!redirected.ok) throw new Error(`Download failed: ${redirected.status}`);
+            return streamRemoteAudio(redirected, res);
+        }
         if (!response.ok) {
             throw new Error(`Download failed: ${response.status}`);
         }
-
-        // Stream the file directly to client
-        const buffer = await response.buffer();
-        res.setHeader('Content-Type', response.headers.get('content-type') || 'audio/mpeg');
-        res.setHeader('Content-Length', buffer.length);
-        res.setHeader('Content-Disposition', `attachment; filename="musicdel_${Date.now()}.mp3"`);
-        res.send(buffer);
+        return streamRemoteAudio(response, res);
 
     } catch (error) {
         console.error(' Proxy download error:', error.message);
@@ -202,14 +363,14 @@ app.post('/api/search/musicdel', async (req, res) => {
 
         console.debug(`Searching MusicDel for: ${encodedQuery}`);
 
-        const fetch = require('node-fetch');
+        
         const searchUrl = new URL(MUSICDEL_SEARCH_API);
         searchUrl.searchParams.set('q', query.trim());
         const safeSearchUrl = await assertSafeUrl(searchUrl.toString(), {
             allowHosts: ['musicdel.ir', 'www.musicdel.ir']
         });
 
-        const response = await fetch(safeSearchUrl, {
+        const response = await fetchWithTimeout(safeSearchUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -269,6 +430,73 @@ app.post('/api/search/musicdel', async (req, res) => {
     } catch (error) {
         console.error(' MusicDel search error:', error.message);
         res.status(500).json({ error: 'Failed to search MusicDel: ' + error.message });
+    }
+});
+
+// =============================================================================
+// GLOBAL SEARCH PROXY
+// =============================================================================
+
+/**
+ * GET /api/search/global
+ * Proxies KORAI's public music search without exposing a third-party HTTP
+ * endpoint directly to the renderer. If the upstream is unavailable we return
+ * a clear 503 instead of demo/fake results.
+ */
+app.get('/api/search/global', async (req, res) => {
+    const query = String(req.query.query || '').trim();
+    const filter = String(req.query.filter || 'songs').trim().toLowerCase();
+    const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit || '24', 10) || 24));
+    const allowedFilters = new Set(['songs', 'albums', 'artists', 'playlists']);
+
+    if (query.length < 2 || query.length > 160) {
+        return res.status(400).json({ error: 'Search query must be between 2 and 160 characters' });
+    }
+    if (!allowedFilters.has(filter)) {
+        return res.status(400).json({ error: 'Invalid search filter' });
+    }
+
+    try {
+        const upstream = new URL('http://music.korai.ir/');
+        upstream.searchParams.set('action', 'search');
+        upstream.searchParams.set('q', query);
+        upstream.searchParams.set('filter', filter);
+        upstream.searchParams.set('limit', String(limit));
+
+        const safeUrl = await assertSafeUrl(upstream.toString(), {
+            allowHosts: ['music.korai.ir'],
+            allowHttp: true
+        });
+        const response = await fetchWithTimeout(safeUrl, {
+            headers: {
+                'User-Agent': 'KORAI-Player/1.6.2',
+                'Accept': 'application/json'
+            }
+        }, 15_000);
+
+        if (!response.ok) {
+            return res.status(503).json({ error: `Global search service responded with ${response.status}` });
+        }
+
+        const text = await responseTextBounded(response, 2 * 1024 * 1024);
+        let payload;
+        try {
+            payload = JSON.parse(text);
+        } catch {
+            return res.status(502).json({ error: 'Global search returned invalid JSON' });
+        }
+
+        const results = Array.isArray(payload?.results)
+            ? payload.results.slice(0, limit)
+            : Array.isArray(payload?.items)
+                ? payload.items.slice(0, limit)
+                : [];
+
+        res.setHeader('Cache-Control', 'no-store');
+        res.json({ results });
+    } catch (error) {
+        console.warn('[global-search] upstream unavailable:', error.message);
+        res.status(503).json({ error: 'Global search is temporarily unavailable' });
     }
 });
 
@@ -359,43 +587,17 @@ async function scanDirectoryRecursively(dirPath, audioExtensions, files, maxDept
 }
 
 async function downloadFile(fileUrl, destPath, redirectCount = 0) {
-    if (redirectCount > 5) {
-        return Promise.reject(new Error('Too many redirects'));
+    if (redirectCount > 5) throw new Error('Too many redirects');
+    const urlObj = await assertSafeUrl(fileUrl, { allowHttp: true });
+    const response = await fetchWithTimeout(urlObj, { redirect: 'manual' }, 30_000);
+    if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
+        const redirectUrl = new URL(response.headers.get('location'), urlObj).href;
+        return downloadFile(redirectUrl, destPath, redirectCount + 1);
     }
-    const urlObj = await assertSafeUrl(fileUrl);
-    return new Promise((resolve, reject) => {
-        const client = urlObj.protocol === 'https:' ? https : http;
-        const request = client.get(urlObj, (response) => {
-            const statusCode = response.statusCode;
-            if (statusCode >= 300 && statusCode < 400 && response.headers.location) {
-                const redirectUrl = new URL(response.headers.location, urlObj).href;
-                return downloadFile(redirectUrl, destPath, redirectCount + 1)
-                    .then(resolve)
-                    .catch(reject);
-            }
-            if (statusCode !== 200) {
-                return reject(new Error(`Server responded with status code: ${statusCode}`));
-            }
-            const fileStream = fs.createWriteStream(destPath);
-            response.pipe(fileStream);
-            fileStream.on('finish', () => {
-                fileStream.close();
-                resolve();
-            });
-            fileStream.on('error', (err) => {
-                fs.unlink(destPath, () => {});
-                reject(err);
-            });
-        });
-        request.on('error', (err) => {
-            reject(err);
-        });
-        request.setTimeout(30000, () => {
-            request.destroy();
-            reject(new Error('Request timeout'));
-        });
-    });
+    if (!response.ok) throw new Error(`Server responded with status code: ${response.status}`);
+    await writeResponseToFile(response, destPath, MAX_REMOTE_AUDIO_BYTES);
 }
+
 
 function setupRoutes() {
     const fileOperationLimiter = createRateLimiter(20, 60_000);
@@ -461,7 +663,6 @@ function setupRoutes() {
                 resumeOnStart: false,
                 defaultVolume: 70,
                 audioOutput: 'stereo',
-                theme: 'default',
                 direction: 'ltr',
                 fontSize: 'medium',
                 showAlbumArt: true,
@@ -502,13 +703,9 @@ function setupRoutes() {
             const userDataPath = serverUserDataPath;
             if (!userDataPath) throw new Error('User data path not set');
             
-            // Clear telemetry
-            const telemetryDir = path.join(userDataPath, 'telemetry');
-            if (fs.existsSync(telemetryDir)) {
-                fs.rmSync(telemetryDir, { recursive: true, force: true });
-                fs.mkdirSync(telemetryDir, { recursive: true });
-            }
-            
+            // Clear in-memory performance diagnostics. No telemetry is persisted to disk.
+            perfDiagnostics.length = 0;
+
             // Clear temp files
             const tempDir = path.join(userDataPath, 'temp_extract');
             if (fs.existsSync(tempDir)) {
@@ -534,30 +731,29 @@ function setupRoutes() {
         res.json({ status: 'ok', timestamp: Date.now() });
     });
 
-    app.post('/api/telemetry/perf', express.json(), (req, res) => {
+    app.post('/api/diagnostics/perf', express.json({ limit: '256kb' }), (req, res) => {
         try {
-            if (!serverUserDataPath) return res.status(500).json({ error: 'Server not initialized' });
             const payload = req.body && (req.body.metrics || req.body);
             if (!payload) return res.status(400).json({ error: 'No metrics provided' });
-            const telemetryDir = path.join(serverUserDataPath, 'telemetry');
-            if (!fs.existsSync(telemetryDir)) fs.mkdirSync(telemetryDir, { recursive: true });
-            const outPath = path.join(telemetryDir, 'perf.jsonl');
-            const writeEntries = Array.isArray(payload) ? payload : [payload];
-            const lines = writeEntries.map(e => JSON.stringify(safeAssign({ receivedAt: Date.now() }, e))).join('\n') + '\n';
-            fs.appendFile(outPath, lines, (err) => {
-                if (err) {
-                    console.error('Failed to write telemetry:', err);
-                    return res.status(500).json({ error: 'Failed to persist telemetry' });
-                }
-                res.json({ success: true });
-            });
+            const entries = (Array.isArray(payload) ? payload : [payload]).slice(0, 50);
+            for (const entry of entries) {
+                if (!entry || typeof entry !== 'object') continue;
+                perfDiagnostics.push(safeAssign({ receivedAt: Date.now() }, entry));
+            }
+            if (perfDiagnostics.length > MAX_PERF_DIAGNOSTICS) {
+                perfDiagnostics.splice(0, perfDiagnostics.length - MAX_PERF_DIAGNOSTICS);
+            }
+            res.json({ success: true, persisted: false, count: entries.length });
         } catch (error) {
-            console.error('Telemetry endpoint error:', error);
+            console.error('Performance diagnostics endpoint error:', error);
             res.status(500).json({ error: error.message });
         }
     });
 
     app.get('/api/tracks', (req, res) => {
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
         try {
             const db = getDb();
             const tracks = db.getAllTracks()
@@ -583,6 +779,9 @@ function setupRoutes() {
     });
 
     app.get('/api/tracks/liked-status', (req, res) => {
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
         try {
             const db = getDb();
             const likedMap = {};
@@ -630,8 +829,10 @@ function setupRoutes() {
             }
 
             // FIX: Normalize path and check if file exists
-            const normalizedPath = resolveSafePath(track.filePath, serverUserDataPath || os.homedir());
-            if (!normalizedPath || !fs.existsSync(normalizedPath)) {
+            const normalizedPath = resolveExistingFile(track.filePath, {
+                allowedExtensions: ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma']
+            });
+            if (!normalizedPath) {
                 console.warn(`[stream] File not found: ${track.filePath}`);
                 return res.status(404).json({ error: 'Audio file not found on disk' });
             }
@@ -656,14 +857,12 @@ function setupRoutes() {
             else if (ext === '.wma') contentType = 'audio/x-ms-wma';
 
             if (range) {
-                const parts = range.replace(/bytes=/, "").split("-");
-                const start = parseInt(parts[0], 10);
-                const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-                const chunksize = (end - start) + 1;
-
-                if (start >= fileSize || end >= fileSize) {
-                    return res.status(416).json({ error: 'Requested range not satisfiable' });
+                let parsedRange;
+                try { parsedRange = rangeFromHeader(range, fileSize); } catch (rangeError) {
+                    return res.status(416).set('Content-Range', `bytes */${fileSize}`).json({ error: rangeError.message });
                 }
+                const { start, end } = parsedRange;
+                const chunksize = (end - start) + 1;
 
                 const file = fs.createReadStream(normalizedPath, { start, end });
                 file.on('error', (streamErr) => {
@@ -676,6 +875,7 @@ function setupRoutes() {
                     'Accept-Ranges': 'bytes',
                     'Content-Length': chunksize,
                     'Content-Type': contentType,
+                    'Cache-Control': 'private, max-age=3600'
                 };
                 res.writeHead(206, head);
                 file.pipe(res);
@@ -684,6 +884,7 @@ function setupRoutes() {
                     'Content-Length': fileSize,
                     'Content-Type': contentType,
                     'Accept-Ranges': 'bytes',
+                    'Cache-Control': 'private, max-age=3600'
                 };
                 res.writeHead(200, head);
                 const file = fs.createReadStream(normalizedPath);
@@ -717,7 +918,9 @@ function setupRoutes() {
                         fp = fp.replace(/^file:\/\//, '');
                     }
                 }
-                const safePath = resolveSafePath(fp, serverUserDataPath || os.homedir());
+                const safePath = resolveExistingFile(fp, {
+                    allowedExtensions: ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma']
+                });
                 return safePath || null;
             }).filter(Boolean)));
 
@@ -796,14 +999,17 @@ function setupRoutes() {
         try {
             const { url } = req.body;
             if (!url) return res.status(400).json({ error: 'URL is required' });
-            if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                return res.status(400).json({ error: 'Invalid URL protocol' });
+            let safeUrl;
+            try {
+                safeUrl = await assertSafeUrl(url, { allowHttp: true });
+            } catch (error) {
+                return res.status(400).json({ error: error.message });
             }
             const downloadsDir = path.join(serverUserDataPath, 'downloads');
             if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
             const tempFileName = `download_${Date.now()}.mp3`;
             const tempFilePath = path.join(downloadsDir, tempFileName);
-            await downloadFile(url, tempFilePath);
+            await downloadFile(safeUrl.href, tempFilePath);
             const { Worker } = require('worker_threads');
             const workerPath = path.join(__dirname, 'worker', 'analyzer.worker.js');
             const worker = new Worker(workerPath);
@@ -859,50 +1065,50 @@ function setupRoutes() {
             let downloadedFile = null;
             let finalPath = null;
 
-            // --- Detect if this is a direct file link (non-YouTube) ---
-            // Check for audio file extensions in URL
-            const isDirectLink = /\.(mp3|wav|ogg|m4a|flac|aac|wma)(\?.*)?$/i.test(url) || 
-                                /^(?!.*(youtube|youtu.be|vimeo|soundcloud|spotify)).*\.(mp3|wav|ogg|m4a|flac)/i.test(url);
-            
+            const safeUrl = await assertSafeUrl(url, { allowHttp: true });
+            const urlPathExt = path.extname(safeUrl.pathname).toLowerCase();
+            const directExtensions = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma']);
+            const isDirectLink = directExtensions.has(urlPathExt);
+
             if (isDirectLink) {
-                // Direct download - use simple HTTP GET
-                const fileName = `import_${timestamp}.mp3`; // Default to mp3
+                const fileName = `import_${timestamp}${urlPathExt}`;
                 finalPath = path.join(downloadsDir, fileName);
-                console.debug(` Downloading direct link: ${url}`);
-                await downloadFileDirect(url, finalPath);
+                console.debug(`Downloading direct audio URL: ${safeUrl.href}`);
+                await downloadFile(safeUrl.href, finalPath);
                 downloadedFile = fileName;
             } else {
-                // Try with youtube-dl-exec (for YouTube and similar services)
-                console.debug(` Downloading with yt-dlp: ${url}`);
-                const tempFileName = `import_${timestamp}.%(ext)s`;
-                const tempFilePath = path.join(downloadsDir, tempFileName);
-                
+                const fileStem = path.join(downloadsDir, `import_${timestamp}`);
+                const ytPath = `${fileStem}.mp3`;
                 try {
-                    // await ytdl(url, {
-                    //     extractAudio: true,
-                    //     audioFormat: 'mp3',
-                    //     audioQuality: 0,
-                    //     output: tempFilePath,
-                    //     noCheckCertificate: true,
-                    //     preferFreeFormats: true,
-                    //     timeout: 120,
-                    //     addHeader: ['User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36']
-                    // });
-                    
-                    // Find the downloaded file
-                    const files = fs.readdirSync(downloadsDir);
-                    downloadedFile = files.find(f => f.startsWith(`import_${timestamp}`));
-                    if (downloadedFile) finalPath = path.join(downloadsDir, downloadedFile);
+                    console.debug(`Trying yt-dlp for media URL: ${safeUrl.href}`);
+                    await downloadWithYtDlp(safeUrl.href, ytPath);
+                    finalPath = ytPath;
+                    downloadedFile = path.basename(ytPath);
                 } catch (ytError) {
-                    console.error('yt-dlp error:', ytError.message);
-                    // Fallback: try direct download (in case URL redirects to a direct file)
+                    // A non-media URL may still redirect to a direct audio response.
+                    const fallbackBase = `${fileStem}.audio`;
                     try {
-                        const fileName = `import_${timestamp}.mp3`;
-                        finalPath = path.join(downloadsDir, fileName);
-                        await downloadFileDirect(url, finalPath);
-                        downloadedFile = fileName;
+                        console.debug(`Falling back to direct media response: ${safeUrl.href}`);
+                        const response = await fetchWithTimeout(safeUrl, { redirect: 'manual' }, 30_000);
+                        if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
+                            const redirected = await assertSafeUrl(new URL(response.headers.get('location'), safeUrl).href, { allowHttp: true });
+                            const redirectedResponse = await fetchWithTimeout(redirected, { redirect: 'manual' }, 30_000);
+                            if (!redirectedResponse.ok) throw new Error(`Server responded with status: ${redirectedResponse.status}`);
+                            const ext = extensionFromContentType(redirectedResponse.headers.get('content-type'), '.mp3');
+                            finalPath = `${fileStem}${ext}`;
+                            await writeResponseToFile(redirectedResponse, finalPath);
+                        } else {
+                            if (!response.ok) throw new Error(`Server responded with status: ${response.status}`);
+                            const contentType = response.headers.get('content-type') || '';
+                            if (!contentType.toLowerCase().startsWith('audio/')) {
+                                throw new Error('URL is not a direct audio resource and yt-dlp is unavailable');
+                            }
+                            finalPath = `${fileStem}${extensionFromContentType(contentType, '.mp3')}`;
+                            await writeResponseToFile(response, finalPath);
+                        }
+                        downloadedFile = path.basename(finalPath);
                     } catch (fallbackErr) {
-                        throw new Error(`Download failed: ${ytError.message || fallbackErr.message}`);
+                        throw new Error(`Media import failed. yt-dlp: ${ytError.message}; direct fallback: ${fallbackErr.message}`);
                     }
                 }
             }
@@ -973,44 +1179,6 @@ function setupRoutes() {
             res.status(500).json({ error: error.message || 'Failed to import track from URL' });
         }
     });
-
-    async function downloadFileDirect(fileUrl, destPath) {
-        const urlObj = await assertSafeUrl(fileUrl);
-        return new Promise((resolve, reject) => {
-            const client = urlObj.protocol === 'https:' ? https : http;
-
-            const request = client.get(urlObj, (response) => {
-                if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-                    const redirectUrl = new URL(response.headers.location, urlObj).href;
-                    return downloadFileDirect(redirectUrl, destPath).then(resolve).catch(reject);
-                }
-
-                if (response.statusCode !== 200) {
-                    return reject(new Error(`Server responded with status: ${response.statusCode}`));
-                }
-
-                const fileStream = fs.createWriteStream(destPath);
-                response.pipe(fileStream);
-
-                fileStream.on('finish', () => {
-                    fileStream.close();
-                    resolve();
-                });
-
-                fileStream.on('error', (err) => {
-                    fs.unlink(destPath, () => {});
-                    reject(err);
-                });
-            });
-
-            request.setTimeout(30000, () => {
-                request.destroy();
-                reject(new Error('Download timeout'));
-            });
-
-            request.on('error', reject);
-        });
-    }
 
     app.get('/api/playlists', (req, res) => {
         try {
@@ -1359,7 +1527,7 @@ function setupRoutes() {
     app.put('/api/tracks/:id/tags', async (req, res) => {
         try {
             const db = getDb();
-            const track = db.getTrackById(parseInt(req.params.id));
+            const track = db.getMutableTrackById(parseInt(req.params.id));
             if (!track) return res.status(404).json({ error: 'Track not found' });
             const { title, artist, album, genre, year, trackNumber, composer, lyrics } = req.body;
             if (title !== undefined) track.title = title;
@@ -1370,6 +1538,7 @@ function setupRoutes() {
             if (trackNumber !== undefined) track.trackNumber = trackNumber;
             if (composer !== undefined) track.composer = composer;
             if (lyrics !== undefined) track.lyrics = lyrics;
+            track.updatedAt = Date.now();
             db.save();
             res.json({ success: true, track });
         } catch (error) {
@@ -1630,10 +1799,11 @@ function setupRoutes() {
     app.post('/api/tracks/:id/detect-bpm', async (req, res) => {
         try {
             const db = getDb();
-            const track = db.getTrackById(parseInt(req.params.id));
+            const track = db.getMutableTrackById(parseInt(req.params.id));
             if (!track || !track.filePath) return res.status(404).json({ error: 'Track not found' });
             const realBpm = await detectRealBPM(track.filePath);
             track.bpm = realBpm;
+            track.updatedAt = Date.now();
             db.save();
             res.json({ success: true, bpm: realBpm });
         } catch (error) {
@@ -1644,7 +1814,12 @@ function setupRoutes() {
 
 }
 
+let runningServer = null;
+
 async function startServer(port, userDataPath) {
+    if (runningServer && !runningServer.listening) runningServer = null;
+    if (runningServer && runningServer.listening) return runningServer;
+
     serverUserDataPath = userDataPath;
     initDatabase(userDataPath);
     userHistory = loadUserHistory(userDataPath);
@@ -1660,6 +1835,9 @@ async function startServer(port, userDataPath) {
         logger: console,
         pluginSettings,
         performanceMonitor: pluginPerf,
+        appRoot: path.resolve(__dirname, '../..'),
+        pluginsDir: path.join(userDataPath, 'plugins'),
+        bundledPluginsDir: path.join(path.resolve(__dirname, '../..'), 'plugins'),
         hotReload: false
     });
     console.debug(` Plugin system initialized: ${pluginManager.listInstalled().length} plugins available`);
@@ -1681,7 +1859,7 @@ async function startServer(port, userDataPath) {
     AudioSeparator.setTempDirectory(extractTempDir);
     setupRoutes();
     const PluginStore = require('./pluginStore');
-    const pluginStore = new PluginStore();
+    const pluginStore = new PluginStore({ appRoot: path.resolve(__dirname, '../..') });
     setupPluginRoutes(app, pluginManager, pluginHost, pluginStore);
 
     // Fallback for API routes to return JSON instead of HTML 404 pages
@@ -1708,6 +1886,7 @@ async function startServer(port, userDataPath) {
                 console.debug(` Server on port http://127.0.0.1:${port}`);
                 console.debug(` AI recommendation engine active`);
                 console.debug(` Plugin routes ready at /api/plugins`);
+                runningServer = server;
                 resolve(server);
             })
             .on('error', (err) => {

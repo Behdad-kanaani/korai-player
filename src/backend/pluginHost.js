@@ -2,6 +2,7 @@ const { Worker } = require('worker_threads');
 const path = require('path');
 const fs = require('fs');
 const EventEmitter = require('events');
+const { isPathInside } = require('./securityUtils');
 
 // optional: prefer chokidar for reliable file watching
 let chokidar = null;
@@ -65,8 +66,11 @@ class PluginHost extends EventEmitter {
     if (!entry || !entry.enabled) throw new Error(`Plugin not found or not enabled: ${id}`);
     if (this.runningPlugins.has(id)) throw new Error(`Plugin already running: ${id}`);
 
-    const pluginPath = path.join(entry.path, entry.entry);
-    if (!fs.existsSync(pluginPath)) throw new Error(`Plugin entry not found: ${pluginPath}`);
+    if (!entry.path || !isPathInside(this.opts.pluginsDir || path.resolve(entry.path, '..'), entry.path)) {
+      throw new Error(`Invalid plugin path: ${id}`);
+    }
+    const pluginPath = path.resolve(entry.path, entry.entry);
+    if (!isPathInside(entry.path, pluginPath) || !fs.existsSync(pluginPath)) throw new Error(`Plugin entry not found: ${pluginPath}`);
 
     const worker = new Worker(path.join(__dirname, 'pluginWorker.js'), {
       resourceLimits: {
@@ -122,7 +126,7 @@ class PluginHost extends EventEmitter {
               // Setup hot-reload watcher if enabled (prefer chokidar)
               if (this.opts && this.opts.hotReload) {
                 try {
-                  const pluginDir = path.dirname(this.registry[id].path || '');
+                  const pluginDir = this.registry[id].path;
                   if (chokidar) {
                     const watcher = chokidar.watch(pluginDir, { ignoreInitial: true, depth: 5 });
                     watcher.on('all', (evt, file) => {
@@ -166,13 +170,13 @@ class PluginHost extends EventEmitter {
             }
           } else if (msg.type === 'activate-error') {
             clearTimeout(timeout);
-              if (!resolved) {
-                resolved = true;
-                try { worker.removeAllListeners(); } catch (e) {}
+            if (!resolved) {
+              resolved = true;
+              try { worker.removeAllListeners(); } catch (e) {}
                 worker.terminate();
-                this.runningPlugins.delete(id);
-                reject(new Error(`Plugin activate failed: ${msg.error}`));
-              }
+              this.runningPlugins.delete(id);
+              reject(new Error(`Plugin activate failed: ${msg.error}`));
+            }
           } else if (msg.type === 'log') {
             this.logger.log(`[${id}]`, msg.data);
           } else if (msg.type === 'perf') {
@@ -236,7 +240,7 @@ class PluginHost extends EventEmitter {
               try {
                 const base = this.opts && this.opts.appRoot ? this.opts.appRoot : path.resolve(__dirname, '..', '..');
                 const full = path.resolve(base, msg.path);
-                if (!full.startsWith(base)) throw new Error('access outside project not allowed');
+                if (!isPathInside(base, full)) throw new Error('access outside project not allowed');
                 const data = fs.readFileSync(full, 'utf8');
                 worker.postMessage({ type: 'fs-read-reply', path: msg.path, content: data });
               } catch (e) {
@@ -253,7 +257,7 @@ class PluginHost extends EventEmitter {
               try {
                 const base = this.opts && this.opts.appRoot ? this.opts.appRoot : path.resolve(__dirname, '..', '..');
                 const full = path.resolve(base, msg.path);
-                if (!full.startsWith(base)) throw new Error('access outside project not allowed');
+                if (!isPathInside(base, full)) throw new Error('access outside project not allowed');
                 fs.mkdirSync(path.dirname(full), { recursive: true });
                 fs.writeFileSync(full, msg.content, 'utf8');
                 worker.postMessage({ type: 'fs-write-reply', path: msg.path, success: true });
@@ -335,30 +339,29 @@ class PluginHost extends EventEmitter {
         }
       }, this.timeout);
 
-      plugin.worker.once('message', (msg) => {
-        if (msg.type === 'deactivate-ok') {
-          clearTimeout(timeout);
-          if (!responded) {
-            responded = true;
-            try {
-              if (plugin.watcher) plugin.watcher.close();
-            } catch (e) {}
-            plugin.worker.terminate();
-                this.runningPlugins.delete(id);
-                // Cleanup plugin-related events
-                try {
-                  const evNames = this.eventNames();
-                  for (const ev of evNames) {
-                    if (typeof ev === 'string' && ev.startsWith(`plugin:${id}:`)) {
-                      this.removeAllListeners(ev);
-                    }
-                  }
-                } catch (e) {}
-            this.logger.log(`[Plugin] Deactivated: ${id}`);
-            resolve();
+      const onMessage = (msg) => {
+        if (responded) return;
+        if (msg?.type !== 'deactivate-ok' && msg?.type !== 'deactivate-error') return;
+        clearTimeout(timeout);
+        responded = true;
+        plugin.worker.removeListener('message', onMessage);
+        try { if (plugin.watcher) plugin.watcher.close(); } catch {}
+        try { plugin.worker.terminate(); } catch {}
+        this.runningPlugins.delete(id);
+        try {
+          for (const ev of this.eventNames()) {
+            if (typeof ev === 'string' && ev.startsWith(`plugin:${id}:`)) this.removeAllListeners(ev);
           }
+        } catch {}
+        if (msg.type === 'deactivate-error') {
+          this.logger.warn(`[Plugin] Deactivate hook failed for ${id}: ${msg.error || 'unknown error'}`);
+          reject(new Error(msg.error || `Plugin deactivate failed: ${id}`));
+        } else {
+          this.logger.log(`[Plugin] Deactivated: ${id}`);
+          resolve();
         }
-      });
+      };
+      plugin.worker.on('message', onMessage);
 
       plugin.worker.postMessage({ type: 'unload' });
     });
@@ -374,18 +377,22 @@ class PluginHost extends EventEmitter {
 
     return new Promise((resolve, reject) => {
       const msgId = Math.random().toString(36);
+      let settled = false;
+      const handler = (msg) => {
+        if (settled || msg?.type !== 'hook-response' || msg.msgId !== msgId) return;
+        settled = true;
+        clearTimeout(timeout);
+        plugin.worker.removeListener('message', handler);
+        if (msg.error) reject(new Error(msg.error));
+        else resolve(msg.result);
+      };
+
       const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        plugin.worker.removeListener('message', handler);
         reject(new Error(`Hook call timeout: ${id}.${hookName}`));
       }, this.timeout);
-
-      const handler = (msg) => {
-        if (msg.type === 'hook-response' && msg.msgId === msgId) {
-          clearTimeout(timeout);
-          plugin.worker.removeListener('message', handler);
-          if (msg.error) reject(new Error(msg.error));
-          else resolve(msg.result);
-        }
-      };
 
       plugin.worker.on('message', handler);
       plugin.worker.postMessage({

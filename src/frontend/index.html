@@ -1,17 +1,18 @@
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="en" dir="ltr" data-korai-ui="1.6.4-final">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- Content Security Policy: allow local http APIs (127.0.0.1) for Electron dev server and local media streams -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data:; connect-src 'self' http: https: data:; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: http: https:; font-src 'self' https: data:; media-src 'self' http: https: data: blob:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data:; connect-src 'self' http://127.0.0.1:* http://localhost:* https://raw.githubusercontent.com https://api.github.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data: http://127.0.0.1:* https: blob:; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:; media-src 'self' http://127.0.0.1:* blob:;">
     <title>KORAI Music Player</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="update.css">
-    <link rel="stylesheet" href="additional.css">
-</head>
-<body class="theme-default rtl">
+    <link rel="stylesheet" href="styles/core.css">
+    <link rel="stylesheet" href="styles/home.css">
+    <link rel="stylesheet" href="styles/update.css">
+    <link rel="stylesheet" href="styles/ui.css">
+    </head>
+<body class="theme-default ltr">
 
     <div class="glass-bg-blobs-container">
         <div class="glass-blob glass-blob-1"></div>
@@ -22,7 +23,7 @@
         <div class="splash-loader-box">
             <div class="splash-glow-accent"></div>
             <div class="splash-content">
-                <i class="fa-solid fa-compact-disc spin-logo splash-spinning-disc"></i>
+                <i class="fa-solid fa-compact-disc spin-logo splash-spinning-disc" aria-hidden="true"></i>
                 <h2 class="splash-brand">KORAI Core</h2>
                 <div class="splash-dev-credit">
                     <a href="https://github.com/Behdad-kanaani/" class="credit-link" target="_blank">
@@ -83,13 +84,13 @@
 
     <div class="custom-title-bar" id="appTitleBar">
         <div class="title-bar-brand">
-            <i class="fa-solid fa-compact-disc spin-logo" style="animation-duration: 6s; font-size: 0.95rem;"></i>
+            <i class="fa-solid fa-compact-disc spin-logo titlebar-logo-icon"></i>
             <span>KORAI Music Player</span>
             <span id="versionStatus" class="version-status-badge">--</span>
             <button class="github-star-btn" id="githubRepoBtn" onclick="window.electronAPI.openExternalLink('https://github.com/Behdad-kanaani/korai-player')">
                 <div class="github-btn-content">
                     <i class="fa-brands fa-github"></i>
-                    <span>Star on GitHub</span>
+                    <span data-translate="githubStar">Star on GitHub</span>
                 </div>
                 <div class="github-btn-glow"></div>
             </button>
@@ -107,16 +108,16 @@
                 <i class="fa-solid fa-music"></i>
             </div>
             <div class="mini-track-info">
-                <h5 id="miniTitle" class="truncate-text">Ready to Play</h5>
-                <p id="miniArtist" class="truncate-text">KORAI Player</p>
+                <h5 id="miniTitle" class="truncate-text" data-translate="readyToPlay">Ready to Play</h5>
+                <p id="miniArtist" class="truncate-text" data-translate="miniPlayerName">KORAI Player</p>
             </div>
             <div class="mini-controls">
-                <button class="mini-ctrl-btn" onclick="prevTrack()"><i class="fa-solid fa-backward-step"></i></button>
-                <button class="playback-play-main mini" id="miniPlayBtn">
+                <button class="mini-ctrl-btn" id="miniPrevBtn" onclick="prevTrack()" data-translate-aria="previousTrackAria" aria-label="Previous track"><i class="fa-solid fa-backward-step"></i></button>
+                <button class="playback-play-main mini" id="miniPlayBtn" data-translate-aria="playOrPause" aria-label="Play or pause">
                     <i class="fa-solid fa-play" id="miniPlayIcon"></i>
                 </button>
-                <button class="mini-ctrl-btn" onclick="nextTrack()"><i class="fa-solid fa-forward-step"></i></button>
-                <button class="mini-ctrl-btn toggle-back" id="exitMiniBtn"><i class="fa-solid fa-expand"></i></button>
+                <button class="mini-ctrl-btn" id="miniNextBtn" onclick="nextTrack()" data-translate-aria="nextTrackAria" aria-label="Next track"><i class="fa-solid fa-forward-step"></i></button>
+                <button class="mini-ctrl-btn toggle-back" id="exitMiniBtn" data-translate-aria="returnToPlayer" aria-label="Return to main player"><i class="fa-solid fa-expand"></i></button>
             </div>
         </div>
         <div class="mini-timeline-bar" onclick="seekFromMini(event)">
@@ -128,12 +129,8 @@
         
         <aside class="spotify-sidebar">
             <div class="app-logo">
-                <i class="fa-solid fa-compact-disc spin-logo" style="animation-duration: 6s;"></i>
+                <i class="fa-solid fa-compact-disc spin-logo sidebar-logo-icon"></i>
                 <span>KORAI</span>
-                <div class="skin-selector-pill" id="skinSelector">
-                    <button class="skin-btn active" data-skin="default"><i class="fa-solid fa-circle"></i></button>
-                    <button class="skin-btn" data-skin="liquid-glass"><i class="fa-solid fa-snowflake"></i></button>
-                </div>
             </div>
 
             <nav class="sidebar-nav">
@@ -147,7 +144,7 @@
                 </div>
                 <div class="nav-item" id="navExplorer" onclick="window.location.href='explorer.html'">
                     <i class="fa-solid fa-compass"></i>
-                    <span>Explorer</span>
+                    <span data-translate="navExplorerText">Explorer</span>
                 </div>
                 <div class="nav-item" id="navArtists" onclick="switchSection('artists')">
                     <i class="fa-solid fa-microphone"></i>
@@ -173,12 +170,12 @@
             </nav>
             
 
-            <div class="nav-divider" style="height: 1px; background: rgba(255,255,255,0.1); margin: 15px 0;"></div>
+            <div class="nav-divider"></div>
 
-            <nav class="sidebar-nav" style="margin-top: 10px;">
+            <nav class="sidebar-nav sidebar-tools-nav">
                 <div class="nav-item plugin-item" id="navPlugins" onclick="openPluginsManager()">
                     <i class="fa-solid fa-plug"></i>
-                    <span>Plugins</span>
+                    <span data-translate="navPluginsText">Plugins</span>
                 </div>
             </nav>
 
@@ -188,19 +185,19 @@
                     <span data-translate="aiPanelTitle">KORAI AI</span>
                 </div>
                 <!-- <p class="ai-desc" data-translate="aiPanelDesc">Find similar tracks based on rhythm and frequency patterns</p> -->
-                <button id="aiRecommendBtn" class="ai-action-btn" data-tooltip="Analyze Waveform">
+                <button id="aiRecommendBtn" class="ai-action-btn" data-tooltip="Analyze Waveform" data-translate-tooltip="aiBtnText">
                     <i class="fa-solid fa-chart-line"></i>
                     <!-- <span data-translate="aiBtnText">Analyze Pattern</span> -->
                 </button>
-                <button id="createSimilarPlaylistBtn" class="ai-action-btn" data-tooltip="Create Similar Playlist">
+                <button id="createSimilarPlaylistBtn" class="ai-action-btn" data-tooltip="Create Similar Playlist" data-translate-tooltip="similarPlaylist">
                     <i class="fa-solid fa-music"></i>
                     <!-- <span data-translate="similarPlaylist">Similar Playlist</span> -->
                 </button>
-                <button id="exportLibraryBtn" class="ai-action-btn" data-tooltip="Export Library">
+                <button id="exportLibraryBtn" class="ai-action-btn" data-tooltip="Export Library" data-translate-tooltip="exportLibrary">
                     <i class="fa-solid fa-download"></i>
                     <!-- <span data-translate="exportLibrary">Export Library</span> -->
                 </button>
-                <button id="importCueBtn" class="ai-action-btn" data-tooltip="Import CUE Sheet">
+                <button id="importCueBtn" class="ai-action-btn" data-tooltip="Import CUE Sheet" data-translate-tooltip="importCue">
                     <i class="fa-solid fa-file-lines"></i>
                     <!-- <span data-translate="importCue">CUE Sheet</span> -->
                 </button>
@@ -209,7 +206,7 @@
             <div class="playlists-sidebar-section">
                 <div class="playlists-header">
                     <span data-translate="menuTitle">Playlists Library</span>
-                    <button class="create-playlist-btn" onclick="promptCreatePlaylist()"><i class="fa-solid fa-plus"></i></button>
+                    <button class="create-playlist-btn" onclick="promptCreatePlaylist()" data-translate-title="createPlaylist" data-translate-aria="createPlaylist"><i class="fa-solid fa-plus"></i></button>
                 </div>
                 <div class="playlists-scroll-list" id="sidebarPlaylists"></div>
             </div>
@@ -222,14 +219,14 @@
                         <small id="upTextSub" data-translate="upTextSub">Add single local track</small>
                     </div>
                 </div>
-                <div class="upload-music-trigger" id="uploadFolderArea" style="margin-top: 8px;">
+                <div class="upload-music-trigger upload-gap" id="uploadFolderArea">
                     <div class="upload-icon-box"><i class="fa-solid fa-folder-open"></i></div>
                     <div class="upload-text-box">
                         <span id="upFolderTitle" data-translate="upFolderTitle">Scan Audio Folder</span>
                         <small id="upFolderSub" data-translate="upFolderSub">Bulk import entire directory</small>
                     </div>
                 </div>
-                <div class="upload-music-trigger online-download" onclick="promptDownloadFromUrl()" style="margin-top: 8px;">
+                <div class="upload-music-trigger online-download upload-gap" onclick="promptDownloadFromUrl()">
                     <div class="upload-icon-box"><i class="fa-solid fa-cloud-arrow-down"></i></div>
                     <div class="upload-text-box">
                         <span id="upUrlTitle" data-translate="upUrlTitle">Stream from Link</span>
@@ -248,9 +245,9 @@
                 </div>
                 
                 <div class="profile-header-widget">
-                    <button class="utility-trigger-btn" id="queueBtn"><i class="fa-solid fa-list-ol"></i></button>
-                    <button class="utility-trigger-btn" id="miniplayerToggleBtn"><i class="fa-solid fa-compress"></i></button>
-                    <button class="utility-trigger-btn" id="dspToggleBtn"><i class="fa-solid fa-sliders"></i></button>
+                    <button class="utility-trigger-btn" id="queueBtn" data-translate-title="openQueue" data-translate-aria="openQueue" title="Play queue" aria-label="Open play queue"><i class="fa-solid fa-list-ol"></i></button>
+                    <button class="utility-trigger-btn" id="miniplayerToggleBtn" data-translate-title="openMiniPlayer" data-translate-aria="openMiniPlayer" title="Mini player" aria-label="Open mini player"><i class="fa-solid fa-compress"></i></button>
+                    <button class="utility-trigger-btn" id="dspToggleBtn" data-translate-title="openDsp" data-translate-aria="openDsp" title="DSP Studio" aria-label="Open DSP Studio"><i class="fa-solid fa-sliders"></i></button>
                     <div class="quick-counter">
                         <i class="fa-solid fa-music"></i>
                         <span id="quickTotalTracks">0</span>
@@ -277,55 +274,59 @@
         </main>
     </div>
 
-    <footer class="premium-playback-bar" id="playbackBar" style="opacity: 0; transition: opacity 0.8s ease;">
-        <div class="player-left-song-info">
+    <footer class="premium-playback-bar" id="playbackBar">
+        <div class="player-left-song-info player-zone player-zone-now">
             <div class="song-cover-frame" id="playerAlbumArt">
                 <i class="fa-solid fa-music fallback-icon"></i>
             </div>
             <div class="song-metadata">
-                <h4 id="playerTitle" class="truncate-text">Ready to Play</h4>
-                <p id="playerArtist" class="truncate-text">Select a track</p>
+                <h4 id="playerTitle" class="truncate-text" data-translate="readyToPlay">Ready to Play</h4>
+                <p id="playerArtist" class="truncate-text" data-translate="selectTrack">Select a track</p>
             </div>
         </div>
 
-        <div class="player-center-controls">
+        <div class="player-center-controls player-zone player-zone-center">
             <div class="playback-buttons-row">
-                <button class="playback-utility-btn" id="shuffleBtnK"><i class="fa-solid fa-shuffle"></i></button>
-                <button class="playback-utility-btn" id="preferredGenreBtn" title="حالت سبک محبوب"><i class="fa-solid fa-heart"></i></button>
-                <button class="playback-step-btn" id="prevBtnK"><i class="fa-solid fa-backward-step"></i></button>
-                <button class="playback-play-main" id="mainPlayBtn"><i class="fa-solid fa-play" id="mainPlayIcon"></i></button>
-                <button class="playback-step-btn" id="nextBtnK"><i class="fa-solid fa-forward-step"></i></button>
-                <button class="playback-utility-btn" id="repeatBtnK"><i class="fa-solid fa-repeat"></i></button>
+                <button class="playback-utility-btn" id="shuffleBtnK" data-translate-title="shuffle" data-translate-aria="shuffle" title="Shuffle" aria-label="Shuffle"><i class="fa-solid fa-shuffle"></i></button>
+                <button class="playback-utility-btn" id="preferredGenreBtn" data-translate-title="preferredGenre" data-translate-aria="preferredGenre" title="Preferred genre" aria-label="Preferred genre"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
+                <button class="playback-step-btn" id="prevBtnK" data-translate-title="previousTrackAria" data-translate-aria="previousTrackAria" title="Previous track" aria-label="Previous track"><i class="fa-solid fa-backward-step"></i></button>
+                <button class="playback-play-main" id="mainPlayBtn" data-translate-title="playOrPause" data-translate-aria="playOrPause" title="Play / Pause" aria-label="Play or pause"><i class="fa-solid fa-play" id="mainPlayIcon"></i></button>
+                <button class="playback-step-btn" id="nextBtnK" data-translate-title="nextTrackAria" data-translate-aria="nextTrackAria" title="Next track" aria-label="Next track"><i class="fa-solid fa-forward-step"></i></button>
+                <button class="playback-utility-btn" id="repeatBtnK" data-translate-title="repeat" data-translate-aria="repeat" title="Repeat" aria-label="Repeat"><i class="fa-solid fa-repeat"></i></button>
             </div>
 
             <div class="playback-timeline-wrapper">
                 <span class="time-stamp-current" id="currentTimeK">0:00</span>
-                <div class="timeline-bar-bg" id="progressBarK">
+                <div class="timeline-bar-bg" id="progressBarK" role="slider" data-translate-aria="trackProgress" aria-label="Track progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div class="timeline-progress-fill" id="progressFillK"></div>
                     <div class="scrub-time-tooltip" id="scrubTooltip">0:00</div>
                 </div>
                 <span class="time-stamp-duration" id="durationK">0:00</span>
             </div>
         </div>
 
-        <div class="player-right-utilities">
+        <div class="player-right-utilities player-zone player-zone-actions">
+            <div class="player-volume-cluster">
+            <span class="player-control-label" data-translate="volume">VOLUME</span>
             <div class="volume-widget">
-                <button class="volume-mute-toggle" id="volumeIcon"><i class="fa-solid fa-volume-high"></i></button>
+                <button class="volume-mute-toggle" id="volumeIcon" data-translate-title="muteUnmute" data-translate-aria="muteUnmute" title="Mute / unmute" aria-label="Mute or unmute"><i class="fa-solid fa-volume-high"></i></button>
                 <div class="volume-slider-bg">
                     <input type="range" class="volume-input-range" id="volumeSlider" min="0" max="1" step="0.01" value="0.7">
                 </div>
             </div>
-            <button class="utility-trigger-btn expand small-like-btn" id="fullscreenBtn"><i class="fa-solid fa-maximize"></i></button>
-            <button class="small-like-btn" id="songInfoBtn" title="Song Info &amp; Vocal Extraction">
+            </div>
+            <button class="utility-trigger-btn expand small-like-btn" id="fullscreenBtn" data-translate-title="immersivePlayer" data-translate-aria="immersivePlayer" title="Immersive player" aria-label="Open immersive player"><i class="fa-solid fa-maximize"></i></button>
+            <button class="small-like-btn" id="songInfoBtn" data-translate-title="songInfoVocal" data-translate-aria="songInfo" title="Song Info &amp; Vocal Extraction" aria-label="Song info">
                 <i class="fa-solid fa-circle-info"></i>
             </button>
-            <button class="small-like-btn" id="likeBtnK">
+            <button class="small-like-btn" id="likeBtnK" data-translate-title="likeTrack" data-translate-aria="likeTrack" title="Like track" aria-label="Like track">
                 <i class="fa-regular fa-heart"></i>
             </button>
         </div>
     </footer>
 
-    <div class="context-menu" id="playlistContextMenu" style="display: none;">
-        <div class="context-header" data-translate="playlistModalTitle">Add to Playlist</div>
+    <div class="context-menu is-hidden" id="playlistContextMenu" hidden>
+        <div class="context-header" data-translate="addToPlaylist">Add to Playlist</div>
         <div class="context-items-list" id="contextPlaylistItems"></div>
     </div>
 
@@ -340,7 +341,7 @@
     <div class="fullscreen-immersive-player" id="fullscreenPlayer">
         <div class="immersive-ambient-blur-bg" id="fsBgBlur"></div>
         <header class="immersive-header">
-            <div class="brand-badge-fs"><span>KORAI CINEMATIC STAGE</span></div>
+            <div class="brand-badge-fs"><span data-translate="cinematicStage">KORAI CINEMATIC STAGE</span></div>
             <button class="exit-immersive-btn" id="fsCloseBtn"><i class="fa-solid fa-compress"></i> <span id="fsExitText" data-translate="fsExitText">Exit Immersive Stage</span></button>
         </header>
 
@@ -352,17 +353,17 @@
                 </div>
                 <div class="immersive-track-badges">
                     <span class="track-badge-pill" id="fsBpmBadge"><i class="fa-solid fa-heartbeat"></i> -- BPM</span>
-                    <span class="track-badge-pill energy" id="fsEnergyBadge"><i class="fa-solid fa-bolt"></i> -- Energy</span>
+                    <span class="track-badge-pill energy" id="fsEnergyBadge"><i class="fa-solid fa-bolt"></i> -- <span data-translate="energy">Energy</span></span>
                 </div>
             </div>
 
             <div class="immersive-lyrics-column">
                 <div class="lyrics-header">
-                    <h1 id="fsTitle">Untitled</h1>
-                    <p id="fsArtist">Unknown Artist</p>
+                    <h1 id="fsTitle" data-translate="untitled">Untitled</h1>
+                    <p id="fsArtist" data-translate="unknownArtist">Unknown Artist</p>
                 </div>
                 <div class="lyrics-scroller-view" id="fsLyrics">
-                    <p class="no-lyrics-msg">Analyzing metadata lyrics...</p>
+                    <p class="no-lyrics-msg" data-translate="analyzingLyrics">Analyzing lyrics in track metadata...</p>
                 </div>
             </div>
         </div>
@@ -384,10 +385,10 @@
     <div class="custom-modal-overlay" id="createPlaylistModal" style="display: none;">
         <div class="custom-modal-card">
             <div class="modal-indicator-header">
-                <i class="fa-solid fa-folder-plus" style="color: var(--accent-cyan);"></i>
+                <i class="fa-solid fa-folder-plus accent-icon"></i>
                 <h4 id="playlistModalTitle" data-translate="playlistModalTitle">Create New Playlist</h4>
             </div>
-            <div class="modal-body-content" style="margin: 20px 0;">
+            <div class="modal-body-content modal-body-spaced">
                 <input type="text" id="newPlaylistInputName" data-translate-placeholder="playlistPlaceholder" placeholder="Enter playlist name...">
             </div>
             <div class="modal-buttons-footer">
@@ -400,15 +401,15 @@
     <div class="custom-modal-overlay" id="downloadUrlModal" style="display: none;">
         <div class="custom-modal-card">
             <div class="modal-indicator-header">
-                <i class="fa-solid fa-cloud-arrow-down" style="color: var(--accent-cyan);"></i>
+                <i class="fa-solid fa-cloud-arrow-down accent-icon"></i>
                 <h4 id="downloadModalTitle" data-translate="downloadModalTitle">Download MP3 from Link</h4>
             </div>
-            <div class="modal-body-content" style="margin: 20px 0;">
+            <div class="modal-body-content modal-body-spaced">
                 <input type="url" id="downloadUrlInput" data-translate-placeholder="downloadPlaceholder" placeholder="Paste direct audio stream URL here...">
             </div>
             <div class="modal-buttons-footer">
                 <button class="modal-btn cancel" onclick="closeDownloadUrlModal()" data-translate="dialogCancel">Cancel</button>
-                <button class="modal-btn confirm" id="confirmDownloadBtn" style="background: var(--accent-cyan); color: #000;" data-translate="downloadBtn">Download & Import</button>
+                <button class="modal-btn confirm accent-confirm" id="confirmDownloadBtn" data-translate="downloadBtn">Download & Import</button>
             </div>
         </div>
     </div>
@@ -417,9 +418,9 @@
         <div class="custom-modal-card">
             <div class="modal-indicator-header">
                 <i class="fa-solid fa-triangle-exclamation"></i>
-                <h4 id="dialogTitle">System Warning</h4>
+                <h4 id="dialogTitle" data-translate="systemWarning">System Warning</h4>
             </div>
-            <p class="modal-body-text" id="dialogMessage">Are you sure you want to proceed?</p>
+            <p class="modal-body-text" id="dialogMessage" data-translate="confirmProceed">Are you sure you want to proceed?</p>
             <div class="modal-buttons-footer">
                 <button class="modal-btn cancel" id="dialogCancelBtn" data-translate="dialogCancel">Cancel</button>
                 <button class="modal-btn confirm" id="dialogConfirmBtn" data-translate="dialogConfirm">Confirm</button>
@@ -427,84 +428,83 @@
         </div>
     </div>
 
-    <div class="dsp-drawer-panel" id="dspPanel">
+    <div class="dsp-drawer-panel" id="dspPanel" aria-label="DSP Studio">
         <div class="dsp-drawer-header">
-            <h3><i class="fa-solid fa-sliders"></i> <span>DSP Studio</span></h3>
-            <button class="close-drawer-btn" id="closeDspBtn"><i class="fa-solid fa-xmark"></i></button>
+            <div class="dsp-heading">
+                <div class="dsp-heading-icon"><i class="fa-solid fa-sliders"></i></div>
+                <div>
+                    <span class="dsp-kicker" data-translate="dspProcessing">AUDIO PROCESSING</span>
+                    <h3 data-translate="openDsp">DSP Studio</h3>
+                </div>
+            </div>
+            <button class="close-drawer-btn" id="closeDspBtn" data-translate-aria="closeDsp" aria-label="Close DSP Studio"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div class="dsp-drawer-content">
-            <div class="dsp-control-group">
-                <label class="dsp-label-display">
-                    <span>Playback Tempo:</span>
-                    <strong id="tempoVal" style="color: var(--accent-cyan);">1.00x</strong>
-                </label>
-                <input type="range" id="tempoSlider" min="0.5" max="2.0" step="0.05" value="1.0" class="dsp-slider-track">
-            </div>
-            
-            <div class="dsp-control-group flex-row-align">
-                <span style="font-size:0.75rem; color:var(--spotify-text-muted);" data-translate="dspPreservePitch">Preserve Pitch:</span>
-                <label class="switch">
-                    <input type="checkbox" id="pitchToggle" checked>
-                    <span class="switch-slider"></span>
-                </label>
-            </div>
+            <section class="dsp-section dsp-section-playback">
+                <div class="dsp-section-heading">
+                    <div>
+                        <span class="dsp-section-kicker" data-translate="playbackSection">PLAYBACK</span>
+                        <h4 data-translate="motionTransition">Motion &amp; transition</h4>
+                    </div>
+                    <i class="fa-solid fa-waveform-lines"></i>
+                </div>
 
-            <div class="dsp-control-group divider-bottom">
-                <label class="dsp-label-display">
-                    <span>Gapless Playback:</span>
-                    <label class="switch">
-                        <input type="checkbox" id="gaplessToggle" checked>
-                        <span class="switch-slider"></span>
+                <div class="dsp-control-group">
+                    <label class="dsp-label-display" for="tempoSlider">
+                        <span data-translate="tempo"><i class="fa-solid fa-gauge-high"></i> Playback Tempo</span>
+                        <strong id="tempoVal">1.00x</strong>
                     </label>
-                </label>
-            </div>
+                    <input type="range" id="tempoSlider" min="0.5" max="2.0" step="0.05" value="1.0" class="dsp-slider-track">
+                    <div class="dsp-range-scale"><span>0.50x</span><span>1.00x</span><span>2.00x</span></div>
+                </div>
 
-            <div class="dsp-control-group">
-                <label class="dsp-label-display">
-                    <span>Crossfade Duration:</span>
-                    <strong id="crossfadeVal" style="color: var(--accent-cyan);">0s</strong>
-                </label>
-                <input type="range" id="crossfadeSlider" min="0" max="12" step="0.5" value="0" class="dsp-slider-track">
-            </div>
+                <div class="dsp-toggle-row">
+                    <div class="dsp-toggle-copy"><i class="fa-solid fa-music"></i><div><strong data-translate="preservePitch">Preserve Pitch</strong><span data-translate="preservePitchDesc">Keep vocals natural when tempo changes</span></div></div>
+                    <label class="switch" data-translate-aria="preservePitch" aria-label="Preserve Pitch"><input type="checkbox" id="pitchToggle" checked><span class="switch-slider"></span></label>
+                </div>
 
-            <div class="eq-title" data-translate="dspTitle">Graphic Studio Equalizer</div>
-            <div class="eq-grid">
-                <div class="eq-slider-col">
-                    <span class="eq-val" id="eqVal0">0dB</span>
-                    <input type="range" class="eq-slider" id="eqSlider0" min="-12" max="12" step="1" value="0">
-                    <span class="eq-label">60Hz</span>
+                <div class="dsp-toggle-row">
+                    <div class="dsp-toggle-copy"><i class="fa-solid fa-link"></i><div><strong data-translate="gaplessPlayback">Gapless Playback</strong><span data-translate="gaplessPlaybackDesc">Reduce silence between consecutive tracks</span></div></div>
+                    <label class="switch" data-translate-aria="gaplessPlayback" aria-label="Gapless Playback"><input type="checkbox" id="gaplessToggle" checked><span class="switch-slider"></span></label>
                 </div>
-                <div class="eq-slider-col">
-                    <span class="eq-val" id="eqVal1">0dB</span>
-                    <input type="range" class="eq-slider" id="eqSlider1" min="-12" max="12" step="1" value="0">
-                    <span class="eq-label">230Hz</span>
+
+                <div class="dsp-control-group dsp-control-group-nested">
+                    <label class="dsp-label-display" for="crossfadeSlider">
+                        <span data-translate="playbackCrossfade"><i class="fa-solid fa-arrows-left-right"></i> Crossfade</span>
+                        <strong id="crossfadeVal">0s</strong>
+                    </label>
+                    <input type="range" id="crossfadeSlider" min="0" max="12" step="0.5" value="0" class="dsp-slider-track">
+                    <div class="dsp-range-scale"><span data-translate="off">Off</span><span>6s</span><span>12s</span></div>
                 </div>
-                <div class="eq-slider-col">
-                    <span class="eq-val" id="eqVal2">0dB</span>
-                    <input type="range" class="eq-slider" id="eqSlider2" min="-12" max="12" step="1" value="0">
-                    <span class="eq-label">910Hz</span>
+            </section>
+
+            <section class="dsp-section dsp-section-eq">
+                <div class="dsp-section-heading">
+                    <div>
+                        <span class="dsp-section-kicker" data-translate="equalizer">EQUALIZER</span>
+                        <h4 data-translate="graphicStudio">Graphic Studio</h4>
+                    </div>
+                    <button class="dsp-reset-btn" id="resetEqBtn" type="button"><i class="fa-solid fa-rotate-left"></i><span data-translate="reset">Reset</span></button>
                 </div>
-                <div class="eq-slider-col">
-                    <span class="eq-val" id="eqVal3">0dB</span>
-                    <input type="range" class="eq-slider" id="eqSlider3" min="-12" max="12" step="1" value="0">
-                    <span class="eq-label">4kHz</span>
+                <div class="eq-grid" role="group" data-translate-aria="graphicStudio" aria-label="Graphic equalizer">
+                    <div class="eq-slider-col"><span class="eq-val" id="eqVal0">0dB</span><input type="range" class="eq-slider" id="eqSlider0" min="-12" max="12" step="1" value="0" aria-label="60Hz"><span class="eq-label">60Hz</span></div>
+                    <div class="eq-slider-col"><span class="eq-val" id="eqVal1">0dB</span><input type="range" class="eq-slider" id="eqSlider1" min="-12" max="12" step="1" value="0" aria-label="230Hz"><span class="eq-label">230Hz</span></div>
+                    <div class="eq-slider-col"><span class="eq-val" id="eqVal2">0dB</span><input type="range" class="eq-slider" id="eqSlider2" min="-12" max="12" step="1" value="0" aria-label="910Hz"><span class="eq-label">910Hz</span></div>
+                    <div class="eq-slider-col"><span class="eq-val" id="eqVal3">0dB</span><input type="range" class="eq-slider" id="eqSlider3" min="-12" max="12" step="1" value="0" aria-label="4kHz"><span class="eq-label">4kHz</span></div>
+                    <div class="eq-slider-col"><span class="eq-val" id="eqVal4">0dB</span><input type="range" class="eq-slider" id="eqSlider4" min="-12" max="12" step="1" value="0" aria-label="14kHz"><span class="eq-label">14kHz</span></div>
                 </div>
-                <div class="eq-slider-col">
-                    <span class="eq-val" id="eqVal4">0dB</span>
-                    <input type="range" class="eq-slider" id="eqSlider4" min="-12" max="12" step="1" value="0">
-                    <span class="eq-label">14kHz</span>
-                </div>
-            </div>
+                <div class="eq-baseline"><span>−12</span><span>0</span><span>+12 dB</span></div>
+            </section>
         </div>
     </div>
 
     <!-- Song Info Modal -->
     <div class="custom-modal-overlay" id="songInfoModal" style="display: none;">
-        <div class="custom-modal-card" style="max-width: 480px;">
+        <div class="custom-modal-card song-info-card">
             <div class="modal-indicator-header">
-                <i class="fa-solid fa-music" style="color: var(--accent-cyan);"></i>
-                <h4>Song Info</h4>
-                <button class="close-modal-btn" onclick="closeSongInfoModal()" style="margin-right: auto;">
+                <i class="fa-solid fa-music accent-icon"></i>
+                <h4 data-translate="songInfo">Song Info</h4>
+                <button class="close-modal-btn modal-close-start" onclick="closeSongInfoModal()">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -512,15 +512,15 @@
                 <!-- populated dynamically -->
             </div>
             <div class="modal-buttons-footer">
-                <button class="modal-btn cancel" onclick="closeSongInfoModal()">Close</button>
-                <button class="modal-btn confirm" id="extractVocalBtn" style="background: var(--accent-cyan); color: #000;">
-                    <i class="fa-solid fa-microphone-slash"></i> Extract Vocal (new track)
+                <button class="modal-btn cancel" onclick="closeSongInfoModal()" data-translate="close">Close</button>
+                <button class="modal-btn confirm accent-confirm" id="extractVocalBtn">
+                    <i class="fa-solid fa-microphone-slash"></i> <span data-translate="extractVocalNewTrack">Extract Vocal (new track)</span>
                 </button>
             </div>
         </div>
     </div>
 
-    <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute; overflow:hidden; visibility: hidden;">
+    <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" class="visually-hidden-svg">
         <defs>
             <filter id="glass-distortion" x="-20%" y="-20%" width="140%" height="140%">
                 <feTurbulence type="fractalNoise" baseFrequency="0.004 0.004" numOctaves="1" seed="92" result="noise" />
@@ -531,15 +531,13 @@
     </svg>
 
     <script src="lang.js"></script>
-    <script src="additional.js"></script>
     <script src="pluginManagerUI.js"></script>
     <script src="app.js"></script>
     <script src="homePremium.js"></script>
-        <script src="homeEnhancements.js"></script>
-        <script src="libraryMasonry.js"></script>
-    <script src="settingsStore.js"></script>
+<script src="settingsStore.js"></script>
     <script src="settingsSync.js"></script>
     <script src="updateUI.js"></script>
+    <script src="ui/polish.js"></script>
 
 </body>
 </html>

@@ -1,0 +1,61 @@
+/* KORAI 1.6.4 — Home component-level behavior only.
+ * Product-wide geometry and visual tokens live in ui.css.
+ */
+
+.home-container-premium,
+.home-container-next {
+    width: 100%;
+    min-width: 0;
+}
+
+.hero-cinematic-v2 {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+}
+
+.hero-ambient-glow {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(520px 300px at 88% 8%, rgba(53, 223, 121, 0.085), transparent 70%);
+}
+
+.hero-grid-layout {
+    position: relative;
+    z-index: 1;
+}
+
+.hero-art-cover.playing::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(180deg, transparent 52%, rgba(0, 0, 0, 0.42));
+}
+
+.status-dot {
+    width: 6px;
+    height: 6px;
+    flex: 0 0 6px;
+    border-radius: 50%;
+    background: var(--k-accent);
+    box-shadow: 0 0 0 3px rgba(53, 223, 121, 0.09);
+}
+
+.featured-card-glow {
+    position: absolute;
+    inset: auto 0 0;
+    height: 40%;
+    pointer-events: none;
+    background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.18));
+}
+
+.recent-item-play i,
+.play-circle-btn i {
+    pointer-events: none;
+}
+
+.empty-state-premium .import-hero-btn {
+    margin-top: 14px;
+}

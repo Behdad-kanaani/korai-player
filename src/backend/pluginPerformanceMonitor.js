@@ -19,7 +19,8 @@ class PluginPerformanceMonitor {
     const stat = this.stats.get(pluginId);
     stat.lastExecuted = Date.now();
     stat.hookExecutions[hookName] = (stat.hookExecutions[hookName] || 0) + 1;
-    stat.totalExecutionTime += duration;
+    stat.totalExecutionTime += Math.max(0, Number(duration) || 0);
+    stat.totalHooks += 1;
     stat.avgExecutionTime = stat.totalExecutionTime / stat.totalHooks;
 
     if (!success) {
@@ -136,7 +137,7 @@ class PluginPerformanceMonitor {
       ...stat,
       runtimeMs: runtime,
       successRate: stat.totalHooks > 0 ? (stat.successCount / stat.totalHooks * 100).toFixed(1) : 0,
-      hooksPerSecond: (stat.totalHooks / (runtime / 1000)).toFixed(2)
+      hooksPerSecond: runtime > 0 ? (stat.totalHooks / (runtime / 1000)).toFixed(2) : '0.00'
     };
   }
 

@@ -3,10 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KORAI | Settings</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data:; connect-src 'self' http://127.0.0.1:* http://localhost:*; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data: https: blob: http://127.0.0.1:*; font-src 'self' https://cdnjs.cloudflare.com data:; media-src 'self' http://127.0.0.1:* https: blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+    <title data-translate="settingsPageTitle">KORAI | Settings</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="settings.css">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles/settings.css">
+    <link rel="stylesheet" href="styles/core.css">
+    <link rel="stylesheet" href="styles/pages.css">
 </head>
 <body class="theme-default ltr">
 
@@ -15,7 +17,7 @@
         <div class="sidebar-header">
             <i class="fa-solid fa-compact-disc spin-logo"></i>
             <span data-translate="settingsTitle">KORAI</span>
-            <span class="version-badge" id="settingsVersion">v1.5.0</span>
+            <span class="version-badge" id="settingsVersion">v1.6.0</span>
         </div>
 
         <nav class="settings-nav">
@@ -198,21 +200,6 @@
                 <h2><i class="fa-solid fa-palette"></i> <span data-translate="settingsNavAppearance">Appearance</span></h2>
                 
                 <div class="setting-group">
-                    <div class="setting-item">
-                        <div class="setting-info">
-                            <label data-translate="appearanceTheme">Theme</label>
-                            <span class="setting-desc" data-translate="appearanceThemeDesc">Select visual theme</span>
-                        </div>
-                        <div class="theme-selector">
-                            <button class="theme-btn active" data-theme="default" data-translate="appearanceThemeDefault">
-                                <i class="fa-solid fa-circle"></i> Default
-                            </button>
-                            <button class="theme-btn" data-theme="liquid-glass" data-translate="appearanceThemeLiquidGlass">
-                                <i class="fa-solid fa-snowflake"></i> Liquid Glass
-                            </button>
-                        </div>
-                    </div>
-
                     <div class="setting-item">
                         <div class="setting-info">
                             <label data-translate="appearanceDirection">Direction</label>

@@ -2,6 +2,17 @@
 
 const { cosineSimilarity, euclideanDistance } = require('./analyzer');
 
+function stableUnit(seed) {
+    const text = String(seed ?? '');
+    let hash = 2166136261;
+    for (let i = 0; i < text.length; i++) {
+        hash ^= text.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return ((hash >>> 0) % 100000) / 100000;
+}
+
+
 // Advanced multi-factor behavior weighting (UPGRADED)
 const BEHAVIOR_WEIGHTS = {
     // Positive signals (amplified)
@@ -465,7 +476,7 @@ function getPersonalizedRecommendations(allTracks, sourceTrack, userHistory, lim
         ensembleScore *= contextWeight;
         
         // Add controlled serendipity (exploration bonus)
-        const serendipity = Math.random() * 0.04;
+        const serendipity = stableUnit(`${sourceTrack.id}:${track.id}:serendipity`) * 0.04;
         ensembleScore += serendipity;
         
         // Cross-artist recommendation bonus (if different artist, boost novelty)
@@ -844,7 +855,7 @@ function getContextAwareRecommendations(allTracks, userHistory, limit = 10) {
     // Score by preference and shuffle for variety
     const scored = contextualTracks.map(track => ({
         ...track,
-        score: calculatePreferenceScore(track.id, userHistory) + (Math.random() * 0.2)
+        score: calculatePreferenceScore(track.id, userHistory) + (stableUnit(`${track.id}:${timeProfile.mood}:context`) * 0.2)
     }));
     
     scored.sort((a, b) => b.score - a.score);
@@ -904,17 +915,15 @@ function getDiscoveryRecommendations(allTracks, userHistory, limit = 10) {
     // Score by popularity potential and quality
     const scored = unheardTracks.map(track => ({
         ...track,
-        discoverScore: (track.popularityPotential || 50) + (track.qualityScore || 50) + (Math.random() * 20)
+        discoverScore: (track.popularityPotential || 50) + (track.qualityScore || 50) + (stableUnit(`${track.id}:discover`) * 20)
     }));
     
     scored.sort((a, b) => b.discoverScore - a.discoverScore);
     
-    // Shuffle top candidates for more serendipity
-    const topCandidates = scored.slice(0, Math.min(limit * 2, scored.length));
-    for (let i = topCandidates.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [topCandidates[i], topCandidates[j]] = [topCandidates[j], topCandidates[i]];
-    }
+    // Stable variety ordering: the same input produces the same mix across refreshes.
+    const topCandidates = scored
+        .slice(0, Math.min(limit * 2, scored.length))
+        .sort((a, b) => stableUnit(`${a.id}:mix`) - stableUnit(`${b.id}:mix`));
     
     return topCandidates.slice(0, limit).map(t => ({
         ...t,
@@ -953,9 +962,9 @@ function generateSmartPlaylist(allTracks, options = {}) {
     // Define energy progression curve
     let progressionWeights = [];
     if (energyProgression === 'low') {
-        progressionWeights = Array(maxTracks).fill(0).map((_, i) => 0.3 + Math.random() * 0.3);
+        progressionWeights = Array(maxTracks).fill(0).map((_, i) => 0.3 + stableUnit(`progress:${i}:low`) * 0.3);
     } else if (energyProgression === 'high') {
-        progressionWeights = Array(maxTracks).fill(0).map((_, i) => 0.6 + Math.random() * 0.4);
+        progressionWeights = Array(maxTracks).fill(0).map((_, i) => 0.6 + stableUnit(`progress:${i}:high`) * 0.4);
     } else if (energyProgression === 'wave') {
         // Wave pattern: up-down-up-down
         progressionWeights = Array(maxTracks).fill(0).map((_, i) => {
@@ -965,7 +974,7 @@ function generateSmartPlaylist(allTracks, options = {}) {
     } else {
         // Moderate: start moderate, slight increase
         progressionWeights = Array(maxTracks).fill(0).map((_, i) => {
-            return 0.45 + (i / maxTracks) * 0.15 + (Math.random() * 0.15);
+            return 0.45 + (i / maxTracks) * 0.15 + (stableUnit(`progress:${i}:moderate`) * 0.15);
         });
     }
     
@@ -1016,7 +1025,7 @@ function generateSmartPlaylist(allTracks, options = {}) {
                 genreScore * 0.25 +
                 moodScore * 0.15 +
                 preferenceScore * 0.15 +
-                (Math.random() * 0.05)
+                (stableUnit(`${track.id}:${i}:flow`) * 0.05)
             ) * sameArtistPenalty * discoveryBoost;
             
             return { ...track, flowScore };

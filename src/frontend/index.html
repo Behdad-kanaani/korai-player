@@ -180,26 +180,28 @@
             </nav>
 
             <div class="ai-recommendation-panel">
-                <div class="ai-header-small">
-                    <i class="fa-solid fa-wand-magic-sparkles"></i>
-                    <span data-translate="aiPanelTitle">KORAI AI</span>
+                <div class="ai-panel-heading">
+                    <span class="ai-heading-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+                    <span class="ai-heading-copy">
+                        <strong data-translate="aiPanelTitle">Acoustic AI</strong>
+                        <small data-translate="aiPanelDesc">Discover new tracks from the rhythm and frequency of your music.</small>
+                    </span>
                 </div>
-                <!-- <p class="ai-desc" data-translate="aiPanelDesc">Find similar tracks based on rhythm and frequency patterns</p> -->
-                <button id="aiRecommendBtn" class="ai-action-btn" data-tooltip="Analyze Waveform" data-translate-tooltip="aiBtnText">
+                <button id="aiRecommendBtn" class="ai-action-btn ai-action-recommend" data-tooltip="Get AI recommendations" data-translate-tooltip="aiBtnText" data-translate-aria="aiBtnText">
                     <i class="fa-solid fa-chart-line"></i>
-                    <!-- <span data-translate="aiBtnText">Analyze Pattern</span> -->
+                    <span><strong data-translate="aiBtnText">Get AI recommendations</strong><small data-translate="aiRecommendDesc">Find tracks that match what you love.</small></span>
                 </button>
-                <button id="createSimilarPlaylistBtn" class="ai-action-btn" data-tooltip="Create Similar Playlist" data-translate-tooltip="similarPlaylist">
+                <button id="createSimilarPlaylistBtn" class="ai-action-btn" data-tooltip="Smart Playlist" data-translate-tooltip="similarPlaylist" data-translate-aria="similarPlaylist">
                     <i class="fa-solid fa-music"></i>
-                    <!-- <span data-translate="similarPlaylist">Similar Playlist</span> -->
+                    <span><strong data-translate="similarPlaylist">Smart Playlist</strong><small data-translate="smartPlaylistDesc">Build a playlist around this track.</small></span>
                 </button>
-                <button id="exportLibraryBtn" class="ai-action-btn" data-tooltip="Export Library" data-translate-tooltip="exportLibrary">
+                <button id="exportLibraryBtn" class="ai-action-btn" data-tooltip="Export Library" data-translate-tooltip="exportLibrary" data-translate-aria="exportLibrary">
                     <i class="fa-solid fa-download"></i>
-                    <!-- <span data-translate="exportLibrary">Export Library</span> -->
+                    <span><strong data-translate="exportLibrary">Export Library</strong><small data-translate="exportLibraryDesc">Save your library as a CSV file.</small></span>
                 </button>
-                <button id="importCueBtn" class="ai-action-btn" data-tooltip="Import CUE Sheet" data-translate-tooltip="importCue">
+                <button id="importCueBtn" class="ai-action-btn" data-tooltip="Import CUE Sheet" data-translate-tooltip="importCue" data-translate-aria="importCue">
                     <i class="fa-solid fa-file-lines"></i>
-                    <!-- <span data-translate="importCue">CUE Sheet</span> -->
+                    <span><strong data-translate="importCue">Import CUE</strong><small data-translate="importCueDesc">Import track markers from a CUE file.</small></span>
                 </button>
             </div>
 
@@ -297,7 +299,7 @@
 
             <div class="playback-timeline-wrapper">
                 <span class="time-stamp-current" id="currentTimeK">0:00</span>
-                <div class="timeline-bar-bg" id="progressBarK" role="slider" data-translate-aria="trackProgress" aria-label="Track progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                <div class="timeline-bar-bg" id="progressBarK" role="slider" tabindex="0" data-translate-aria="trackProgress" aria-label="Track progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                     <div class="timeline-progress-fill" id="progressFillK"></div>
                     <div class="scrub-time-tooltip" id="scrubTooltip">0:00</div>
                 </div>

@@ -27,6 +27,7 @@ const translations = {
         readyToPlay: "Ready to Play",
         untitled: "Untitled",
         unknownArtist: "Unknown Artist",
+        unknownAlbum: "Unknown Album",
         selectTrack: "Select a track",
         miniPlayerName: "KORAI Player",
         appTitle: "KORAI Music Player",
@@ -52,6 +53,7 @@ const translations = {
         immersivePlayer: "Immersive player",
         songInfoVocal: "Song info and vocal extraction",
         likeTrack: "Like track",
+        unlikeTrack: "Remove from favorites",
         closeDsp: "Close DSP Studio",
         dspProcessing: "Audio processing",
         playbackSection: "Playback",
@@ -118,10 +120,14 @@ const translations = {
         // ===== AI & Tools Panel =====
         aiPanelTitle: "Acoustic AI",
         aiPanelDesc: "Discover new tracks from the rhythm and frequency of your music.",
-        aiBtnText: "Analyze Waveform",
+        aiBtnText: "Get AI recommendations",
+        aiRecommendDesc: "Find tracks that match what you love.",
         similarPlaylist: "Smart Playlist",
+        smartPlaylistDesc: "Build a playlist around this track.",
         exportLibrary: "Export Library",
+        exportLibraryDesc: "Save your library as a CSV file.",
         importCue: "Import CUE",
+        importCueDesc: "Import track markers from a CUE file.",
 
         // ===== Import Options =====
         upTextTitle: "Import Audio File",
@@ -151,6 +157,16 @@ const translations = {
 
         // ===== Statistics =====
         statsTitle: "Playback Analytics & Stats",
+        liveTelemetryLabel: "LIVE TELEMETRY",
+        telemetryDescription: "A live snapshot of your listening activity and library.",
+        telemetrySpectrumDescription: "Watch the frequency response of the audio playing right now.",
+        telemetryActive: "ANALYZER ACTIVE",
+        telemetryWaiting: "WAITING FOR AUDIO",
+        telemetryNoTopTrack: "No listening data yet",
+        telemetryNoTopTrackHint: "Play a few tracks and your most-played favorite will show up here.",
+        telemetryStartPlayback: "Start playback to see your live frequency spectrum",
+        telemetryFrequency: "LIVE FREQUENCY",
+        telemetryRealtime: "REAL-TIME AUDIO",
         statsTotal: "Total Tracks",
         statsPlays: "Total Playbacks",
         statsLikes: "Liked Tracks",
@@ -293,6 +309,11 @@ const translations = {
 
         // ===== Artists =====
         artistsTitle: "Artists",
+        artistsCollection: "YOUR MUSIC, YOUR ARTISTS",
+        artistsDescription: "Explore the voices and collections behind your music.",
+        uniqueArtists: "unique artists",
+        artistSearchPlaceholder: "Search artists...",
+        artistSearchEmpty: "No artists match your search.",
         tracksCount: "tracks",
         playingArtist: "Playing",
         backToArtists: "Back to Artists",
@@ -308,6 +329,13 @@ const translations = {
         totalPlays: "Total Plays",
         topLiked: "Top Liked",
         recentlyAdded: "Recently Added",
+        favoritesCollection: "YOUR PERSONAL COLLECTION",
+        favoritesDescription: "Every track you have saved, together in one place.",
+        favoriteAddedNotice: "Added to favorites",
+        favoriteRemovedNotice: "Removed from favorites",
+        removeFavorite: "Remove from favorites",
+        browseLibrary: "Explore your library",
+        playTrackAction: "Play track",
 
         // ===== Vocal Extraction =====
         extractionInProgress: "Extraction already in progress",
@@ -701,6 +729,7 @@ const translations = {
         readyToPlay: "آماده پخش",
         untitled: "بدون عنوان",
         unknownArtist: "هنرمند ناشناس",
+        unknownAlbum: "آلبوم ناشناس",
         selectTrack: "یک آهنگ انتخاب کنید",
         miniPlayerName: "پلیر KORAI",
         appTitle: "پخش‌کننده موسیقی KORAI",
@@ -726,6 +755,7 @@ const translations = {
         immersivePlayer: "پلیر سینمایی",
         songInfoVocal: "اطلاعات آهنگ و جداسازی وکال",
         likeTrack: "افزودن به موردعلاقه‌ها",
+        unlikeTrack: "حذف از موردعلاقه‌ها",
         closeDsp: "بستن استودیوی DSP",
         dspProcessing: "پردازش صدا",
         playbackSection: "پخش",
@@ -792,10 +822,14 @@ const translations = {
         // ===== AI & Tools Panel =====
         aiPanelTitle: "هوش مصنوعی صوتی",
         aiPanelDesc: "آهنگ‌های تازه را بر اساس ریتم و فرکانس موسیقی خود کشف کنید.",
-        aiBtnText: "تحلیل شکل موج",
+        aiBtnText: "پیشنهاد هوشمند آهنگ",
+        aiRecommendDesc: "آهنگ‌های هم‌سلیقه با موسیقی خود را پیدا کنید.",
         similarPlaylist: "پلی‌لیست هوشمند",
+        smartPlaylistDesc: "با الهام از این آهنگ، پلی‌لیست بسازید.",
         exportLibrary: "خروجی کتابخانه",
+        exportLibraryDesc: "کتابخانه را به‌صورت فایل CSV ذخیره کنید.",
         importCue: "CUE Sheet",
+        importCueDesc: "نشانگرهای آهنگ را از فایل CUE وارد کنید.",
 
         // ===== Import Options =====
         upTextTitle: "افزودن قطعه صوتی",
@@ -825,6 +859,16 @@ const translations = {
 
         // ===== Statistics =====
         statsTitle: "آمار و تله‌متری پخش",
+        liveTelemetryLabel: "تله‌متری زنده",
+        telemetryDescription: "نمای زنده‌ای از فعالیت شنیداری و وضعیت کتابخانه‌تان.",
+        telemetrySpectrumDescription: "واکنش فرکانسی صدای در حال پخش را به‌صورت زنده ببینید.",
+        telemetryActive: "تحلیلگر فعال است",
+        telemetryWaiting: "در انتظار صدا",
+        telemetryNoTopTrack: "هنوز داده‌ای از پخش نداریم",
+        telemetryNoTopTrackHint: "چند آهنگ پخش کنید تا پرشنونده‌ترین آهنگتان اینجا نمایش داده شود.",
+        telemetryStartPlayback: "برای دیدن طیف زنده، پخش یک آهنگ را شروع کنید",
+        telemetryFrequency: "فرکانس زنده",
+        telemetryRealtime: "صدای لحظه‌ای",
         statsTotal: "کل آهنگ‌ها",
         statsPlays: "دفعات پخش",
         statsLikes: "محبوب‌ترین‌ها",
@@ -967,6 +1011,11 @@ const translations = {
 
         // ===== Artists =====
         artistsTitle: "آرتیست‌ها",
+        artistsCollection: "موسیقی شما، آرتیست‌های شما",
+        artistsDescription: "صداها و مجموعه‌های موسیقی خود را کاوش کنید.",
+        uniqueArtists: "آرتیست منحصربه‌فرد",
+        artistSearchPlaceholder: "جستجوی آرتیست...",
+        artistSearchEmpty: "آرتیستی با این نام پیدا نشد.",
         tracksCount: "آهنگ",
         playingArtist: "در حال پخش",
         backToArtists: "بازگشت به آرتیست‌ها",
@@ -982,6 +1031,13 @@ const translations = {
         totalPlays: "کل پخش‌ها",
         topLiked: "محبوب‌ترین‌ها",
         recentlyAdded: "به‌تازگی اضافه شده",
+        favoritesCollection: "مجموعه شخصی شما",
+        favoritesDescription: "همه آهنگ‌هایی که ذخیره کرده‌اید، یک‌جا.",
+        favoriteAddedNotice: "به موردعلاقه‌ها اضافه شد",
+        favoriteRemovedNotice: "از موردعلاقه‌ها حذف شد",
+        removeFavorite: "حذف از موردعلاقه‌ها",
+        browseLibrary: "کاوش در کتابخانه",
+        playTrackAction: "پخش آهنگ",
 
         // ===== Vocal Extraction =====
         extractionInProgress: "استخراج در حال انجام است",

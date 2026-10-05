@@ -104,6 +104,14 @@ window.isPlaying = isPlaying;
 window.setPlayState = setPlayState;
 window.showNotification = showNotification;
 
+function syncAudioGraphReferences() {
+    audioCtx = window.audioCtx || null;
+    audioSource = window.audioSource || null;
+    analyser = window.analyser || null;
+    gainNode = window.gainNode || null;
+    eqFilters = window.eqFilters || [];
+}
+
 // =============================================================================
 // UTILITY FUNCTIONS
 // =============================================================================
@@ -233,8 +241,9 @@ window.showSongInfo = function() {
     }
     contentDiv.innerHTML = `
         <div class="song-info-layout">
-            <div class="song-info-cover">
-                ${coverUrl ? `<img src="${coverUrl}" alt="${escapeHtml(currentTrack.title || t('trackTitle'))}">` : '<i class="fa-solid fa-music"></i>'}
+            <div class="song-info-cover${coverUrl ? '' : ' image-failed'}">
+                ${coverUrl ? `<img src="${coverUrl}" alt="${escapeHtml(currentTrack.title || t('trackTitle'))}" onerror="this.remove(); this.parentElement.classList.add('image-failed')">` : ''}
+                <i class="fa-solid fa-music song-info-cover-fallback" aria-hidden="true"></i>
                 <span class="song-info-cover-glow"></span>
             </div>
             <div class="song-info-main">
@@ -893,6 +902,9 @@ function setPlayState(playing) {
         try {
             startTimelineVisualizerLoop();
         } catch (e) { console.debug('startTimelineVisualizerLoop failed', e); }
+        if (currentActiveSection === 'stats' && audioCtx && analyser) {
+            startLiveSpectrumAnalyzer();
+        }
     } else {
         if (vinylRotationRAFId) {
             cancelAnimationFrame(vinylRotationRAFId);
@@ -1408,6 +1420,7 @@ async function emergencyAudioRecovery() {
         window.gainNode = null;
         window.analyser = null;
         window.eqFilters = [];
+        syncAudioGraphReferences();
         
         // Reset state
         setPlayState(false);
@@ -1757,14 +1770,7 @@ function setupAudioNodes() {
 
                 const current = el.currentTime;
                 const total = el.duration || 0;
-                const currentText = document.getElementById('currentTimeK');
-                if (currentText) currentText.innerText = formatTime(current);
-
-                const progressPercent = total > 0 ? Math.max(0, Math.min(100, (current / total) * 100)) : 0;
-                const fill = document.getElementById('progressFillK');
-                if (fill) fill.style.width = `${progressPercent}%`;
-                const progressBar = document.getElementById('progressBarK');
-                if (progressBar) progressBar.setAttribute('aria-valuenow', progressPercent.toFixed(1));
+                const progressPercent = syncTimelinePosition(current, total);
 
                 const fsFill = document.getElementById('fsMirrorProgressFill');
                 if (fsFill && total > 0) fsFill.style.width = `${(current / total) * 100}%`;
@@ -1798,12 +1804,24 @@ function setupAudioNodes() {
             el.addEventListener('loadedmetadata', () => {
                 const totalText = document.getElementById('durationK');
                 if (totalText) totalText.innerText = formatTime(el.duration);
+                syncTimelinePosition(el.currentTime, el.duration);
                 const savedState = JSON.parse(localStorage.getItem('korai_playback_state') || '{}');
                 if (savedState && savedState.trackId === currentTrackId && savedState.currentTime > 0) {
                     if (el.duration > savedState.currentTime) {
                         el.currentTime = savedState.currentTime;
                     }
                 }
+            });
+
+            el.addEventListener('durationchange', () => {
+                const totalText = document.getElementById('durationK');
+                if (totalText && Number.isFinite(el.duration)) totalText.innerText = formatTime(el.duration);
+                syncTimelinePosition(el.currentTime, el.duration);
+            });
+
+            el.addEventListener('seeked', () => {
+                syncTimelinePosition(el.currentTime, el.duration);
+                savePlaybackState();
             });
 
             el.addEventListener('ended', () => {
@@ -1823,6 +1841,7 @@ function setupAudioNodes() {
         if (!window.audioCtx || window.audioCtx.state === 'closed') {
             window.audioCtx = new AudioContextClass();
         }
+        syncAudioGraphReferences();
 
         if (window.audioSource) {
             try {
@@ -1859,6 +1878,7 @@ function setupAudioNodes() {
             });
             window.eqFilters = [];
         }
+        syncAudioGraphReferences();
 
         try { attachAudioElementListeners(audioElement); } catch (e) { console.debug('attachAudioElementListeners failed', e); }
 
@@ -1924,6 +1944,7 @@ function setupAudioNodes() {
         currentNode.connect(window.analyser);
         window.analyser.connect(window.gainNode);
         window.gainNode.connect(window.audioCtx.destination);
+        syncAudioGraphReferences();
 
         console.debug('Audio nodes setup complete');
         return true;
@@ -1970,7 +1991,8 @@ function initTimelineVisualizer() {
     for (let i = 0; i < totalBars; i++) {
         const bar = document.createElement('div');
         bar.className = 'timeline-v-bar';
-        bar.style.height = '2px';
+        const shape = Math.abs(Math.sin(i * 0.29) * 0.62 + Math.sin(i * 0.071 + 1.4) * 0.38);
+        bar.style.height = `${(4 + (0.14 + shape * 0.58) * 26).toFixed(1)}px`;
         visualizerContainer.appendChild(bar);
     }
     
@@ -1993,25 +2015,15 @@ function updateTimelineVisualizer() {
     if (now - lastVisualizerUpdate < 60) return;
     lastVisualizerUpdate = now;
     
-    // Get playback percentage safely
-    let pct = 0;
-    if (audioElement && audioElement.duration && audioElement.duration > 0 && !isNaN(audioElement.duration) && isFinite(audioElement.duration)) {
-        pct = (audioElement.currentTime / audioElement.duration) * 100;
-    } else {
-        // If duration is not ready yet, just update idle animation
-        for (let i = 0; i < visualizerBars.length; i++) {
-            const bar = visualizerBars[i];
-            if (bar) {
-                let height = 3 + Math.sin(Date.now() * 0.005 + i * 0.2) * 2;
-                height = Math.max(2, Math.min(28, height));
-                bar.style.height = `${height}px`;
-            }
-        }
-        return;
+    const hasDuration = Number.isFinite(audioElement?.duration) && audioElement.duration > 0;
+    const pct = hasDuration
+        ? Math.min(100, Math.max(0, (audioElement.currentTime / audioElement.duration) * 100))
+        : 0;
+    const timeline = document.getElementById('progressBarK');
+    if (timeline) {
+        timeline.style.setProperty('--timeline-position', `${pct}%`);
+        timeline.setAttribute('aria-valuenow', String(Math.round(pct)));
     }
-    
-    // Clamp percentage
-    pct = Math.min(100, Math.max(0, pct));
     
     const totalBars = visualizerBars.length;
     const playedBarIndex = Math.floor((pct / 100) * totalBars);
@@ -2033,23 +2045,21 @@ function updateTimelineVisualizer() {
         const bar = visualizerBars[i];
         if (!bar) continue;
         
-        let height = 3;
-        
+        const phase = Math.abs(
+            Math.sin(i * 0.29) * 0.62 +
+            Math.sin(i * 0.071 + 1.4) * 0.38
+        );
+        let energy = 0.14 + phase * 0.58;
+
         if (dataArray && dataArray.length > 0 && isPlaying) {
-            // Map bar index to frequency bin for dynamic visualization
             const binIndex = Math.min(dataArray.length - 1, Math.floor((i / totalBars) * dataArray.length * 0.65));
-            const value = dataArray[binIndex] || 0;
-            height = 3 + (value / 255) * 25;
-        } else {
-            // Idle animation when paused or no analyser data
-            height = 3 + Math.sin(Date.now() * 0.005 + i * 0.2) * 2;
+            const value = Math.sqrt((dataArray[binIndex] || 0) / 255);
+            energy = Math.max(energy * 0.38, value * 0.92);
         }
-        
-        // Clamp height
-        height = Math.max(2, Math.min(28, height));
+
+        const height = Math.max(4, Math.min(30, 4 + energy * 26));
         bar.style.height = `${height}px`;
-        
-        // Mark played portion
+
         if (i < playedBarIndex) {
             bar.classList.add('played');
         } else {
@@ -2059,32 +2069,77 @@ function updateTimelineVisualizer() {
     
     // Also update the progress fill bar for redundancy
     const fill = document.getElementById('progressFillK');
-    if (fill && audioElement && audioElement.duration > 0) {
+    if (fill && hasDuration) {
         fill.style.width = `${pct}%`;
     }
     
     const fsFill = document.getElementById('fsMirrorProgressFill');
-    if (fsFill && audioElement && audioElement.duration > 0) {
+    if (fsFill && hasDuration) {
         fsFill.style.width = `${pct}%`;
     }
 }
 
 
+function syncTimelinePosition(currentTime, duration) {
+    const hasDuration = Number.isFinite(duration) && duration > 0;
+    const current = Number.isFinite(currentTime) ? Math.max(0, currentTime) : 0;
+    const percent = hasDuration ? Math.min(100, (current / duration) * 100) : 0;
+    const timeline = document.getElementById('progressBarK');
+    const currentText = document.getElementById('currentTimeK');
+    const durationText = document.getElementById('durationK');
+
+    if (currentText) currentText.innerText = formatTime(current);
+    if (durationText && hasDuration) durationText.innerText = formatTime(duration);
+    if (timeline) {
+        timeline.style.setProperty('--timeline-position', `${percent}%`);
+        timeline.setAttribute('aria-valuenow', percent.toFixed(1));
+
+        const bars = timeline.querySelectorAll('.timeline-v-bar');
+        const playedBars = Math.floor((percent / 100) * bars.length);
+        bars.forEach((bar, index) => bar.classList.toggle('played', index < playedBars));
+    }
+    return percent;
+}
+
 function handleTimelineSeek(event) {
-    if (!audioElement || !audioElement.duration || isNaN(audioElement.duration)) return;
+    if (!audioElement || !Number.isFinite(audioElement.duration) || audioElement.duration <= 0) return;
     
     const timelineBg = document.getElementById('progressBarK');
     if (!timelineBg) return;
     
     const rect = timelineBg.getBoundingClientRect();
-    let clickX = event.clientX - rect.left;
-    
-    // Clamp to bounds
-    clickX = Math.max(0, Math.min(rect.width, clickX));
+    if (rect.width <= 0) return;
+    const clickX = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
     const percent = (clickX / rect.width) * 100;
-    const newTime = (percent / 100) * audioElement.duration;
-    
-    audioElement.currentTime = Math.min(audioElement.duration, Math.max(0, newTime));
+    audioElement.currentTime = (percent / 100) * audioElement.duration;
+    syncTimelinePosition(audioElement.currentTime, audioElement.duration);
+}
+
+function handleTimelineKeyboardSeek(event) {
+    if (!audioElement || !Number.isFinite(audioElement.duration) || audioElement.duration <= 0) return;
+    const step = event.shiftKey ? 15 : 5;
+    let nextTime;
+    switch (event.key) {
+        case 'ArrowRight':
+        case 'ArrowUp':
+            nextTime = audioElement.currentTime + step;
+            break;
+        case 'ArrowLeft':
+        case 'ArrowDown':
+            nextTime = audioElement.currentTime - step;
+            break;
+        case 'Home':
+            nextTime = 0;
+            break;
+        case 'End':
+            nextTime = audioElement.duration;
+            break;
+        default:
+            return;
+    }
+    event.preventDefault();
+    audioElement.currentTime = Math.min(audioElement.duration, Math.max(0, nextTime));
+    syncTimelinePosition(audioElement.currentTime, audioElement.duration);
 }
 
 function startTimelineVisualizerLoop() {
@@ -2213,10 +2268,35 @@ let spectrumIntervalId = null;
 
 function startLiveSpectrumAnalyzer() {
     if (isSpectrumLoopActive) return;
+    if (!analyser) {
+        console.warn('Live spectrum analyzer is unavailable until the audio graph is initialized');
+        return;
+    }
     const canvas = document.getElementById('telemetrySpectrumCanvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    const updatePlaybackState = () => {
+        const active = Boolean(isPlaying && analyser);
+        const stage = canvas.closest('.telemetry-spectrum-stage');
+        const status = document.querySelector('.telemetry-analyzer-status');
+        let emptyState = stage?.querySelector('.telemetry-spectrum-empty');
+        if (stage) stage.classList.toggle('is-active', active);
+        if (status) {
+            status.classList.toggle('is-active', active);
+            status.innerHTML = `<i></i>${active ? t('telemetryActive') : t('telemetryWaiting')}`;
+        }
+        if (active && emptyState) {
+            emptyState.remove();
+        } else if (!active && stage && !emptyState) {
+            emptyState = document.createElement('div');
+            emptyState.className = 'telemetry-spectrum-empty';
+            emptyState.innerHTML = `<i class="fa-solid fa-headphones"></i><span>${t('telemetryStartPlayback')}</span>`;
+            stage.appendChild(emptyState);
+        }
+        return active;
+    };
     
     isSpectrumLoopActive = true;
     const bufferLength = analyser.frequencyBinCount;
@@ -2244,6 +2324,7 @@ function startLiveSpectrumAnalyzer() {
             return;
         }
 
+        updatePlaybackState();
         analyser.getByteFrequencyData(dataArray);
 
         // Lower resolution canvas backing for performance
@@ -2258,15 +2339,16 @@ function startLiveSpectrumAnalyzer() {
         ctx.fillStyle = '#0a0a0c';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        const barWidth = (canvas.width / bufferLength) * 2.2;
+        if (!spectrumGradient) createGradient();
+        const barWidth = canvas.width / bufferLength;
         let x = 0;
         ctx.fillStyle = spectrumGradient;  // Reuse cached gradient
 
         for (let i = 0; i < bufferLength; i++) {
-            const barHeight = dataArray[i];
-            ctx.fillRect(x, canvas.height - barHeight / 1.5, Math.max(1, barWidth - 1), barHeight / 1.5);
+            const amplitude = dataArray[i] / 255;
+            const barHeight = Math.max(1, Math.pow(amplitude, 1.35) * canvas.height * 0.82);
+            ctx.fillRect(x, canvas.height - barHeight, Math.max(1, barWidth * 0.76), barHeight);
             x += barWidth;
-            if (x > canvas.width) break;
         }
     }
 
@@ -2969,7 +3051,7 @@ function playFromFavorites(trackId) {
 }
 
 function playArtist(artistName) {
-    const artistTracks = tracks.filter(track => (track.artist || 'Unknown Artist') === artistName);
+    const artistTracks = tracks.filter(track => (String(track.artist || '').trim() || t('unknownArtist')) === artistName);
     if (artistTracks.length === 0) return;
     playTrack(artistTracks[0].id, 'artists', artistName, artistTracks);
     showNotification(`${t('playingArtist') || 'Playing'} ${artistName} (${artistTracks.length} ${t('tracks') || 'tracks'})`, 'success');
@@ -3095,12 +3177,6 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
             await new Promise(resolve => setTimeout(resolve, 50));
             if (currentTrackId === trackId && audioElement && audioElement.src) {
                 try {
-                    const savedState = JSON.parse(localStorage.getItem('korai_playback_state') || '{}');
-                    if (savedState && savedState.trackId === trackId && savedState.currentTime > 0) {
-                        if (audioElement.duration > savedState.currentTime) {
-                            audioElement.currentTime = savedState.currentTime;
-                        }
-                    }
                     if (window.audioCtx && window.audioCtx.state === 'suspended') {
                         try { await window.audioCtx.resume(); } catch (e) { }
                     }
@@ -3329,14 +3405,6 @@ function togglePlay() {
                         setupAudioNodes();
                     }
                 }
-                const savedState = JSON.parse(localStorage.getItem('korai_playback_state') || '{}');
-                if (savedState && savedState.trackId === currentTrackId && savedState.currentTime > 0) {
-                    if (audioElement.duration > savedState.currentTime) {
-                        if (Math.abs(audioElement.currentTime - savedState.currentTime) > 1) {
-                            audioElement.currentTime = savedState.currentTime;
-                        }
-                    }
-                }
                 try {
                     await audioElement.play();
                     setPlayState(true);
@@ -3438,7 +3506,15 @@ function updatePlayerUI() {
     }
     
     const likeBtn = document.getElementById('likeBtnK');
-    if (likeBtn) likeBtn.innerHTML = currentTrack.isLiked ? '<i class="fa-solid fa-heart" style="color: var(--accent-pink);"></i>' : '<i class="fa-regular fa-heart"></i>';
+    if (likeBtn) {
+        const liked = Boolean(currentTrack.isLiked);
+        const label = t(liked ? 'unlikeTrack' : 'likeTrack');
+        likeBtn.innerHTML = liked ? '<i class="fa-solid fa-heart"></i>' : '<i class="fa-regular fa-heart"></i>';
+        likeBtn.classList.toggle('is-liked', liked);
+        likeBtn.dataset.translateTitle = liked ? 'unlikeTrack' : 'likeTrack';
+        likeBtn.title = label;
+        likeBtn.setAttribute('aria-label', label);
+    }
 
     const specsEl = document.getElementById('playerSpecs');
     if (specsEl) {
@@ -3730,55 +3806,110 @@ window.toggleLibrarySortOrder = function() { librarySortOrder = librarySortOrder
 function renderFavorites() {
     const mainSection = document.getElementById('dynamicSectionContainer');
     if (!mainSection) return;
-    const likedTracks = tracks.filter(t => t.isLiked);
+    const likedTracks = tracks.filter(track => track.isLiked);
     if (likedTracks.length === 0) {
-        mainSection.innerHTML = `<div class="empty-illustration-state"><i class="fa-solid fa-heart" style="color: var(--accent-pink);"></i><h3>${t('emptyFavs')}</h3><p>${t('emptyFavsDesc')}</p></div>`;
+        mainSection.innerHTML = `
+            <div class="favorites-empty-state">
+                <span class="favorites-empty-icon"><i class="fa-solid fa-heart"></i></span>
+                <span class="favorites-eyebrow">${t('favoritesCollection')}</span>
+                <h2>${t('emptyFavs')}</h2>
+                <p>${t('emptyFavsDesc')}</p>
+                <button type="button" class="favorites-empty-btn" onclick="switchSection('library')">
+                    <i class="fa-solid fa-music"></i>${t('browseLibrary')}
+                </button>
+            </div>`;
         return;
     }
 
-    // Prepare sections similar to Home dashboard but scoped to favorites
     const totalLikes = likedTracks.length;
-    const totalPlays = likedTracks.reduce((s, tr) => s + (tr.playCount || 0), 0);
-
-    // Top liked by playCount
-    const topLiked = [...likedTracks].sort((a,b)=>(b.playCount||0)-(a.playCount||0)).slice(0,8);
-    const recentLiked = [...likedTracks].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).slice(0,6);
-
-    let featuredHtml = '';
-    topLiked.forEach(track=>{
-        const coverUrl = track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null;
-        featuredHtml += `<div class="featured-card" data-track-id="${track.id}">
-            <div class="featured-art">${coverUrl?`<img src="${coverUrl}" alt="Cover" loading="lazy">`:`<i class="fa-solid fa-music"></i>`}</div>
-            <div class="featured-meta"><h4>${escapeHtml(track.title||'Untitled')}</nobr></h4><p>${escapeHtml(track.artist||'Unknown')}</p></div>
-            <div class="featured-play" onclick="playTrack(${track.id})"><i class="fa-solid fa-play"></i></div>
-        </div>`;
-    });
-
-    let recentHtml = '';
-    recentLiked.forEach(track=>{
-        recentHtml += `<div class="recent-track-item" data-track-id="${track.id}" onclick="playTrack(${track.id})">
-            <div class="recent-cover">${track.hasCover?`<img src="http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover" alt="Cover" loading="lazy">`:'<i class="fa-solid fa-music"></i>'}</div>
-            <div class="recent-info"><strong>${escapeHtml(track.title||'Untitled')}</strong><span>${escapeHtml(track.artist||'Unknown')}</span></div>
-            <div class="recent-meta">${formatTime(track.duration)}</div>
-        </div>`;
-    });
+    const totalPlays = likedTracks.reduce((sum, track) => sum + (Number(track.playCount) || 0), 0);
+    const topLiked = [...likedTracks].sort((a, b) => (b.playCount || 0) - (a.playCount || 0))[0];
+    const recentLiked = [...likedTracks].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const coverUrl = track => track.hasCover
+        ? `http://127.0.0.1:${apiPort}/api/tracks/${encodeURIComponent(track.id)}/cover`
+        : null;
+    const coverMarkup = (track, className) => {
+        const url = coverUrl(track);
+        return `<span class="${className}">${url
+            ? `<img src="${url}" alt="" loading="lazy">`
+            : '<i class="fa-solid fa-music" aria-hidden="true"></i>'}</span>`;
+    };
+    const topCards = [...likedTracks]
+        .sort((a, b) => (b.playCount || 0) - (a.playCount || 0))
+        .slice(0, 3)
+        .map((track, index) => `
+            <article class="favorite-highlight-card" data-track-id="${escapeHtml(String(track.id))}">
+                <span class="favorite-highlight-rank">0${index + 1}</span>
+                ${coverMarkup(track, 'favorite-highlight-cover')}
+                <span class="favorite-highlight-copy">
+                    <strong title="${escapeHtml(track.title || t('untitled'))}">${escapeHtml(track.title || t('untitled'))}</strong>
+                    <small>${escapeHtml(track.artist || t('unknownArtist'))}</small>
+                </span>
+                <button type="button" class="favorite-play-btn" data-favorite-play="${escapeHtml(String(track.id))}" aria-label="${t('playTrackAction')}" title="${t('playTrackAction')}"><i class="fa-solid fa-play"></i></button>
+            </article>
+        `).join('');
+    const trackRows = recentLiked.map((track, index) => `
+        <article class="favorite-track-row" data-track-id="${escapeHtml(String(track.id))}">
+            <span class="favorite-track-index">${String(index + 1).padStart(2, '0')}</span>
+            ${coverMarkup(track, 'favorite-track-cover')}
+            <span class="favorite-track-copy">
+                <strong title="${escapeHtml(track.title || t('untitled'))}">${escapeHtml(track.title || t('untitled'))}</strong>
+                <small>${escapeHtml(track.artist || t('unknownArtist'))}</small>
+            </span>
+            <span class="favorite-track-album" title="${escapeHtml(track.album || t('unknownAlbum'))}">${escapeHtml(track.album || t('unknownAlbum'))}</span>
+            <span class="favorite-track-plays">${Number(track.playCount) || 0} ${t('plays')}</span>
+            <span class="favorite-track-duration">${formatTime(track.duration)}</span>
+            <button type="button" class="favorite-remove-btn" data-favorite-toggle="${escapeHtml(String(track.id))}" aria-label="${t('removeFavorite')}" title="${t('removeFavorite')}"><i class="fa-solid fa-heart"></i></button>
+        </article>
+    `).join('');
+    const displayCount = value => (Number(value) || 0).toLocaleString(currentLanguage === 'fa' ? 'fa-IR' : 'en-US');
 
     mainSection.innerHTML = `
-        <div class="hero-compact">
-            <div class="hero-left"><h2>${t('navFavText')}</h2><p>${totalLikes} ${t('tracks')} • ${totalPlays} ${t('plays')}</p></div>
-            <div class="hero-actions"><button class="hero-primary-btn" onclick="playTracksFromList('favorites')"><i class="fa-solid fa-play"></i> ${t('playAll')}</button></div>
+        <div class="favorites-page">
+            <header class="favorites-hero">
+                <div class="favorites-cover-stack" aria-hidden="true">
+                    ${[...likedTracks].slice(0, 3).map(track => {
+                        const url = coverUrl(track);
+                        return `<span>${url ? `<img src="${url}" alt="" loading="lazy">` : '<i class="fa-solid fa-music"></i>'}</span>`;
+                    }).join('')}
+                    <span class="favorites-cover-heart"><i class="fa-solid fa-heart"></i></span>
+                </div>
+                <div class="favorites-hero-copy">
+                    <span class="favorites-eyebrow">${t('favoritesCollection')}</span>
+                    <h1>${t('navFavText')}</h1>
+                    <p>${t('favoritesDescription')}</p>
+                    <span class="favorites-hero-count">${displayCount(totalLikes)} ${t('tracks')} <i></i> ${displayCount(totalPlays)} ${t('plays')}</span>
+                </div>
+                <button type="button" class="favorites-play-all" onclick="playTracksFromList('favorites')"><i class="fa-solid fa-play"></i>${t('playAll')}</button>
+            </header>
+
+            <section class="favorites-metrics" aria-label="${t('navFavText')}">
+                <div><span class="favorites-metric-icon"><i class="fa-solid fa-heart"></i></span><span><strong>${displayCount(totalLikes)}</strong><small>${t('likedTracks')}</small></span></div>
+                <div><span class="favorites-metric-icon"><i class="fa-solid fa-headphones"></i></span><span><strong>${displayCount(totalPlays)}</strong><small>${t('totalPlays')}</small></span></div>
+                <div><span class="favorites-metric-icon"><i class="fa-solid fa-clock-rotate-left"></i></span><span><strong>${displayCount(recentLiked.length)}</strong><small>${t('recentlyAdded')}</small></span></div>
+            </section>
+
+            <section class="favorites-highlights">
+                <div class="favorites-section-heading"><div><span>${t('favoritesCollection')}</span><h2>${t('topLiked')}</h2></div><span class="favorites-section-count">${displayCount(totalLikes)}</span></div>
+                <div class="favorite-highlight-grid">${topCards}</div>
+            </section>
+
+            <section class="favorites-library">
+                <div class="favorites-section-heading"><div><span>${t('navFavText')}</span><h2>${t('recentlyAdded')}</h2></div><span class="favorites-section-count">${displayCount(totalLikes)} ${t('tracks')}</span></div>
+                <div class="favorite-track-list">
+                    <div class="favorite-track-header" role="row">
+                        <span class="favorite-header-index" role="columnheader">#</span>
+                        <span class="favorite-header-cover" aria-hidden="true"></span>
+                        <span class="favorite-header-title" role="columnheader">${t('trackTitle')}</span>
+                        <span class="favorite-header-album" role="columnheader">${t('album')}</span>
+                        <span class="favorite-header-plays" role="columnheader">${t('totalPlays')}</span>
+                        <span class="favorite-header-duration" role="columnheader"><i class="fa-regular fa-clock"></i></span>
+                        <span class="favorite-header-action" aria-hidden="true"></span>
+                    </div>
+                    ${trackRows}
+                </div>
+            </section>
         </div>
-
-        <div class="quick-stats-row">
-            <div class="stat-card"><h3>${totalLikes}</h3><p>${t('likedTracks')}</p></div>
-            <div class="stat-card"><h3>${totalPlays}</h3><p>${t('totalPlays')}</p></div>
-        </div>
-
-        <div class="spotify-row-title"><h3>${t('topLiked')}</h3></div>
-        <div class="featured-grid">${featuredHtml}</div>
-
-        <div class="spotify-row-title"><h3>${t('recentlyAdded')}</h3></div>
-        <div class="recent-list">${recentHtml}</div>
     `;
 }
 
@@ -3893,10 +4024,88 @@ async function renderStats() {
     if (!mainSection) return;
     try {
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/stats`);
-        if (!res.ok) throw new Error();
+        if (!res.ok) throw new Error(`Analytics request failed (${res.status})`);
         const stats = await res.json();
-        mainSection.innerHTML = `<div class="spotify-row-title"><h3>${t('statsTitle')}</h3></div><div class="live-stats-dashboard"><div class="live-stat-card border-cyan"><i class="fa-solid fa-music"></i><h5>${t('totalTracksLabel')}</h5><h2>${stats.totalTracks || 0}</h2></div><div class="live-stat-card border-pink"><i class="fa-solid fa-headphones"></i><h5>${t('totalPlaysLabel')}</h5><h2>${stats.totalPlayCount || 0}</h2></div><div class="live-stat-card border-green"><i class="fa-solid fa-heart"></i><h5>${t('popularLabel')}</h5><h2>${stats.totalLikes || 0}</h2></div></div>${stats.mostPlayed ? `<div class="most-played-highlight"><i class="fa-solid fa-trophy"></i><div><span class="hero-label">${t('statsHero')}</span><h2 class="hero-title">${escapeHtml(stats.mostPlayed.title)}</h2><p class="hero-desc">${escapeHtml(stats.mostPlayed.artist || 'Unknown Artist')}</p><p class="hero-detail">${t('topTrackLabel')} (<strong>${stats.mostPlayed.playCount || 0}</strong> ${t('playedTimes')}).</p></div></div>` : ''}<h4 style="margin-top:24px; margin-bottom:12px; font-size:0.9rem; color:var(--spotify-text-muted);"><i class="fa-solid fa-wave-square"></i> ${t('liveSpectrumLabel')}</h4><canvas id="telemetrySpectrumCanvas" width="600" height="200" style="width:100%; height:200px; background-color:#0c0c0e; border-radius:var(--radius-lg); border:1px solid var(--border-color);"></canvas>`;
-    } catch { mainSection.innerHTML = `<p class="stats-error">${t('statsError')}</p>`; }
+        if (currentActiveSection !== 'stats') return;
+        const displayCount = value => {
+            const count = Number(value);
+            return (Number.isFinite(count) ? count : 0).toLocaleString(currentLanguage === 'fa' ? 'fa-IR' : 'en-US');
+        };
+        const mostPlayed = stats.mostPlayed;
+        const isAnalyzing = Boolean(isPlaying && analyser);
+        const summaryCards = [
+            { icon: 'fa-music', label: t('totalTracksLabel'), value: stats.totalTracks, tone: 'tracks' },
+            { icon: 'fa-headphones', label: t('totalPlaysLabel'), value: stats.totalPlayCount, tone: 'plays' },
+            { icon: 'fa-heart', label: t('popularLabel'), value: stats.totalLikes, tone: 'likes' }
+        ];
+
+        mainSection.innerHTML = `
+            <div class="telemetry-page">
+                <header class="telemetry-heading">
+                    <div class="telemetry-heading-copy">
+                        <div class="telemetry-eyebrow"><span class="telemetry-live-dot"></span>${t('liveTelemetryLabel')}</div>
+                        <h1>${t('statsTitle')}</h1>
+                        <p>${t('telemetryDescription')}</p>
+                    </div>
+                    <div class="telemetry-heading-mark" aria-hidden="true">
+                        <span class="telemetry-mark-orbit"></span>
+                        <i class="fa-solid fa-wave-square"></i>
+                    </div>
+                </header>
+
+                <section class="telemetry-summary" aria-label="${t('statsTitle')}">
+                    ${summaryCards.map(card => `
+                        <article class="telemetry-metric telemetry-metric-${card.tone}">
+                            <div class="telemetry-metric-top">
+                                <span class="telemetry-metric-icon"><i class="fa-solid ${card.icon}"></i></span>
+                                <span class="telemetry-metric-signal" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+                            </div>
+                            <p>${card.label}</p>
+                            <strong>${displayCount(card.value)}</strong>
+                        </article>
+                    `).join('')}
+                </section>
+
+                <section class="telemetry-top-track" aria-label="${t('statsHero')}">
+                    <div class="telemetry-top-track-rank"><i class="fa-solid fa-trophy"></i><span>#1</span></div>
+                    <div class="telemetry-top-track-copy">
+                        <span class="telemetry-section-label">${t('statsHero')}</span>
+                        ${mostPlayed ? `
+                            <h2>${escapeHtml(mostPlayed.title || t('trackTitle'))}</h2>
+                            <p class="telemetry-track-artist">${escapeHtml(mostPlayed.artist || t('unknownArtist'))}</p>
+                            <p class="telemetry-track-detail">${t('topTrackLabel')}</p>
+                        ` : `<h2>${t('telemetryNoTopTrack')}</h2><p class="telemetry-track-detail">${t('telemetryNoTopTrackHint')}</p>`}
+                    </div>
+                    <div class="telemetry-play-count">
+                        <strong>${displayCount(mostPlayed?.playCount)}</strong>
+                        <span>${t('playedTimes')}</span>
+                    </div>
+                </section>
+
+                <section class="telemetry-spectrum-panel" aria-label="${t('liveSpectrumLabel')}">
+                    <div class="telemetry-spectrum-heading">
+                        <div class="telemetry-spectrum-title">
+                            <span class="telemetry-spectrum-icon"><i class="fa-solid fa-wave-square"></i></span>
+                            <div><h2>${t('liveSpectrumLabel')}</h2><p>${t('telemetrySpectrumDescription')}</p></div>
+                        </div>
+                        <span class="telemetry-analyzer-status ${isAnalyzing ? 'is-active' : ''}">
+                            <i></i>${isAnalyzing ? t('telemetryActive') : t('telemetryWaiting')}
+                        </span>
+                    </div>
+                    <div class="telemetry-spectrum-stage ${isAnalyzing ? 'is-active' : ''}">
+                        <div class="telemetry-spectrum-grid" aria-hidden="true"></div>
+                        <div class="telemetry-spectrum-axis" aria-hidden="true"><span>20 Hz</span><span>1 kHz</span><span>20 kHz</span></div>
+                        <canvas id="telemetrySpectrumCanvas" width="1200" height="300" role="img" aria-label="${t('liveSpectrumLabel')}"></canvas>
+                        ${isAnalyzing ? '' : `<div class="telemetry-spectrum-empty"><i class="fa-solid fa-headphones"></i><span>${t('telemetryStartPlayback')}</span></div>`}
+                    </div>
+                    <div class="telemetry-spectrum-footer"><span><i class="fa-solid fa-circle"></i>${t('telemetryFrequency')}</span><span>${t('telemetryRealtime')}</span></div>
+                </section>
+            </div>`;
+    } catch (error) {
+        console.error('Failed to load playback analytics:', error);
+        if (currentActiveSection !== 'stats') return;
+        mainSection.innerHTML = `<div class="telemetry-error"><i class="fa-solid fa-chart-line"></i><p>${t('statsError')}</p></div>`;
+    }
 }
 
 // =============================================================================
@@ -3907,33 +4116,90 @@ function renderArtists() {
     const mainSection = document.getElementById('dynamicSectionContainer');
     if (!mainSection) return;
     if (tracks.length === 0) {
-        mainSection.innerHTML = `<div class="empty-illustration-state"><i class="fa-solid fa-microphone"></i><h3>${t('emptyArtistsState') || 'No Artists Found'}</h3><p>${t('emptyArtistsDesc') || 'Add some music tracks to see your artists.'}</p></div>`;
+        mainSection.innerHTML = `<div class="empty-state-premium"><i class="fa-solid fa-microphone-lines"></i><h3>${t('emptyArtistsState')}</h3><p>${t('emptyArtistsDesc')}</p><button class="import-hero-btn" onclick="handleImport()"><i class="fa-solid fa-plus"></i><span>${t('browseLibrary')}</span></button></div>`;
         return;
     }
     const artistsMap = new Map();
     tracks.forEach(track => {
-        const artistName = track.artist || 'Unknown Artist';
-        if (!artistsMap.has(artistName)) artistsMap.set(artistName, { name: artistName, tracks: [], coverImage: null, hasCover: false, coverUrl: null });
-        artistsMap.get(artistName).tracks.push(track);
-        const artistData = artistsMap.get(artistName);
-        if (!artistData.coverImage && track.coverImage && track.coverImage.length > 0) { artistData.coverImage = track.coverImage; artistData.hasCover = track.hasCover; artistData.coverUrl = track.hasCover ? `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover` : null; }
+        const artistName = String(track.artist || '').trim() || t('unknownArtist');
+        const key = artistName.toLocaleLowerCase(currentLanguage === 'fa' ? 'fa' : 'en');
+        if (!artistsMap.has(key)) artistsMap.set(key, { name: artistName, tracks: [], albums: new Set(), coverTrack: null });
+        const artist = artistsMap.get(key);
+        artist.tracks.push(track);
+        if (track.album) artist.albums.add(String(track.album).trim());
+        if (!artist.coverTrack && track.hasCover) artist.coverTrack = track;
     });
-    const artists = Array.from(artistsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-    let artistsHtml = '';
-    artists.forEach(artist => {
-        const coverHtml = artist.coverUrl ? `<img src="${artist.coverUrl}" alt="${escapeHtml(artist.name)}" loading="lazy">` : '<i class="fa-solid fa-microphone-alt"></i>';
-        artistsHtml += `<div class="artist-card" data-artist-name="${escapeHtml(artist.name)}"><div class="artist-avatar">${coverHtml}</div><div class="artist-name truncate-text">${escapeHtml(artist.name)}</div><div class="artist-tracks-count">${artist.tracks.length} ${t('tracksCount') || 'tracks'}</div></div>`;
-    });
-    mainSection.innerHTML = `<div class="spotify-row-title"><h3><i class="fa-solid fa-microphone"></i> ${t('artistsTitle') || 'Artists'} (${artists.length})</h3></div><div class="artists-grid" id="artistsGrid">${artistsHtml}</div>`;
+    const artists = Array.from(artistsMap.values()).sort((a, b) => a.name.localeCompare(b.name, currentLanguage === 'fa' ? 'fa' : 'en', { sensitivity: 'base' }));
+    const totalArtistPlays = artist => artist.tracks.reduce((sum, track) => sum + (Number(track.playCount) || 0), 0);
+    const artistCards = artists.map((artist, index) => {
+        const coverUrl = artist.coverTrack
+            ? `http://127.0.0.1:${apiPort}/api/tracks/${encodeURIComponent(artist.coverTrack.id)}/cover`
+            : null;
+        const plays = totalArtistPlays(artist);
+        const albumCount = artist.albums.size;
+    const likedCount = artist.tracks.filter(track => track.isLiked).length;
+    return `
+        <article class="artist-card" data-artist-name="${escapeHtml(artist.name)}" tabindex="0" role="button" aria-label="${escapeHtml(artist.name)} · ${artist.tracks.length} ${t('tracks')}">
+                <div class="artist-card-art artist-art-tone-${index % 5}">
+                    ${coverUrl ? `<img src="${coverUrl}" alt="" loading="lazy">` : `<span class="artist-art-monogram">${escapeHtml((artist.name.match(/[\p{L}\p{N}]/u) || ['?'])[0].toLocaleUpperCase())}</span>`}
+                    <span class="artist-art-shade"></span>
+                    <span class="artist-art-mic"><i class="fa-solid fa-microphone-lines"></i></span>
+                    <button type="button" class="artist-play-btn" data-artist-play="${escapeHtml(artist.name)}" aria-label="${t('playArtist')}: ${escapeHtml(artist.name)}" title="${t('playArtist')}"><i class="fa-solid fa-play"></i></button>
+                </div>
+                <div class="artist-card-content">
+                    <span class="artist-card-kicker">${t('artistsTitle')} ${String(index + 1).padStart(2, '0')}</span>
+                    <h2 title="${escapeHtml(artist.name)}">${escapeHtml(artist.name)}</h2>
+                    <div class="artist-card-stats">
+                        <span><i class="fa-solid fa-music"></i>${artist.tracks.length} ${t('tracks')}</span>
+                        <span><i class="fa-solid fa-compact-disc"></i>${albumCount} ${t('albumsTitle')}</span>
+                        <span><i class="fa-solid fa-heart"></i>${likedCount} ${t('likedTracks')}</span>
+                    </div>
+                    <div class="artist-card-footer"><span><i class="fa-solid fa-headphones"></i>${plays.toLocaleString(currentLanguage === 'fa' ? 'fa-IR' : 'en-US')} ${t('plays')}</span><i class="fa-solid fa-arrow-up-right-from-square"></i></div>
+                </div>
+            </article>`;
+    }).join('');
+
+    mainSection.innerHTML = `
+        <div class="artists-page">
+            <header class="artists-page-header">
+                <div class="artists-page-heading">
+                    <span class="artists-page-eyebrow"><i class="fa-solid fa-compact-disc"></i>${t('artistsCollection')}</span>
+                    <h1>${t('artistsTitle')}</h1>
+                    <p>${t('artistsDescription')}</p>
+                </div>
+                <div class="artists-header-count"><strong>${artists.length.toLocaleString(currentLanguage === 'fa' ? 'fa-IR' : 'en-US')}</strong><span>${t('uniqueArtists')}</span></div>
+            </header>
+            <div class="artists-toolbar">
+            <label class="artists-search"><i class="fa-solid fa-magnifying-glass"></i><input id="artistSearchInput" type="search" placeholder="${t('artistSearchPlaceholder')}" autocomplete="off"></label>
+                <span class="artists-result-count">${tracks.length.toLocaleString(currentLanguage === 'fa' ? 'fa-IR' : 'en-US')} ${t('tracks')}</span>
+            </div>
+            <div class="artists-grid" id="artistsGrid">${artistCards}</div>
+            <div class="artists-no-results" id="artistsNoResults" hidden><i class="fa-solid fa-microphone-slash"></i><span>${t('artistSearchEmpty')}</span></div>
+        </div>`;
+
+    const searchInput = document.getElementById('artistSearchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            const query = searchInput.value.trim().toLocaleLowerCase(currentLanguage === 'fa' ? 'fa' : 'en');
+            let visibleCount = 0;
+            mainSection.querySelectorAll('.artist-card').forEach(card => {
+                const matches = (card.dataset.artistName || '').toLocaleLowerCase(currentLanguage === 'fa' ? 'fa' : 'en').includes(query);
+                card.hidden = !matches;
+                if (matches) visibleCount++;
+            });
+            const empty = document.getElementById('artistsNoResults');
+            if (empty) empty.hidden = visibleCount > 0;
+        });
+    }
 }
 
 function showArtistDetail(artistName) {
-    const artistTracks = tracks.filter(track => (track.artist || 'Unknown Artist') === artistName);
+    const artistTracks = tracks.filter(track => (String(track.artist || '').trim() || t('unknownArtist')) === artistName);
     if (artistTracks.length === 0) return;
     const mainSection = document.getElementById('dynamicSectionContainer');
     if (!mainSection) return;
     let artistCover = null;
-    for (const track of artistTracks) { if (track.hasCover && track.coverImage) { artistCover = `http://127.0.0.1:${apiPort}/api/tracks/${track.id}/cover`; break; } }
+    for (const track of artistTracks) { if (track.hasCover) { artistCover = `http://127.0.0.1:${apiPort}/api/tracks/${encodeURIComponent(track.id)}/cover`; break; } }
     const coverHtml = artistCover ? `<img src="${artistCover}" alt="${escapeHtml(artistName)}">` : '<i class="fa-solid fa-microphone-alt"></i>';
     // Simplified artist detail: compact header + plain list to reduce DOM complexity
     let listHtml = '';
@@ -4077,39 +4343,72 @@ async function createSimilarPlaylistFromCurrent() {
     }
 }
 
-async function toggleLikeWithAI() {
-    if (!currentTrackId) return;
-    // 1) Optimistic UI update
-    const wasLiked = currentTrack && currentTrack.isLiked;
-    const newLiked = !wasLiked;
-    try {
-        const trackInList = tracks.find(t => t.id === currentTrackId);
-        if (trackInList) trackInList.isLiked = newLiked;
-        if (currentTrack) currentTrack.isLiked = newLiked;
-        updatePlayerUI();
+const pendingFavoriteUpdates = new Set();
 
-        const method = wasLiked ? 'DELETE' : 'POST';
-        // 2) Fire network request in background
-        const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/${currentTrackId}/like`, { method });
+function refreshFavoriteSurfaces() {
+    const likedCount = tracks.filter(track => track.isLiked).length;
+    const countEl = document.getElementById('quickTotalLikes');
+    if (countEl) countEl.innerText = likedCount.toLocaleString(currentLanguage === 'fa' ? 'fa-IR' : 'en-US');
+    if (currentTrack) updatePlayerUI();
+    if (currentActiveSection === 'favorites') renderFavorites();
+    else if (currentActiveSection === 'home') window.renderHome?.();
+    else if (currentActiveSection === 'artists' && document.getElementById('artistsGrid')) renderArtists();
+
+    try {
+        localStorage.setItem('korai_tracks_cache', JSON.stringify(tracks));
+    } catch (error) {
+        console.warn('Could not update the local track cache after changing a favorite:', error);
+    }
+}
+
+async function setTrackFavorite(trackId, shouldLike) {
+    const normalizedId = Number(trackId);
+    if (!Number.isFinite(normalizedId) || pendingFavoriteUpdates.has(normalizedId)) return;
+    const trackInList = tracks.find(track => Number(track.id) === normalizedId);
+    if (!trackInList) return;
+
+    const wasLiked = Boolean(trackInList.isLiked);
+    if (wasLiked === shouldLike) return;
+    pendingFavoriteUpdates.add(normalizedId);
+    trackInList.isLiked = shouldLike;
+    if (currentTrack && Number(currentTrack.id) === normalizedId) currentTrack.isLiked = shouldLike;
+    refreshFavoriteSurfaces();
+
+    try {
+        const method = shouldLike ? 'POST' : 'DELETE';
+        const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/${encodeURIComponent(normalizedId)}/like`, { method });
         if (!res.ok) throw new Error('Like request failed');
 
-        // Fire-and-forget AI interaction
         fetch(`http://127.0.0.1:${apiPort}/api/ai/interaction`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ trackId: currentTrackId, action: wasLiked ? 'unlike' : 'like' })
-        }).catch(() => {});
+            body: JSON.stringify({ trackId: normalizedId, action: shouldLike ? 'like' : 'unlike' })
+        }).catch(error => console.debug('Could not record favorite interaction for recommendations:', error));
 
-        showNotification(newLiked ? 'Added to favorites' : 'Removed from favorites', 'success');
-    } catch (err) {
-        // 3) Rollback on failure
-        const trackInList = tracks.find(t => t.id === currentTrackId);
-        if (trackInList) trackInList.isLiked = wasLiked;
-        if (currentTrack) currentTrack.isLiked = wasLiked;
-        updatePlayerUI();
+        showNotification(t(shouldLike ? 'favoriteAddedNotice' : 'favoriteRemovedNotice'), 'success');
+    } catch (error) {
+        trackInList.isLiked = wasLiked;
+        if (currentTrack && Number(currentTrack.id) === normalizedId) currentTrack.isLiked = wasLiked;
+        refreshFavoriteSurfaces();
+        console.error('Failed to persist favorite state:', error);
         showNotification(t('notificationFavoritesUpdateFailed'), 'error');
+    } finally {
+        pendingFavoriteUpdates.delete(normalizedId);
     }
 }
+
+async function toggleLikeWithAI() {
+    if (currentTrackId == null) return;
+    const track = tracks.find(item => Number(item.id) === Number(currentTrackId)) || currentTrack;
+    if (!track) return;
+    return setTrackFavorite(track.id, !track.isLiked);
+}
+
+window.toggleTrackFavorite = trackId => {
+    const track = tracks.find(item => Number(item.id) === Number(trackId));
+    if (!track) return;
+    return setTrackFavorite(trackId, !track.isLiked);
+};
 
 window.toggleLike = toggleLikeWithAI;
 window.handleAiRecommendations = handleAiRecommendationsEnhanced;
@@ -4577,11 +4876,33 @@ function setupEventListeners() {
             scrubTooltip.style.display = 'none';
         });
         
-        // Handle click for seeking
-        progressBar.addEventListener('click', (e) => {
-            e.stopPropagation();
-            handleTimelineSeek(e);
+        progressBar.addEventListener('pointerdown', event => {
+            if (event.pointerType === 'mouse' && event.button !== 0) return;
+            if (!audioElement || !Number.isFinite(audioElement.duration) || audioElement.duration <= 0) return;
+            event.preventDefault();
+            progressBar.setPointerCapture(event.pointerId);
+            progressBar.dataset.seeking = 'true';
+            handleTimelineSeek(event);
         });
+
+        progressBar.addEventListener('pointermove', event => {
+            if (progressBar.dataset.seeking === 'true') handleTimelineSeek(event);
+        });
+
+        const finishTimelineSeek = event => {
+            delete progressBar.dataset.seeking;
+            if (progressBar.hasPointerCapture(event.pointerId)) {
+                progressBar.releasePointerCapture(event.pointerId);
+            }
+        };
+        progressBar.addEventListener('pointerup', finishTimelineSeek);
+        progressBar.addEventListener('pointercancel', finishTimelineSeek);
+
+        progressBar.addEventListener('lostpointercapture', () => {
+            delete progressBar.dataset.seeking;
+        });
+
+        progressBar.addEventListener('keydown', handleTimelineKeyboardSeek);
     }
     
     // Fullscreen mirror timeline seek
@@ -4831,6 +5152,30 @@ function setupEventListeners() {
         // Click delegation
         dynamicContainer.addEventListener('click', (e) => {
             const target = e.target;
+
+            const favoriteToggle = target.closest('[data-favorite-toggle]');
+            if (favoriteToggle) {
+                e.preventDefault();
+                e.stopPropagation();
+                window.toggleTrackFavorite?.(favoriteToggle.dataset.favoriteToggle);
+                return;
+            }
+
+            const artistPlayButton = target.closest('[data-artist-play]');
+            if (artistPlayButton) {
+                e.preventDefault();
+                e.stopPropagation();
+                playArtist(artistPlayButton.dataset.artistPlay);
+                return;
+            }
+
+            const favoritePlayButton = target.closest('[data-favorite-play]');
+            if (favoritePlayButton) {
+                e.preventDefault();
+                e.stopPropagation();
+                playTrack(Number(favoritePlayButton.dataset.favoritePlay), 'favorites', null, tracks.filter(track => track.isLiked));
+                return;
+            }
             
             // Album card click
             const albumCard = target.closest('.album-card');
@@ -4885,14 +5230,26 @@ function setupEventListeners() {
             }
             
             // Music cards on home/recommendations
-            const musicCard = target.closest('.featured-card, .spotify-music-card, .recent-item-premium, .recent-track-item');
+            const musicCard = target.closest('.featured-card, .spotify-music-card, .recent-item-premium, .recent-track-item, .favorite-highlight-card, .favorite-track-row');
             if (musicCard) {
                 const tId = parseInt(musicCard.dataset.trackId);
                 if (tId && !target.closest('.card-actions')) {
-                    playTrack(tId);
+                    if (currentActiveSection === 'favorites') {
+                        playTrack(tId, 'favorites', null, tracks.filter(track => track.isLiked));
+                    } else {
+                        playTrack(tId);
+                    }
                 }
                 return;
             }
+        });
+
+        dynamicContainer.addEventListener('keydown', event => {
+            const artistCard = event.target.closest('.artist-card[role="button"]');
+            if (!artistCard || (event.key !== 'Enter' && event.key !== ' ')) return;
+            if (event.target.closest('[data-artist-play]')) return;
+            event.preventDefault();
+            showArtistDetail(artistCard.dataset.artistName);
         });
         
         // Context menu delegation

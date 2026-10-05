@@ -10,7 +10,7 @@ const translations = {
         welcomeEvening: "Good evening! Your musical journey continues",
         welcomeLateNight: "Late night session? Let the music speak",
         welcomeMidnight: "Midnight melodies... find your peace",
-        welcomeDeepNight: "⭐ Deep night vibes... just you and the music",
+        welcomeDeepNight: "Deep night vibes... just you and the music",
 
         // ===== Navigation & Sidebar =====
         navHomeText: "Home",
@@ -717,7 +717,7 @@ const translations = {
         welcomeEvening: "شب بخیر! سفر موسیقیت ادامه داره",
         welcomeLateNight: "پاسی از شب... بذار موسیقی حرف بزنه",
         welcomeMidnight: "نیمه‌شب‌ها... آرامش رو با نت‌ها پیدا کن",
-        welcomeDeepNight: "⭐ سحرگاهه... فقط تو و موسیقی",
+        welcomeDeepNight: "سحرگاهه... فقط تو و موسیقی",
 
         // ===== Navigation & Sidebar =====
         navHomeText: "صفحه اصلی",

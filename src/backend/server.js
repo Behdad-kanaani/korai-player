@@ -245,15 +245,10 @@ app.post('/api/proxy/musicdel', async (req, res) => {
 
         
 
-<<<<<<< HEAD
         const response = await fetchSafeUrl(targetUrl.href, {
             allowHosts: ['musicdel.ir', 'www.musicdel.ir', 'dl.musicdel.ir'],
             timeoutMs: 30_000,
             maxRedirects: 5,
-=======
-        let response = await fetchWithTimeout(targetUrl, {
-            redirect: 'manual',
->>>>>>> d2800429466bb624c87c64c659829a2cef9dd8a7
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -262,16 +257,9 @@ app.post('/api/proxy/musicdel', async (req, res) => {
             }
         });
 
-        if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
-            const redirectedUrl = await assertSafeUrl(new URL(response.headers.get('location'), targetUrl).href, {
-                allowHosts: ['musicdel.ir', 'www.musicdel.ir', 'dl.musicdel.ir']
-            });
-            response = await fetchWithTimeout(redirectedUrl, { redirect: 'manual' }, 30000);
-        }
-
         if (!response.ok) {
             if (response.body) await response.body.cancel();
-            console.warn(`️ Proxy response not OK: ${response.status} for ${url}`);
+            console.warn(`Proxy response not OK: ${response.status} for ${url}`);
             return res.status(response.status).json({ 
                 error: `Server responded with status ${response.status}` 
             });
@@ -390,7 +378,7 @@ app.post('/api/search/musicdel', async (req, res) => {
 
         if (!response.ok) {
             if (response.body) await response.body.cancel();
-            console.warn(`️ MusicDel search failed with status: ${response.status}`);
+            console.warn(`MusicDel search failed with status: ${response.status}`);
             return res.status(response.status).json({ error: `MusicDel search failed with status ${response.status}` });
         }
 
@@ -1135,7 +1123,7 @@ function setupRoutes() {
             try {
                 analysis = await analyzeAudioFile(finalPath);
             } catch (analysisErr) {
-                console.warn('️ Audio analysis failed, using fallback metadata:', analysisErr.message);
+                console.warn('Audio analysis failed, using fallback metadata:', analysisErr.message);
                 analysis = {
                     duration: 0,
                     bpm: 120,
@@ -1321,7 +1309,7 @@ function setupRoutes() {
             try {
                 analysis = await analyzeAudioFile(outputFilePath);
             } catch (analysisErr) {
-                console.warn('️ Audio analysis failed for extracted file, using fallback metadata:', analysisErr.message);
+                console.warn('Audio analysis failed for extracted file, using fallback metadata:', analysisErr.message);
                 analysis = {
                     duration: 0,
                     bpm: 120,
@@ -1607,7 +1595,7 @@ function setupRoutes() {
                     try {
                         analysis = await analyzeAudioFile(imported.filePath);
                     } catch (analysisErr) {
-                        console.warn('️ Audio analysis failed for imported file, using fallback:', imported.filePath, analysisErr.message);
+                        console.warn('Audio analysis failed for imported file, using fallback:', imported.filePath, analysisErr.message);
                         analysis = {
                             duration: 0,
                             bpm: 120,
@@ -1702,7 +1690,7 @@ function setupRoutes() {
                     try {
                         analysis = await analyzeAudioFile(imported.filePath);
                     } catch (analysisErr) {
-                        console.warn('️ Audio analysis failed for imported file, using fallback:', imported.filePath, analysisErr.message);
+                        console.warn('Audio analysis failed for imported file, using fallback:', imported.filePath, analysisErr.message);
                         analysis = {
                             duration: 0,
                             bpm: 120,

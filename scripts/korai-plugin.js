@@ -32,13 +32,13 @@ function log(msg, color = 'reset') {
 
 function createPlugin(name) {
   if (!name) {
-    log('❌ Plugin name required: korai-plugin create <name>', 'red');
+    log('Plugin name required: korai-plugin create <name>', 'red');
     process.exit(1);
   }
 
   const pluginDir = path.join(process.cwd(), name);
   if (fs.existsSync(pluginDir)) {
-    log(`❌ Directory already exists: ${pluginDir}`, 'red');
+    log(`Directory already exists: ${pluginDir}`, 'red');
     process.exit(1);
   }
 
@@ -72,12 +72,12 @@ class ${name}Plugin {
   }
 
   async activate(context) {
-    this.api.log(\`✓ ${name} plugin activated!\`);
+    this.api.log(\`${name} plugin activated!\`);
     this.api.notify(\`${name} plugin is running!\`, { duration: 2000 });
   }
 
   async deactivate(context) {
-    this.api.log(\`✗ ${name} plugin deactivated\`);
+    this.api.log(\`${name} plugin deactivated\`);
   }
 
   async onLoad() {
@@ -145,7 +145,7 @@ Available via \`this.api\`:
     main: manifest.entry
   }, null, 2));
 
-  log(`✓ Plugin created at ${pluginDir}`, 'green');
+  log(`Plugin created at ${pluginDir}`, 'green');
   log('', 'green');
   log('Next steps:', 'blue');
   log('  cd ' + name);
@@ -155,13 +155,13 @@ Available via \`this.api\`:
 
 function packPlugin(dir) {
   if (!dir || !fs.existsSync(dir)) {
-    log(`❌ Plugin directory not found: ${dir}`, 'red');
+    log(`Plugin directory not found: ${dir}`, 'red');
     process.exit(1);
   }
 
   const manifestPath = path.join(dir, 'manifest.json');
   if (!fs.existsSync(manifestPath)) {
-    log(`❌ manifest.json not found in ${dir}`, 'red');
+    log(`manifest.json not found in ${dir}`, 'red');
     process.exit(1);
   }
 
@@ -187,7 +187,7 @@ function packPlugin(dir) {
   addDir(dir);
   zip.writeZip(zipPath);
 
-  log(`✓ Plugin packed: ${zipPath}`, 'green');
+  log(`Plugin packed: ${zipPath}`, 'green');
   log(`  Name: ${manifest.name}`, 'blue');
   log(`  ID: ${manifest.id}`, 'blue');
   log(`  Version: ${manifest.version}`, 'blue');
@@ -195,13 +195,13 @@ function packPlugin(dir) {
 
 function validatePlugin(dir) {
   if (!dir || !fs.existsSync(dir)) {
-    log(`❌ Plugin directory not found: ${dir}`, 'red');
+    log(`Plugin directory not found: ${dir}`, 'red');
     process.exit(1);
   }
 
   const manifestPath = path.join(dir, 'manifest.json');
   if (!fs.existsSync(manifestPath)) {
-    log(`❌ manifest.json not found`, 'red');
+    log(`manifest.json not found`, 'red');
     process.exit(1);
   }
 
@@ -219,28 +219,28 @@ function validatePlugin(dir) {
       throw new Error(`Entry point not found: ${manifest.entry}`);
     }
 
-    log(`✓ Plugin is valid`, 'green');
+    log(`Plugin is valid`, 'green');
     log(`  ID: ${manifest.id}`, 'blue');
     log(`  Name: ${manifest.name}`, 'blue');
     log(`  Version: ${manifest.version}`, 'blue');
   } catch (err) {
-    log(`❌ Validation failed: ${err.message}`, 'red');
+    log(`Validation failed: ${err.message}`, 'red');
     process.exit(1);
   }
 }
 
 function devServer(dir, port = 3333) {
   if (!dir || !fs.existsSync(dir)) {
-    log(`❌ Plugin directory not found: ${dir}`, 'red');
+    log(`Plugin directory not found: ${dir}`, 'red');
     process.exit(1);
   }
 
-  log(`🚀 Starting dev server on port ${port}...`, 'green');
-  log(`📂 Watching ${dir} for changes`, 'blue');
+  log(`Starting dev server on port ${port}...`, 'green');
+  log(`Watching ${dir} for changes`, 'blue');
   
   // For now, just a placeholder
-  log(`⚠️  Dev server with hot-reload coming soon!`, 'yellow');
-  log(`📝 For now, test by manually packing and installing the plugin.`, 'yellow');
+  log(`Dev server with hot-reload coming soon!`, 'yellow');
+  log(`For now, test by manually packing and installing the plugin.`, 'yellow');
 }
 
 switch (cmd) {
@@ -268,7 +268,7 @@ switch (cmd) {
     log('  korai-plugin dev <dir> [port]   - Start dev server');
     break;
   default:
-    log('❌ Unknown command: ' + cmd, 'red');
+    log('Unknown command: ' + cmd, 'red');
     log('Run: korai-plugin --help', 'yellow');
     process.exit(1);
 }

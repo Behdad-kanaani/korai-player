@@ -628,9 +628,9 @@ async function checkForUpdates() {
                     versionDisplay.innerHTML = `v${status.currentVersion} → <strong style="color: #1db954;">v${status.latestVersion}</strong>`;
                 }
             } else if (status && status.currentVersion) {
-                showToast(`✅ ${t('noUpdates')} (v${status.currentVersion})`, 'success');
+                showToast(`${t('noUpdates')} (v${status.currentVersion})`, 'success');
             } else {
-                showToast(`✅ ${t('noUpdates')}`, 'success');
+                showToast(`${t('noUpdates')}`, 'success');
             }
         } else {
             showToast(t('settingsUpdateUnavailable'), 'error');

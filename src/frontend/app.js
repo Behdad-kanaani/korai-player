@@ -1563,7 +1563,7 @@ async function nextTrackEnhanced() {
     
     // Prevent rapid successive calls
     if (isTransitioning) {
-        console.debug('⏳ Transition in progress, ignoring next track request');
+        console.debug('Transition in progress, ignoring next track request');
         return;
     }
     
@@ -1650,7 +1650,7 @@ async function prevTrackEnhanced() {
     
     // Prevent rapid successive calls
     if (isTransitioning) {
-        console.debug('⏳ Transition in progress, ignoring previous track request');
+        console.debug('Transition in progress, ignoring previous track request');
         return;
     }
     

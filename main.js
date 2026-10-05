@@ -49,11 +49,11 @@ const { startUpdateChecker, onUpdateCheck, getCurrentVersion } = updater;
 // ============================================================================
 
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 process.on('uncaughtException', (error) => {
-    console.error('❌ Uncaught Exception:', error);
+    console.error('Uncaught Exception:', error);
 });
 
 // ============================================================================
@@ -208,7 +208,7 @@ async function processPendingFiles() {
         
         setTimeout(async () => {
             try {
-                console.debug('📁 Processing pending files:', files);
+                console.debug('Processing pending files:', files);
                 mainWindow.webContents.send('files-opened', files);
             } catch (err) {
                 console.error('Error processing opened files:', err);
@@ -229,14 +229,14 @@ function handleFileOpen() {
     });
     
     if (files.length > 0) {
-        console.debug('📁 Files opened via command line:', files);
+        console.debug('Files opened via command line:', files);
         pendingFiles = files;
     }
 }
 
 app.on('open-file', (event, filePath) => {
     event.preventDefault();
-    console.debug('📁 File opened on macOS:', filePath);
+    console.debug('File opened on macOS:', filePath);
     pendingFiles.push(filePath);
     if (mainWindow && !mainWindow.isDestroyed()) {
         processPendingFiles();
@@ -245,7 +245,7 @@ app.on('open-file', (event, filePath) => {
 
 // FIXED: Improved file extraction in second-instance handler
 app.on('second-instance', (event, commandLine, workingDirectory) => {
-    console.debug('🔄 Second instance detected, focusing main window...');
+    console.debug('Second instance detected, focusing main window...');
     
     if (mainWindow) {
         if (mainWindow.isMinimized()) mainWindow.restore();
@@ -267,7 +267,7 @@ app.on('second-instance', (event, commandLine, workingDirectory) => {
         });
         
         if (files.length > 0) {
-            console.debug('📁 Files from second instance:', files);
+            console.debug('Files from second instance:', files);
             pendingFiles = files;
             processPendingFiles();
         }
@@ -315,12 +315,12 @@ function getTrayIconPath() {
     
     for (const p of possiblePaths) {
         if (fs.existsSync(p)) {
-            console.debug('✅ Tray icon found at:', p);
+            console.debug('Tray icon found at:', p);
             return p;
         }
     }
     
-    console.warn('⚠️ No tray icon found');
+    console.warn('No tray icon found');
     return null;
 }
 
@@ -529,8 +529,7 @@ function updateTrayPlaybackState(isPlaying, track) {
     if (tray) {
         let tooltip = 'KORAI Music Player';
         if (track && track.title) {
-            const status = isPlaying ? '▶' : '⏸';
-            tooltip = `${status} ${track.title} - ${track.artist || 'KORAI'}`;
+            tooltip = `${track.title} - ${track.artist || 'KORAI'}`;
         }
         tray.setToolTip(tooltip);
     }
@@ -546,7 +545,7 @@ async function createSystemTray() {
         const img = nativeImage.createFromPath(iconPath);
         trayIcon = img.resize({ width: 16, height: 16 });
     } else {
-        console.warn('⚠️ No tray icon found, creating fallback');
+        console.warn('No tray icon found, creating fallback');
         const size = 16;
         const svg = Buffer.from(`
             <svg width="${size}" height="${size}" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
@@ -586,7 +585,7 @@ async function createSystemTray() {
         });
         
     } catch (e) {
-        console.warn('⚠️ Could not initialize tray icon:', e.message);
+        console.warn('Could not initialize tray icon:', e.message);
     }
 }
 
@@ -602,9 +601,9 @@ function startHealthCheck() {
         const timer = setTimeout(() => controller.abort(), 2500);
         try {
             const response = await fetch(`http://127.0.0.1:${serverPort}/api/health`, { signal: controller.signal });
-            if (!response.ok) console.warn('⚠️ Server health check failed');
+            if (!response.ok) console.warn('Server health check failed');
         } catch (err) {
-            console.warn('⚠️ Server health check error:', err?.message || err);
+            console.warn('Server health check error:', err?.message || err);
         } finally {
             clearTimeout(timer);
         }
@@ -738,14 +737,14 @@ async function initializeHttpServer(userDataPath) {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         const [port] = await findFreePort(3000, 3100, '127.0.0.1');
         serverPort = port;
-        console.debug(`✅ Port candidate selected: ${serverPort} (attempt ${attempt}/${maxAttempts})`);
+        console.debug(`Port candidate selected: ${serverPort} (attempt ${attempt}/${maxAttempts})`);
 
         try {
             httpServer = await startServer(serverPort, userDataPath);
             return;
         } catch (err) {
             lastError = err;
-            console.warn(`⚠️ Failed to bind server to 127.0.0.1:${serverPort}:`, err.code || err.message || err);
+            console.warn(`Failed to bind server to 127.0.0.1:${serverPort}:`, err.code || err.message || err);
             if (attempt === maxAttempts || !['EADDRINUSE', 'EACCES', 'EAGAIN'].includes(err.code)) {
                 throw err;
             }
@@ -758,13 +757,13 @@ async function initializeHttpServer(userDataPath) {
 
 async function createWindow() {
     try {
-        console.debug('🚀 Creating Electron window...');
+        console.debug('Creating Electron window...');
         if (startupTimer && typeof startupTimer.mark === 'function') startupTimer.mark('creating-window');
         
         const userDataPath = app.getPath('userData');
         await seedBundledPlugins(app.getAppPath(), userDataPath);
         await initializeHttpServer(userDataPath);
-        console.debug('✅ HTTP Server started');
+        console.debug('HTTP Server started');
         
         // Start health check after server is running
         startHealthCheck();
@@ -889,7 +888,7 @@ async function createWindow() {
         });
 
     } catch (err) {
-        console.error('❌ Fatal error in createWindow:', err);
+        console.error('Fatal error in createWindow:', err);
         dialog.showErrorBox('KORAI Error', `Failed to start application:\n${err.message}`);
         app.quit();
     }
@@ -1461,14 +1460,14 @@ app.whenReady().then(async () => {
                 powerCleanup = managePowerState(powerMonitor, {
                     resumeDelayMs: 4000,
                     onSuspend() {
-                        console.debug('🔄 System suspend detected - pausing timers');
+                        console.debug('System suspend detected - pausing timers');
                         if (updatePollingTimer) {
                             clearInterval(updatePollingTimer);
                             updatePollingTimer = null;
                         }
                     },
                     onResume() {
-                        console.debug('⚡ System resume detected - restarting timers after network stabilizes');
+                        console.debug('System resume detected - restarting timers after network stabilizes');
                     }
                 });
             } catch (e) { console.warn('managePowerState failed:', e && e.message); }
@@ -1481,7 +1480,7 @@ app.whenReady().then(async () => {
                     subdirs: ['Network', 'Session Storage'],
                     extensions: ['.tmp']
                 });
-                if (removedCount > 0) console.debug(`🧹 Removed ${removedCount} stale temp files`);
+                if (removedCount > 0) console.debug(`Removed ${removedCount} stale temp files`);
             } catch (e) { console.warn('cleanupTempFiles failed:', e && e.message); }
         }
 
@@ -1494,7 +1493,7 @@ app.whenReady().then(async () => {
                     { clearCacheStorage: true, clearHttpCache: true, versionFilename: '.last-version' }
                 );
                 if (cacheResult && cacheResult.versionChanged) {
-                    console.debug(`📈 Version changed ${cacheResult.previousVersion} -> ${cacheResult.currentVersion}, cleared browser cache.`);
+                    console.debug(`Version changed ${cacheResult.previousVersion} -> ${cacheResult.currentVersion}, cleared browser cache.`);
                 }
             } catch (e) {
                 console.warn('clearCacheOnUpdate failed:', e && e.message);
@@ -1543,7 +1542,7 @@ app.on('window-all-closed', () => {
         stopHealthCheck();
         if (httpServer) {
             httpServer.close(() => {
-                console.debug('🛑 Server closed');
+                console.debug('Server closed');
             });
         }
         app.quit();

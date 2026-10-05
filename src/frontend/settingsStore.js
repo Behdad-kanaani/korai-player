@@ -32,7 +32,7 @@ class SettingsStore {
                 throw new Error('Failed to load settings');
             }
         } catch (err) {
-            console.warn('⚠️ Failed to load settings, using defaults:', err.message);
+            console.warn('Failed to load settings, using defaults:', err.message);
             this.settings = this._getDefaults();
         }
 
@@ -386,7 +386,7 @@ class SettingsStore {
             console.debug('Settings saved to server');
             this._pendingSave = false;
         } catch (err) {
-            console.error('❌ Failed to save settings:', err.message);
+            console.error('Failed to save settings:', err.message);
             this._pendingSave = false;
             // Retry after 2 seconds
             setTimeout(() => {

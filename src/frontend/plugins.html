@@ -1048,7 +1048,7 @@
                             ${p.enabled ? t('pluginEnabled') : t('pluginDisabled')}
                         </span>
                         ${p.running ? `<span class="badge badge-running" data-translate="pluginRunningBadge">Running</span>` : ''}
-                        ${p.builtin ? `<span class="badge badge-builtin" data-translate="pluginBuiltin">★ Built-in</span>` : ''}
+                        ${p.builtin ? `<span class="badge badge-builtin" data-translate="pluginBuiltin">Built-in</span>` : ''}
                     </div>
                     <div class="plugin-description">
                         ${escapeHtml(p.description || t('pluginNoDescription') || 'No description provided.')}
@@ -1091,7 +1091,7 @@
                     const prev = btn.innerHTML;
                     try {
                         btn.disabled = true;
-                        btn.innerHTML = '⏳ ' + (t('pluginUninstalling') || 'Uninstalling...');
+                        btn.innerHTML = (t('pluginUninstalling') || 'Uninstalling...');
                         showActionOverlay(t('pluginUninstalling') || 'Uninstalling...');
                         await uninstallPlugin(id);
                     } catch (err) {

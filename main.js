@@ -1,29 +1,17 @@
-/**
- * main.js - KORAI Music Player - Electron Main Process
- * 
- * Handles window creation, IPC communication, system tray,
- * file dialogs, mini-player window management, and file associations.
- * 
- * FIXED: Deep directory scanning with improved recursive traversal
- * FIXED: File path extraction in second-instance handler
- * ADDED: Auto-update system with hot reload capability
- */
+/* Electron main process. */
 
 const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, shell, screen, powerMonitor, session, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const findFreePort = require('find-free-port');
+const { scanAudioDirectory } = require('./src/backend/folderScanner');
 
-// ============================================================================
 // UPDATE SYSTEM IMPORTS
-// ============================================================================
 
 const updater = require('./src/backend/updater');
 const updateManager = require('./src/backend/updateManager');
 
-// ============================================================================
 // OPTIONAL OPTIMIZATIONS
-// ============================================================================
 
 let cleanupTempFiles, clearCacheOnUpdate, createStartupTimer, managePowerState;
 try {
@@ -32,21 +20,15 @@ try {
     console.warn('@yawlabs/electron-optimize not installed');
 }
 
-// ============================================================================
 // PERFORMANCE / RENDERING
-// ============================================================================
 // Electron enables hardware acceleration by default. Avoid forcing experimental
 // Chromium flags here: they can hurt stability, battery life, or driver compatibility.
 
-// ============================================================================
 // AUTO-UPDATER
-// ============================================================================
 
 const { startUpdateChecker, onUpdateCheck, getCurrentVersion } = updater;
 
-// ============================================================================
 // GLOBAL ERROR HANDLERS
-// ============================================================================
 
 process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
@@ -56,9 +38,7 @@ process.on('uncaughtException', (error) => {
     console.error('Uncaught Exception:', error);
 });
 
-// ============================================================================
 // SINGLE INSTANCE LOCK
-// ============================================================================
 
 const KORAI_SCHEME = 'korai';
 const KORAI_HOST = 'app';
@@ -142,9 +122,7 @@ if (!gotTheLock) {
     process.exit(0);
 }
 
-// ============================================================================
 // GLOBAL REFERENCES
-// ============================================================================
 
 let mainWindow;
 let miniPlayerWindow = null;
@@ -197,9 +175,7 @@ let currentTrayState = {
 
 let currentLanguage = 'en';
 
-// ============================================================================
 // FILE ASSOCIATION HANDLING
-// ============================================================================
 
 async function processPendingFiles() {
     if (pendingFiles.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
@@ -243,7 +219,6 @@ app.on('open-file', (event, filePath) => {
     }
 });
 
-// FIXED: Improved file extraction in second-instance handler
 app.on('second-instance', (event, commandLine, workingDirectory) => {
     console.debug('Second instance detected, focusing main window...');
     
@@ -252,13 +227,10 @@ app.on('second-instance', (event, commandLine, workingDirectory) => {
         mainWindow.show();
         mainWindow.focus();
         
-        // Improved file extraction - skip Electron/internal args
         const files = commandLine.slice(1).filter(arg => {
-            // Skip Electron/internal flags
             if (arg.startsWith('--')) return false;
             if (arg.includes('electron')) return false;
             if (arg.includes('KORAI')) return false;
-            // Check if it's an audio file and exists
             try {
                 return arg.match(/\.(mp3|wav|ogg|m4a|flac)$/i) && fs.existsSync(arg);
             } catch (e) {
@@ -274,9 +246,7 @@ app.on('second-instance', (event, commandLine, workingDirectory) => {
     }
 });
 
-// ============================================================================
 // SINGLE WINDOW CREATION HELPER
-// ============================================================================
 
 async function ensureWindowCreation() {
     if (windowCreationPromise) {
@@ -297,9 +267,7 @@ async function ensureWindowCreation() {
     return windowCreationPromise;
 }
 
-// ============================================================================
 // TRAY ICON PATH HELPER
-// ============================================================================
 
 function getTrayIconPath() {
     const possiblePaths = [
@@ -324,9 +292,7 @@ function getTrayIconPath() {
     return null;
 }
 
-// ============================================================================
 // TRAY MENU FUNCTIONS
-// ============================================================================
 
 async function loadTrayLanguage() {
     try {
@@ -589,9 +555,7 @@ async function createSystemTray() {
     }
 }
 
-// ============================================================================
 // SERVER HEALTH CHECK
-// ============================================================================
 
 function startHealthCheck() {
     if (healthCheckInterval) return;
@@ -617,9 +581,7 @@ function stopHealthCheck() {
     }
 }
 
-// ============================================================================
 // SEND UPDATE STATUS TO RENDERER
-// ============================================================================
 
 async function sendUpdateStatusToRenderer() {
     if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -681,53 +643,7 @@ async function seedBundledPlugins(appPath, userDataPath) {
     }
 }
 
-// ============================================================================
-// DEEP DIRECTORY SCANNER FOR FOLDER IMPORT
-// ============================================================================
-
-/**
- * Improved recursive directory scanner with depth-first search
- * Scans all subdirectories recursively for audio files
- */
-async function scanDirectoryRecursively(dirPath, audioExtensions, files, maxDepth = 100, currentDepth = 0) {
-    try {
-        // Check if directory is readable
-        await fs.promises.access(dirPath, fs.constants.R_OK);
-        
-        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-        
-        for (const entry of entries) {
-            const fullPath = path.join(dirPath, entry.name);
-            
-            try {
-                if (entry.isDirectory()) {
-                    // Recursively scan subdirectories (with depth limit to avoid infinite loops)
-                    if (currentDepth < maxDepth) {
-                        await scanDirectoryRecursively(fullPath, audioExtensions, files, maxDepth, currentDepth + 1);
-                    } else {
-                        console.warn(`[scan] Max depth reached, skipping: ${fullPath}`);
-                    }
-                } else if (entry.isFile()) {
-                    const ext = path.extname(entry.name).toLowerCase();
-                    if (audioExtensions.includes(ext)) {
-                        files.push(fullPath);
-                        console.debug(`[scan] Found audio file: ${fullPath}`);
-                    }
-                }
-            } catch (entryErr) {
-                console.warn(`[scan] Cannot access: ${fullPath}`, entryErr.message);
-                // Continue scanning other files/directories
-            }
-        }
-    } catch (err) {
-        console.error(`[scan] Error scanning directory ${dirPath}:`, err.message);
-        // Don't throw - continue with other directories
-    }
-}
-
-// ============================================================================
 // MAIN WINDOW CREATION
-// ============================================================================
 
 async function initializeHttpServer(userDataPath) {
     if (httpServer && httpServer.listening) return httpServer;
@@ -894,9 +810,7 @@ async function createWindow() {
     }
 }
 
-// ============================================================================
 // IPC / EXTERNAL-URL SECURITY
-// ============================================================================
 
 function isTrustedAppUrl(input) {
     try {
@@ -922,9 +836,7 @@ function openExternalSafely(input) {
 // Register once; createWindow() can be called again on macOS.
 registerIpcHandler('get-server-port', () => serverPort);
 
-// ============================================================================
 // IPC HANDLERS
-// ============================================================================
 
 registerIpcListener('tray-update-state', (event, { isPlaying, track }) => {
     updateTrayPlaybackState(isPlaying, track);
@@ -1004,9 +916,7 @@ registerIpcListener('restart-app', () => {
     app.exit(0);
 });
 
-// ============================================================================
 // MINI-PLAYER FUNCTIONS
-// ============================================================================
 
 registerIpcListener('open-mini-player', (event, currentTrack, isPlaying) => {
     if (miniPlayerWindow && !miniPlayerWindow.isDestroyed()) {
@@ -1156,23 +1066,20 @@ registerIpcListener('control-from-mini', (event, command) => {
     }
 });
 
-// ============================================================================
-// FILE DIALOG HANDLERS (FIXED: Deep recursive directory scanning)
-// ============================================================================
+// FILE DIALOG HANDLERS
 
 registerIpcHandler('select-audio-files', async () => {
     if (!mainWindow) return [];
     const result = await dialog.showOpenDialog(mainWindow, {
         properties: ['openFile', 'multiSelections'],
         filters: [
-            { name: 'Audio Files', extensions: ['mp3', 'wav', 'ogg', 'm4a', 'flac'] }
+            { name: 'Audio Files', extensions: ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma'] }
         ]
     });
     return result.filePaths;
 });
 
-// FIXED: Deep recursive directory scanner with improved error handling
-registerIpcHandler('select-audio-folder', async () => {
+registerIpcHandler('select-audio-folder', async (event) => {
     if (!mainWindow) return [];
 
     try {
@@ -1185,13 +1092,18 @@ registerIpcHandler('select-audio-folder', async () => {
         if (result.canceled || !result.filePaths || result.filePaths.length === 0) return [];
 
         const folderPath = result.filePaths[0];
-        const audioExtensions = ['.mp3', '.wav', '.ogg', '.m4a', '.flac'];
-        const files = [];
+        console.debug(`[scan] Starting recursive scan of folder: ${folderPath}`);
 
-        console.debug(`[scan] Starting deep scan of folder: ${folderPath}`);
-        await scanDirectoryRecursively(folderPath, audioExtensions, files);
+        const files = await scanAudioDirectory(folderPath, {
+            onWarning: (message, error) => console.warn(message, error && error.message ? error.message : ''),
+            onProgress: (currentDirectory) => {
+                if (!event.sender.isDestroyed()) {
+                    event.sender.send('scan-progress', currentDirectory);
+                }
+            }
+        });
 
-        console.debug(`[scan] Found ${files.length} audio files in ${folderPath} (including subfolders)`);
+        console.debug(`[scan] Found ${files.length} audio files in ${folderPath} (including nested subfolders)`);
 
         if (files.length === 0 && mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('scan-no-files-found', folderPath);
@@ -1200,13 +1112,11 @@ registerIpcHandler('select-audio-folder', async () => {
         return files;
     } catch (error) {
         console.error('[scan] Folder selection error:', error);
-        return [];
+        throw new Error(`Could not scan the selected music folder: ${error.message}`, { cause: error });
     }
 });
 
-// ============================================================================
 // WINDOW CONTROL HANDLERS
-// ============================================================================
 
 registerIpcListener('minimize-window', () => {
     if (mainWindow) mainWindow.minimize();
@@ -1226,9 +1136,7 @@ registerIpcListener('close-window', () => {
     if (mainWindow) mainWindow.close();
 });
 
-// ============================================================================
 // TAG EDITOR HANDLER
-// ============================================================================
 
 registerIpcListener('open-tag-editor', (event, trackId) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1236,9 +1144,7 @@ registerIpcListener('open-tag-editor', (event, trackId) => {
     }
 });
 
-// ============================================================================
 // ADVANCED SEARCH HANDLER
-// ============================================================================
 
 registerIpcHandler('advanced-search', async (event, query) => {
     try {
@@ -1254,9 +1160,7 @@ registerIpcHandler('advanced-search', async (event, query) => {
     }
 });
 
-// ============================================================================
 // PLAYLIST EXPORT/IMPORT HANDLERS
-// ============================================================================
 
 registerIpcHandler('export-playlist', async (event, playlistId, format) => {
     const result = await dialog.showSaveDialog(mainWindow, {
@@ -1296,9 +1200,7 @@ registerIpcHandler('import-playlist', async (event, filePath, format) => {
     }
 });
 
-// ============================================================================
 // LIBRARY EXPORT HANDLER
-// ============================================================================
 
 registerIpcHandler('export-library', async () => {
     const result = await dialog.showSaveDialog(mainWindow, {
@@ -1324,9 +1226,7 @@ registerIpcHandler('export-library', async () => {
     }
 });
 
-// ============================================================================
 // CUE SHEET HANDLER
-// ============================================================================
 
 registerIpcHandler('parse-cue', async (event, cuePath) => {
     try {
@@ -1342,9 +1242,7 @@ registerIpcHandler('parse-cue', async (event, cuePath) => {
     }
 });
 
-// ============================================================================
 // PLAYBACK SETTINGS HANDLERS
-// ============================================================================
 
 registerIpcHandler('get-playback-settings', async () => {
     try {
@@ -1375,9 +1273,7 @@ registerIpcListener('set-crossfade', (event, duration) => {
     }
 });
 
-// ============================================================================
 // REAL BPM DETECTION HANDLER
-// ============================================================================
 
 registerIpcHandler('detect-real-bpm', async (event, trackId) => {
     try {
@@ -1391,9 +1287,7 @@ registerIpcHandler('detect-real-bpm', async (event, trackId) => {
     }
 });
 
-// ============================================================================
 // GLOBAL SHORTCUT HANDLER
-// ============================================================================
 
 registerIpcListener('register-global-shortcut', (event, command) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1442,9 +1336,7 @@ registerIpcListener('open-folder', (event, folderPath) => {
     }
 });
 
-// ============================================================================
 // APP LIFECYCLE
-// ============================================================================
 
 handleFileOpen();
 
@@ -1523,7 +1415,6 @@ app.whenReady().then(async () => {
         }, 3000);
     }
 
-    // Note: periodic update checks are handled by updater.startUpdateChecker()
 });
 
 app.on('activate', async () => {

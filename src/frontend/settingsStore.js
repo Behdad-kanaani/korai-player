@@ -1,9 +1,5 @@
 /**
- * settingsStore.js - Global Settings Store
- * 
- * Centralized settings management with event system
- * All settings are stored in a single source of truth
- * Components can subscribe to changes
+ * Shared settings store.
  */
 
 class SettingsStore {

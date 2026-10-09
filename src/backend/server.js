@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
-const { URL } = require('url');
+const { URL, fileURLToPath } = require('url');
 const { initDatabase, getDb } = require('./database');
 const { analyzeAudioFile, cosineSimilarity } = require('./analyzer');
 const { 
@@ -29,6 +29,7 @@ const { setupPluginRoutes } = require('./pluginRoutes');
 const PluginSettings = require('./pluginSettings');
 const PluginPerformanceMonitor = require('./pluginPerformanceMonitor');
 const { createRateLimiter, assertSafeUrl, fetchSafeUrl, resolveSafePath, resolveExistingFile } = require('./securityUtils');
+const { filterAvailableTracks } = require('./trackAvailability');
 
 const MAX_REMOTE_AUDIO_BYTES = 250 * 1024 * 1024;
 const MAX_PROXY_HTML_BYTES = 5 * 1024 * 1024;
@@ -599,6 +600,7 @@ async function downloadFile(fileUrl, destPath, redirectCount = 0) {
 
 function setupRoutes() {
     const fileOperationLimiter = createRateLimiter(20, 60_000);
+    const getAvailableTracks = (db) => filterAvailableTracks(db.getAllTracks());
 
     app.get('/api/settings', (req, res) => {
         try {
@@ -628,7 +630,7 @@ function setupRoutes() {
                 settings: db.getSettings(),
                 eqPresets: req.app.locals.eqPresets || {},
                 playlists: db.getPlaylists(),
-                likedTracks: db.getAllTracks().filter(t => t.isLiked).map(t => t.id)
+                likedTracks: getAvailableTracks(db).filter(t => t.isLiked).map(t => t.id)
             };
             res.json(exportData);
         } catch (error) {
@@ -749,15 +751,7 @@ function setupRoutes() {
         res.set('Expires', '0');
         try {
             const db = getDb();
-            const tracks = db.getAllTracks()
-                .filter(track => {
-                    if (!track.filePath) return false;
-                    try {
-                        return fs.existsSync(track.filePath);
-                    } catch (err) {
-                        return false;
-                    }
-                })
+            const tracks = getAvailableTracks(db)
                 .map(track => ({
                     ...track,
                     filePath: undefined,
@@ -778,7 +772,7 @@ function setupRoutes() {
         try {
             const db = getDb();
             const likedMap = {};
-            const all = db.getAllTracks();
+            const all = getAvailableTracks(db);
             all.forEach(t => {
                 if (t.isLiked) likedMap[t.id] = true;
             });
@@ -791,7 +785,7 @@ function setupRoutes() {
     app.get('/api/tracks/:id/cover', (req, res) => {
         try {
             const db = getDb();
-            const track = db.getTrackById(parseInt(req.params.id));
+            const track = getAvailableTracks(db).find(item => item.id === parseInt(req.params.id));
             const safeCoverPath = track && track.coverPath
                 ? resolveSafePath(track.coverPath, serverUserDataPath || os.homedir())
                 : null;
@@ -906,16 +900,28 @@ function setupRoutes() {
                 let fp = rawPath.trim();
                 if (fp.startsWith('file://')) {
                     try {
-                        fp = decodeURI(fp.replace(/^file:\/\//, ''));
+                        const parsed = new URL(fp);
+                        // fileURLToPath correctly handles drive letters, spaces,
+                        // Unicode and UNC paths on the current platform.
+                        fp = fileURLToPath(parsed);
                     } catch (err) {
                         fp = fp.replace(/^file:\/\//, '');
                     }
                 }
+                // Music folders may live on any mounted drive, including USB and
+                // network shares. Resolve to a real existing audio file instead
+                // of restricting imports to the app/user-data directory.
                 const safePath = resolveExistingFile(fp, {
                     allowedExtensions: ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma']
                 });
                 return safePath || null;
             }).filter(Boolean)));
+
+            if (normalizedPaths.length === 0) {
+                return res.status(422).json({
+                    error: 'No readable supported audio files were found. Check that the selected drive is connected and that the files are accessible.'
+                });
+            }
 
             const db = getDb();
             const existing = normalizedPaths.filter(fp => {
@@ -927,9 +933,12 @@ function setupRoutes() {
             });
             console.debug(` import: ${existing.length}/${normalizedPaths.length} paths exist on disk`);
             if (existing.length === 0) {
-                return res.json({ success: true, imported: 0, total: normalizedPaths.length, skipped: normalizedPaths.length });
+                return res.status(422).json({
+                    error: 'The selected audio files are no longer accessible. Check the USB/removable drive connection and try again.'
+                });
             }
             const results = [];
+            const failures = [];
             const CONCURRENCY = 3;
             async function processOne(filePath) {
                 try {
@@ -957,6 +966,7 @@ function setupRoutes() {
                     results.push(track);
                     console.debug(` Imported: ${track.title}`);
                 } catch (err) {
+                    failures.push({ filePath, error: err.message || 'Audio analysis failed' });
                     console.error(` Failed to import ${filePath}:`, err.message);
                 }
             }
@@ -971,8 +981,23 @@ function setupRoutes() {
                     }
                 }
                 db.save();
+                if (results.length === 0) {
+                    const sampleErrors = failures.slice(0, 3).map(item => `${path.basename(item.filePath)}: ${item.error}`).join('; ');
+                    return res.status(422).json({
+                        error: sampleErrors
+                            ? `No tracks could be imported. Check that the audio files are readable. ${sampleErrors}`
+                            : 'No readable audio files could be imported. Check that the selected drive is still connected.'
+                    });
+                }
                 const importedTracks = results.map(r => ({ id: r.id, filePath: r.filePath, title: r.title }));
-                res.json({ success: true, imported: results.length, total: filePaths.length, importedTracks });
+                res.json({
+                    success: true,
+                    imported: results.length,
+                    total: filePaths.length,
+                    skipped: Math.max(0, filePaths.length - results.length),
+                    failed: failures.length,
+                    importedTracks
+                });
             }
             run().catch(err => {
                 console.error('Import processing error:', err);
@@ -1286,7 +1311,7 @@ function setupRoutes() {
     app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
         try {
             const db = getDb();
-            const track = db.getTrackById(parseInt(req.params.id));
+            const track = getAvailableTracks(db).find(item => item.id === parseInt(req.params.id));
             if (!track || !track.filePath) {
                 return res.status(404).json({ error: 'Track not found or file missing' });
             }
@@ -1382,9 +1407,9 @@ function setupRoutes() {
     app.get('/api/ai/recommend/personal/:trackId', (req, res) => {
         try {
             const db = getDb();
-            const track = db.getTrackById(parseInt(req.params.trackId));
-            if (!track) return res.status(404).json({ error: 'Track not found' });
-            const allTracks = db.getAllTracks();
+            const allTracks = getAvailableTracks(db);
+            const track = allTracks.find(item => item.id === parseInt(req.params.trackId));
+            if (!track) return res.status(404).json({ error: 'Track not found or audio file is unavailable' });
             const recommendations = getPersonalizedRecommendations(allTracks, track, userHistory, 12);
             const safeRecs = recommendations.map(r => ({
                 id: r.id,
@@ -1413,7 +1438,7 @@ function setupRoutes() {
     app.get('/api/ai/discover', (req, res) => {
         try {
             const db = getDb();
-            const allTracks = db.getAllTracks();
+            const allTracks = getAvailableTracks(db);
             const discoveries = getDiscoveryRecommendations(allTracks, userHistory, 15);
             const safeDisc = discoveries.map(d => ({
                 id: d.id,
@@ -1434,9 +1459,9 @@ function setupRoutes() {
     app.get('/api/recommend/:trackId', (req, res) => {
         try {
             const db = getDb();
-            const track = db.getTrackById(parseInt(req.params.trackId));
-            if (!track) return res.status(404).json({ error: 'Track not found' });
-            const allTracks = db.getAllTracks();
+            const allTracks = getAvailableTracks(db);
+            const track = allTracks.find(item => item.id === parseInt(req.params.trackId));
+            if (!track) return res.status(404).json({ error: 'Track not found or audio file is unavailable' });
             const recommendations = getPersonalizedRecommendations(allTracks, track, userHistory, 10);
             const safeRecs = recommendations.map(r => ({
                 id: r.id,
@@ -1460,11 +1485,11 @@ function setupRoutes() {
         try {
             const db = getDb();
             const { trackId } = req.body;
-            const sourceTrack = db.getTrackById(parseInt(trackId));
+            const sourceTrack = getAvailableTracks(db).find(item => item.id === parseInt(trackId));
             if (!sourceTrack) {
                 return res.status(404).json({ error: 'Track not found' });
             }
-            const allTracks = db.getAllTracks();
+            const allTracks = getAvailableTracks(db);
             const otherTracks = allTracks.filter(t => t.id !== sourceTrack.id);
             if (otherTracks.length === 0) {
                 return res.json({ success: false, message: 'No other tracks in library' });
@@ -1511,7 +1536,19 @@ function setupRoutes() {
     app.get('/api/stats', (req, res) => {
         try {
             const db = getDb();
-            res.json(db.getStats());
+            const tracks = getAvailableTracks(db);
+            const mostPlayed = [...tracks].sort((a, b) => (b.playCount || 0) - (a.playCount || 0))[0];
+            res.json({
+                ...db.getStats(),
+                totalTracks: tracks.length,
+                totalPlayCount: tracks.reduce((sum, track) => sum + (track.playCount || 0), 0),
+                totalLikes: tracks.filter(track => track.isLiked).length,
+                mostPlayed: mostPlayed ? {
+                    title: mostPlayed.title,
+                    artist: mostPlayed.artist,
+                    playCount: mostPlayed.playCount
+                } : null
+            });
         } catch (error) {
             res.status(500).json({ error: error.message });
         }
@@ -1546,7 +1583,7 @@ function setupRoutes() {
             const playlist = db.getPlaylists().find(p => p.id === parseInt(req.params.id));
             if (!playlist) return res.status(404).json({ error: 'Playlist not found' });
             const { format, outputPath } = req.body;
-            const allTracks = db.getAllTracks();
+            const allTracks = getAvailableTracks(db);
             let resultPath;
             switch (format) {
                 case 'm3u':
@@ -1737,7 +1774,7 @@ function setupRoutes() {
     app.post('/api/library/export', fileOperationLimiter, async (req, res) => {
         try {
             const db = getDb();
-            const tracks = db.getAllTracks();
+            const tracks = getAvailableTracks(db);
             const outputPath = req.body.outputPath || `korai_library_${Date.now()}.csv`;
             const resultPath = exportLibraryToCSV(tracks, outputPath);
             res.json({ success: true, path: resultPath });
@@ -1766,7 +1803,7 @@ function setupRoutes() {
             const { playlistId, outputPath } = req.body;
             const playlist = db.getPlaylists().find(p => p.id === playlistId);
             if (!playlist) return res.status(404).json({ error: 'Playlist not found' });
-            const tracks = db.getAllTracks();
+            const tracks = getAvailableTracks(db);
             const resultPath = generateCueSheet(playlist, tracks, outputPath || `${playlist.name}.cue`);
             res.json({ success: true, path: resultPath });
         } catch (error) {

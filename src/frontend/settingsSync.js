@@ -1,8 +1,5 @@
 /**
- * settingsSync.js - Synchronize settings with all app components
- * 
- * Connects the global settings store to all UI components
- * and backend services
+ * Apply saved settings to the UI and playback controls.
  */
 
 class SettingsSync {

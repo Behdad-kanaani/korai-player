@@ -1,8 +1,6 @@
-/* ============================================================
-   settings.css - KORAI Settings Page Styles
-   ============================================================ */
+/* Settings page styles */
 
-/* ===== RESET & BASE ===== */
+/* Reset and base */
 * {
     margin: 0;
     padding: 0;
@@ -18,7 +16,7 @@ body {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
-/* ===== SIDEBAR ===== */
+/* Sidebar */
 .settings-sidebar {
     width: 260px;
     background: var(--spotify-dark, #101014);
@@ -124,7 +122,7 @@ body {
     border-color: rgba(255,255,255,0.12);
 }
 
-/* ===== MAIN CONTENT ===== */
+/* Main content */
 .settings-main {
     flex: 1;
     display: flex;
@@ -171,7 +169,7 @@ body {
     background: rgba(255,255,255,0.2);
 }
 
-/* ===== SECTIONS ===== */
+/* Sections */
 .settings-section {
     display: none;
     animation: fadeIn 0.3s ease;
@@ -199,7 +197,7 @@ body {
     color: var(--accent-cyan, #1db954);
 }
 
-/* ===== SETTING GROUPS ===== */
+/* Setting groups */
 .setting-group {
     display: flex;
     flex-direction: column;
@@ -251,7 +249,7 @@ body {
     border-color: rgba(255, 42, 95, 0.1);
 }
 
-/* ===== FORM ELEMENTS ===== */
+/* Form elements */
 .setting-select {
     background: var(--spotify-grey, #16161c);
     border: 1px solid var(--border-color, rgba(255,255,255,0.06));
@@ -345,7 +343,7 @@ body {
     border-radius: 6px;
 }
 
-/* ===== SWITCH ===== */
+/* Switches */
 .switch {
     position: relative;
     display: inline-block;
@@ -389,7 +387,7 @@ body {
     transform: translateX(20px);
 }
 
-/* ===== FORMAT TAGS ===== */
+/* Format tags */
 .format-tags {
     display: flex;
     gap: 6px;
@@ -419,7 +417,7 @@ body {
     color: var(--accent-cyan, #1db954);
 }
 
-/* ===== DIVIDER ===== */
+/* Divider */
 .setting-divider {
     display: flex;
     align-items: center;
@@ -439,7 +437,7 @@ body {
     background: var(--border-color, rgba(255,255,255,0.06));
 }
 
-/* ===== EQ SLIDERS ===== */
+/* EQ sliders */
 .eq-presets-row {
     display: flex;
     gap: 8px;
@@ -531,7 +529,7 @@ body {
     text-align: center;
 }
 
-/* ===== WEIGHT SLIDERS ===== */
+/* Weight sliders */
 .weight-sliders {
     display: flex;
     flex-direction: column;
@@ -591,7 +589,7 @@ body {
     text-align: right;
 }
 
-/* ===== SAVE BUTTON ===== */
+/* Save button */
 .settings-actions {
     position: sticky;
     bottom: 0;
@@ -642,7 +640,7 @@ body {
     color: #ff2a5f;
 }
 
-/* ===== TOAST ===== */
+/* Toast */
 .toast-container {
     position: fixed;
     bottom: 24px;
@@ -679,7 +677,7 @@ body {
     to { transform: translateX(0); opacity: 1; }
 }
 
-/* ===== RESPONSIVE ===== */
+/* Responsive layout */
 @media (max-width: 768px) {
     .settings-sidebar {
         width: 60px;
@@ -735,7 +733,7 @@ body {
     }
 }
 
-/* ===== LIQUID GLASS THEME OVERRIDE ===== */
+/* Liquid glass theme */
 body.theme-liquid-glass .settings-sidebar {
     background: rgba(14, 16, 28, 0.65);
     backdrop-filter: blur(20px);

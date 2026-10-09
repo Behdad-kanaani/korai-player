@@ -1,6 +1,4 @@
-// Lightweight vocal extraction using a stereo center-channel heuristic.
-// This is intentionally described as extraction, not AI stem separation: true
-// source separation requires a trained separation model and substantially more RAM/CPU.
+// Approximate vocal extraction from the stereo center channel; this is not AI stem separation.
 
 const fs = require('fs');
 const path = require('path');

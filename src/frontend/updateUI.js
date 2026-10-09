@@ -1,5 +1,5 @@
 /**
- * KORAI update UI — polished, scoped and duplicate-id safe.
+ * Update notifications and progress UI.
  */
 
 class UpdateUI {

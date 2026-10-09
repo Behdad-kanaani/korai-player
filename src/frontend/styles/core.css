@@ -1,13 +1,4 @@
-/**
- * core.css - KORAI Music Player Complete Styling
- * 
- * Contains all visual styles including:
- * - Theme system (Spotify Dark / Liquid Glass Remastered)
- * - RTL/LTR layout support
- * - Responsive design for all screen sizes
- * - Animations and transitions
- * - Custom components (player bar, EQ, modals, etc.)
- */
+/* Shared application styles. */
 
 @import url('../assets/fonts/vazir/vazir.css');
 
@@ -37,9 +28,7 @@
     --glass-filter-url: url(#glass-distortion);
 }
 
-/* ==========================================================================
-   DYNAMIC AMBIENT FLUID GLASS BLOBS (HIGH ROTATION & DRIFT)
-   ========================================================================== */
+/* Liquid glass background */
 
 .glass-bg-blobs-container {
     position: fixed;
@@ -829,7 +818,7 @@ body.theme-default::before {
 }
 
 /* ==========================================================================
-   KORAI NEXT-GEN HOME - PREMIUM REDESIGN
+   Home layout
    ========================================================================== */
 
 /* Hero Section - Cinematic Glass */
@@ -1256,7 +1245,7 @@ body.ltr .search-shortcut {
     margin-bottom: 32px;
 }
 
-/* Enhanced Home Hero */
+/* Home hero */
 .home-hero-minimal {
     display: grid;
     grid-template-columns: 1fr 360px;
@@ -4336,7 +4325,7 @@ body.mini-window-active .mini-timeline-bar {
    KORAI REBUILT LIBRARY SORTING, FILTERING & GLASS MODE OPTIMIZATIONS
    ========================================================================== */
 
-/* Enhanced Library Toolbar */
+/* Library toolbar */
 .library-header-panel {
     display: flex;
     align-items: center;
@@ -4936,5 +4925,3 @@ body.ltr.theme-liquid-glass .spotify-music-card:hover .hover-play-bubble {
         font-size: 0.7rem;
     }
 }
-
-

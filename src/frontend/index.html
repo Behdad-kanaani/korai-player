@@ -416,6 +416,20 @@
         </div>
     </div>
 
+    <div class="custom-modal-overlay" id="folderScanModal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="folderScanTitle">
+        <div class="custom-modal-card folder-scan-modal-card">
+            <div class="modal-indicator-header">
+                <i class="fa-solid fa-folder-tree accent-icon"></i>
+                <h4 id="folderScanTitle" data-translate="folderScanTitle">Scanning folder</h4>
+            </div>
+            <div class="folder-scan-status" role="status" aria-live="polite">
+                <span class="folder-scan-spinner" aria-hidden="true"></span>
+                <span data-translate="folderScanCurrentPathLabel">Currently searching:</span>
+            </div>
+            <code class="folder-scan-path" id="folderScanPath" dir="ltr" data-translate="folderScanSelectingPath">Select a folder to scan...</code>
+        </div>
+    </div>
+
     <div class="custom-modal-overlay" id="dialogOverlay" style="display: none;">
         <div class="custom-modal-card">
             <div class="modal-indicator-header">

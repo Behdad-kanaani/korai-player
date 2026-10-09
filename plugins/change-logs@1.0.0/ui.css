@@ -1,4 +1,4 @@
-/* Change Logs plugin styles (optional - fallback exists in ui.js) */
+/* Changelog styles */
 :root{--korai-accent:#00c4a7;--korai-bg:rgba(255,255,255,0.02);--korai-fg:#eaf0ff}
 .korai-change-overlay{position:fixed;inset:0;background:linear-gradient(rgba(2,6,23,0.6), rgba(2,6,23,0.55));backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:99999;padding:24px}
 .korai-change-box{max-width:920px;width:100%;background:var(--korai-bg);border-radius:16px;padding:20px;border:1px solid rgba(255,255,255,0.04);box-shadow:0 20px 60px rgba(0,0,0,0.6)}

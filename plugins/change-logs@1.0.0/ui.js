@@ -1,4 +1,4 @@
-// Change Logs plugin UI — shows a modal on first run per app version
+// Show the changelog once per app version.
 (function(){
   const CHANGELOG_HTML = `
   <h3 style="margin:0 0 6px 0;">KORAI Player v1.6.0 - Summary</h3>
@@ -67,7 +67,6 @@
   function insertIntoPluginsPage(card){
     const container = document.getElementById('pluginContainer');
     if (!container) return false;
-    // insert at top of container
     container.parentNode.insertBefore(card, container);
     return true;
   }
@@ -86,7 +85,7 @@
         return;
       }
 
-      // if plugin container not present yet, observe for a short time
+      // Wait briefly for the plugin container to appear.
       const observer = new MutationObserver((mutations, obs)=>{
         if (document.getElementById('pluginContainer')){
           if (insertIntoPluginsPage(card)){
@@ -96,12 +95,12 @@
         }
       });
       observer.observe(document.body, { childList: true, subtree: true });
-      // stop observing after 5s
+      // Stop waiting after five seconds.
       setTimeout(()=>observer.disconnect(), 5000);
     }catch(e){ console.warn('change-logs inline error', e); }
   }
 
-  // Minimal styles if ui.css not present
+  // Fall back to inline styles if ui.css is unavailable.
   (function injectFallback(){
     if (document.getElementById('korai-change-card-styles')) return;
     const s = document.createElement('style'); s.id = 'korai-change-card-styles';
@@ -113,7 +112,7 @@
     document.head.appendChild(s);
   })();
 
-  // Run after load to attempt inline insertion
+  // Try again after the page loads.
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tryShowInline); else setTimeout(tryShowInline, 200);
 
 })();

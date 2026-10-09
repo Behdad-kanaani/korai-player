@@ -26,7 +26,6 @@ let currentOperation = null;
 
 /**
  * Validate that all critical files exist before applying update
- * FIXED: Added null/undefined check for files parameter
  */
 function validateUpdateFiles(files, appPath) {
     if (!Array.isArray(files)) return { missing: [], invalid: [] };
@@ -57,7 +56,6 @@ function validateUpdateFiles(files, appPath) {
 
 /**
  * Perform a full update with progress tracking
- * FIXED: Added null checks for updateInfo
  */
 async function performFullUpdate(updateInfo, progressCallback) {
     if (isProcessing) {
@@ -210,7 +208,6 @@ function clearRestartFlag() {
 
 /**
  * Check if update is needed based on version
- * FIXED: Better handling of null/undefined values
  */
 async function checkAndPrepareUpdate() {
     try {

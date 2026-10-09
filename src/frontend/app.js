@@ -1,6 +1,5 @@
 /**
- * app.js - KORAI Music Player Frontend Logic
- * FIXED: Shuffle play, timeline visualizer, and other bugs
+ * Main renderer logic for playback and the music library.
  */
 
 // =============================================================================
@@ -15,7 +14,13 @@ let shuffleMode = false;
 let repeatMode = false;
 let audioElement = null;
 let tracks = [];
+let tracksLoadRequestId = 0;
+Object.defineProperty(window, 'tracks', {
+    configurable: true,
+    get: () => tracks
+});
 let playlists = [];
+let playlistsLoadRequestId = 0;
 let queue = [];
 let queueIndex = -1;
 let volume = 0.7;
@@ -85,7 +90,6 @@ const urlParams = new URLSearchParams(window.location.search);
 const isMiniWindowMode = urlParams.get('mode') === 'mini';
 
 
-//
 let currentActiveAlbumId = null;
 
 
@@ -308,7 +312,7 @@ window.extractVocalFromCurrentTrack = async function() {
         const data = await res.json();
         if (data.success && data.track) {
             showNotification(t('extractionComplete') || 'Extraction complete!', 'success');
-            await loadTracks();    // refresh track list
+            await loadTracks({ fresh: true }); // refresh track list
             await loadPlaylists(); // in case playlists reference new track
             // Optionally play the new vocal track
             if (data.track && data.track.id) {
@@ -577,6 +581,26 @@ function hideAnimatedModal(modal) {
         }
         modalCloseTimers.delete(modal);
     }, 190));
+}
+
+function showFolderScanModal() {
+    const modal = document.getElementById('folderScanModal');
+    const path = document.getElementById('folderScanPath');
+    if (!modal || !path) return;
+    path.textContent = t('folderScanSelectingPath');
+    showAnimatedModal(modal);
+}
+
+function updateFolderScanProgress(currentDirectory) {
+    const path = document.getElementById('folderScanPath');
+    if (path && typeof currentDirectory === 'string') {
+        path.textContent = currentDirectory;
+    }
+}
+
+function hideFolderScanModal() {
+    const modal = document.getElementById('folderScanModal');
+    if (modal) hideAnimatedModal(modal);
 }
 
 function showCustomDialog(title, message, onConfirm, showCancel = true) {
@@ -2579,7 +2603,7 @@ function setupDragAndDrop() {
         e.preventDefault();
         if (isMiniWindowMode) return;
         const files = Array.from(e.dataTransfer.files);
-        const audioExtensions = ['mp3', 'wav', 'ogg', 'm4a', 'flac'];
+        const audioExtensions = ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma'];
         const filePaths = files.map(file => file.path || file.name).filter(p => {
             if (!p) return false;
             const ext = p.split('.').pop().toLowerCase();
@@ -2588,11 +2612,7 @@ function setupDragAndDrop() {
         if (filePaths.length === 0) return;
         showNotification(t('dragNotify'), 'info');
         try {
-            const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePaths })
-            });
-            if (!res.ok) throw new Error();
-            const result = await res.json();
+            const result = await importAudioFilesInBatches(filePaths);
             showNotification(`${result.imported} ${t('dragSuccess')}`, 'success');
             await loadTracks({ fresh: true });
             try {
@@ -2621,14 +2641,13 @@ function setupDragAndDrop() {
                         console.debug('Autoplay matched by file path:', matched.id, matched.title);
                         tryAutoPlayTrack(matched.id).catch(e => console.debug('Autoplay failed', e));
                     } else {
-                        const newTracks = tracks.slice(-result.imported);
+                        const newTracks = tracks.slice(0, result.imported);
                         console.debug('Newly imported tracks (drag fallback):', newTracks.map(t=>({ id: t.id, title: t.title })));
                         const lastTrack = newTracks[newTracks.length - 1] || newTracks[0];
                         if (lastTrack) tryAutoPlayTrack(lastTrack.id).catch(e => console.debug('Autoplay failed', e));
                     }
                 }
             } catch (e) { console.debug('Autoplay after drag import failed', e); }
-            switchSection(currentActiveSection);
         } catch (err) { console.error('Drag Import error:', err); showNotification(t('dragError'), 'error'); }
     });
 }
@@ -2637,117 +2656,254 @@ function setupDragAndDrop() {
 // API CONNECTION & DATA LOADING
 // =============================================================================
 
+async function isKoraiApiPort(port) {
+    if (!Number.isInteger(Number(port)) || Number(port) < 1 || Number(port) > 65535) return false;
+    try {
+        const res = await fetch(`http://127.0.0.1:${Number(port)}/api/health`, {
+            method: 'GET',
+            cache: 'no-store',
+            headers: { 'Accept': 'application/json' }
+        });
+        if (!res.ok || !(res.headers.get('content-type') || '').toLowerCase().includes('application/json')) return false;
+        const payload = await res.json();
+        return payload && payload.status === 'ok';
+    } catch (_) {
+        return false;
+    }
+}
+
 async function waitForAPI() {
     const maxAttempts = 15;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
             if (window.electronAPI && typeof window.electronAPI.getServerPort === 'function') {
                 const port = await window.electronAPI.getServerPort();
-                if (port) {
-                    apiPort = port;
-                    console.debug('API connected on port:', apiPort);
+                if (port && await isKoraiApiPort(port)) {
+                    apiPort = Number(port);
+                    console.debug('KORAI API connected on port:', apiPort);
                     return true;
                 }
             }
         } catch (e) {
-            console.error('API connection attempt failed:', e);
+            console.warn('KORAI API connection attempt failed:', e.message || e);
         }
         await new Promise(resolve => setTimeout(resolve, 200));
     }
 
-    const candidatePorts = Array.from({ length: 101 }, (_, i) => 3000 + i);
-    for (const port of candidatePorts) {
-        try {
-            const res = await fetch(`http://127.0.0.1:${port}/api/health`, { method: 'GET' });
-            if (res.ok) {
-                apiPort = port;
-                console.debug(`API detected on port: ${apiPort}`);
-                return true;
-            }
-        } catch (e) {
-            // continue scanning ports until one answers successfully
+    // Do not mistake another local web server's HTML page for KORAI's API.
+    // Only accept a port that answers with KORAI's JSON health contract.
+    for (let port = 3000; port <= 3100; port += 1) {
+        if (await isKoraiApiPort(port)) {
+            apiPort = port;
+            console.debug('KORAI API discovered on port:', apiPort);
+            return true;
         }
     }
 
-    apiPort = 3000;
-    console.debug('Using fallback port 3000');
-    return true;
+    apiPort = null;
+    console.error('KORAI local API could not be found. Imports are disabled until the connection is restored.');
+    return false;
 }
 
-async function loadTracks(options = {}) {
-    if (isMiniWindowMode) return;
-    const forceFresh = Boolean(options && options.fresh);
-    // 1) Pre-warmed start: render from local cache immediately, then sync in background
-    try {
-        const cachedTracks = forceFresh ? null : localStorage.getItem('korai_tracks_cache');
-        if (cachedTracks) {
-            try {
-                tracks = JSON.parse(cachedTracks);
-                console.debug('Pre-warmed start: loaded tracks from local cache');
-                const totalEl = document.getElementById('quickTotalTracks');
-                const likesEl = document.getElementById('quickTotalLikes');
-                if (totalEl) totalEl.innerText = tracks.length;
-                if (likesEl) likesEl.innerText = tracks.filter(t => t.isLiked).length;
+const IMPORT_BATCH_SIZE = 100;
 
-                if (currentActiveSection === 'home') window.renderHome?.();
-                else if (currentActiveSection === 'library') renderLibrary();
-            } catch (e) {
-                console.warn('Invalid startup cache format', e);
-            }
-        }
-    } catch (e) {
-        console.warn('Error reading startup cache', e);
+/** Import paths in bounded requests so large/nested USB libraries cannot exceed
+ * Express's default JSON-body limit. Also fail clearly if a non-JSON HTML page
+ * is returned (usually a wrong port or stale local server). */
+async function importAudioFilesInBatches(filePaths, onProgress = () => {}) {
+    const uniquePaths = Array.from(new Set((Array.isArray(filePaths) ? filePaths : [])
+        .filter(filePath => typeof filePath === 'string' && filePath.trim())
+        .map(filePath => filePath.trim())));
+
+    if (!uniquePaths.length) {
+        return { success: true, imported: 0, total: 0, skipped: 0, importedTracks: [] };
+    }
+    if (!apiPort) {
+        throw new Error('KORAI is not connected to its local library service. Restart the app and try again.');
     }
 
-    // 2) Background sync without blocking UI
+    const combined = { success: true, imported: 0, total: 0, skipped: 0, importedTracks: [] };
+
+    async function importBatch(batch) {
+        let response;
+        try {
+            response = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ filePaths: batch })
+            });
+        } catch (error) {
+            throw new Error(`Could not reach KORAI's local import service: ${error.message}`);
+        }
+
+        const contentType = (response.headers.get('content-type') || '').toLowerCase();
+        const responseText = await response.text();
+        if (!contentType.includes('application/json')) {
+            const description = /<\s*!doctype\s+html|<\s*html/i.test(responseText)
+                ? 'an HTML page instead of JSON'
+                : 'a non-JSON response';
+            throw new Error(`KORAI's local API returned ${description} (HTTP ${response.status}). The API connection was rejected to prevent a misleading import error; restart KORAI Player and retry.`);
+        }
+
+        let payload;
+        try {
+            payload = JSON.parse(responseText);
+        } catch (_) {
+            throw new Error(`KORAI's local API returned invalid JSON (HTTP ${response.status}). Restart the app and retry.`);
+        }
+        if (!response.ok) {
+            throw new Error(payload.error || `Import request failed with HTTP ${response.status}.`);
+        }
+        return payload;
+    }
+
+    for (let offset = 0; offset < uniquePaths.length; offset += IMPORT_BATCH_SIZE) {
+        const batch = uniquePaths.slice(offset, offset + IMPORT_BATCH_SIZE);
+        let payload;
+        try {
+            payload = await importBatch(batch);
+        } catch (error) {
+            if (combined.total > 0) {
+                error.message = `Import stopped after ${combined.total} file(s); ${combined.imported} track(s) were imported before the error. ${error.message}`;
+                // Earlier batches have already been committed by the backend;
+                // refresh the UI so partial success is not hidden by a later error.
+                try { await loadTracks({ fresh: true }); await loadPlaylists(); } catch (refreshError) {
+                    console.warn('Could not refresh the library after a partial import:', refreshError.message || refreshError);
+                }
+            }
+            throw error;
+        }
+
+        combined.imported += Number(payload.imported) || 0;
+        combined.total += Number(payload.total) || batch.length;
+        combined.skipped += Number(payload.skipped) || 0;
+        if (Array.isArray(payload.importedTracks)) combined.importedTracks.push(...payload.importedTracks);
+        onProgress(Math.min(offset + batch.length, uniquePaths.length), uniquePaths.length, payload);
+    }
+
+    return combined;
+}
+
+function renderActiveTrackSurface() {
+    switch (currentActiveSection) {
+        case 'home':
+            window.renderHome?.();
+            break;
+        case 'library':
+            renderLibrary();
+            break;
+        case 'artists': {
+            const artistDetail = document.querySelector('.artist-detail-view h2');
+            const artistName = artistDetail?.textContent;
+            const artistStillExists = artistName && tracks.some(track =>
+                (String(track.artist || '').trim() || t('unknownArtist')) === artistName
+            );
+            if (artistStillExists) showArtistDetail(artistName);
+            else renderArtists();
+            break;
+        }
+        case 'albums': {
+            const albumDetail = document.querySelector('.album-detail-info h2');
+            const albumName = albumDetail?.textContent;
+            const albumStillExists = albumName && tracks.some(track =>
+                (String(track.album || 'Unknown Album').trim() || 'Unknown Album') === albumName
+            );
+            if (albumStillExists) showAlbumDetail(albumName);
+            else renderAlbums();
+            break;
+        }
+        case 'favorites':
+            renderFavorites();
+            break;
+        case 'stats':
+            renderStats().then(() => {
+                if (audioCtx && analyser) startLiveSpectrumAnalyzer();
+            });
+            break;
+        case 'playlist':
+            renderPlaylistView();
+            break;
+        default:
+            break;
+    }
+}
+
+async function loadTracks() {
+    if (isMiniWindowMode) return;
+    const requestId = ++tracksLoadRequestId;
+    // Always render from the backend's live availability check so a removed
+    // file cannot reappear from a stale renderer cache.
     try {
         const [tracksRes, likedRes] = await Promise.all([
             fetch(`http://127.0.0.1:${apiPort}/api/tracks?_=${Date.now()}`, { cache: 'no-store' }),
             fetch(`http://127.0.0.1:${apiPort}/api/tracks/liked-status?_=${Date.now()}`, { cache: 'no-store' }).catch(() => null)
         ]);
 
-            if (tracksRes && tracksRes.ok) {
-            const serverTracks = await tracksRes.json();
-            let likedMap = {};
-            if (likedRes && likedRes.ok) likedMap = await likedRes.json();
-
-            // Normalize numeric string IDs to numbers to avoid mismatches later
-            tracks = serverTracks.map(track => {
-                const isLiked = !!(likedMap[track.id] || likedMap[String(track.id)]);
-                let normalizedId = track.id;
-                if (typeof track.id === 'string' && /^\d+$/.test(track.id)) {
-                    normalizedId = Number(track.id);
-                }
-                return { ...track, id: normalizedId, isLiked };
-            });
-            console.debug('Loaded tracks from server:', tracks.length, 'sample last IDs:', tracks.slice(-5).map(t=>t.id));
-
-            // 3) Update cache and UI smoothly
-            try { localStorage.setItem('korai_tracks_cache', JSON.stringify(tracks)); } catch (_) {}
-
-            const totalEl = document.getElementById('quickTotalTracks');
-            const likesEl = document.getElementById('quickTotalLikes');
-            if (totalEl) totalEl.innerText = tracks.length;
-            if (likesEl) likesEl.innerText = tracks.filter(t => t.isLiked).length;
-
-            // Keep the current player object and queue in sync with the fresh library.
-            if (currentTrackId != null) {
-                const freshCurrent = tracks.find(t => t.id === currentTrackId);
-                if (freshCurrent) {
-                    currentTrack = freshCurrent;
-                    window.currentTrack = currentTrack;
-                    updatePlayerUI();
-                }
-            }
-            if (lastPlaySource.type === 'library') {
-                queue = [...tracks];
-                queueIndex = currentTrackId == null ? -1 : queue.findIndex(t => t.id === currentTrackId);
-            }
-            if (currentActiveSection === 'home') window.renderHome?.();
-            else if (currentActiveSection === 'library') renderLibrary();
-
-            console.debug('Library synced with server');
+        if (requestId !== tracksLoadRequestId) return;
+        if (!tracksRes || !tracksRes.ok) {
+            throw new Error(`Track library request failed${tracksRes ? ` (${tracksRes.status})` : ''}.`);
         }
+        const serverTracks = await tracksRes.json();
+        let likedMap = {};
+        if (likedRes && likedRes.ok) likedMap = await likedRes.json();
+        if (requestId !== tracksLoadRequestId) return;
+        const hasLikedMap = likedMap && typeof likedMap === 'object' && !Array.isArray(likedMap);
+
+        // Normalize numeric string IDs to numbers to avoid mismatches later
+        tracks = serverTracks.map(track => {
+            const hasLikedStatus = hasLikedMap && Object.prototype.hasOwnProperty.call(likedMap, track.id);
+            const isLiked = hasLikedStatus ? Boolean(likedMap[track.id]) : Boolean(track.isLiked);
+            let normalizedId = track.id;
+            if (typeof track.id === 'string' && /^\d+$/.test(track.id)) {
+                normalizedId = Number(track.id);
+            }
+            return { ...track, id: normalizedId, isLiked };
+        });
+        console.debug('Loaded tracks from server:', tracks.length, 'sample last IDs:', tracks.slice(-5).map(t=>t.id));
+
+        // 3) Update cache and UI smoothly
+        try { localStorage.setItem('korai_tracks_cache', JSON.stringify(tracks)); } catch (_) {}
+
+        const totalEl = document.getElementById('quickTotalTracks');
+        const likesEl = document.getElementById('quickTotalLikes');
+        if (totalEl) totalEl.innerText = tracks.length;
+        if (likesEl) likesEl.innerText = tracks.filter(t => t.isLiked).length;
+
+        // Keep the current player object and queue in sync with the fresh library.
+        if (currentTrackId != null) {
+            const freshCurrent = tracks.find(t => String(t.id) === String(currentTrackId));
+            if (freshCurrent) {
+                currentTrack = freshCurrent;
+                window.currentTrack = currentTrack;
+                updatePlayerUI();
+            } else {
+                currentTrackId = null;
+                currentTrack = null;
+                window.currentTrackId = null;
+                window.currentTrack = null;
+                if (audioElement) {
+                    audioElement.pause();
+                    audioElement.removeAttribute('src');
+                    audioElement.load();
+                }
+                setPlayState(false);
+                updatePlayerUI();
+            }
+        }
+        if (lastPlaySource.type === 'library') {
+            queue = [...tracks];
+        } else {
+            const availableIds = new Set(tracks.map(track => String(track.id)));
+            if (Array.isArray(lastPlaySource.sourceTracks)) {
+                lastPlaySource.sourceTracks = lastPlaySource.sourceTracks
+                    .filter(track => track && availableIds.has(String(track.id)));
+            }
+            queue = queue.filter(track => track && availableIds.has(String(track.id)));
+        }
+        queueIndex = currentTrackId == null ? -1 : queue.findIndex(t => String(t.id) === String(currentTrackId));
+        renderActiveTrackSurface();
+
+        console.debug('Library synced with server');
     } catch (err) {
         console.error('Error syncing tracks:', err);
     }
@@ -2804,11 +2960,15 @@ async function loadEnabledPluginCss() {
 
 async function loadPlaylists() {
     if (isMiniWindowMode) return;
+    const requestId = ++playlistsLoadRequestId;
     try {
         const res = await fetch(`http://127.0.0.1:${apiPort}/api/playlists?_=${Date.now()}`, { cache: 'no-store' });
         if (!res.ok) throw new Error();
-        playlists = await res.json();
+        const nextPlaylists = await res.json();
+        if (requestId !== playlistsLoadRequestId) return;
+        playlists = nextPlaylists;
         renderPlaylistsSidebar();
+        if (currentActiveSection === 'playlist') renderPlaylistView();
     } catch (err) {
         console.error('Failed to load playlists', err);
     }
@@ -2989,6 +3149,12 @@ function openPlaylist(id) {
     renderPlaylistView();
 }
 
+function getPlaylistTracks(playlist) {
+    if (!playlist || !Array.isArray(playlist.tracks)) return [];
+    const trackIds = new Set(playlist.tracks.map(Number).filter(Number.isFinite));
+    return tracks.filter(track => trackIds.has(Number(track.id)));
+}
+
 function renderPlaylistView() {
     const mainSection = document.getElementById('dynamicSectionContainer');
     if (!mainSection) return;
@@ -2996,7 +3162,7 @@ function renderPlaylistView() {
     const playlist = playlists.find(p => p.id === currentActivePlaylistId);
     if (!playlist) { switchSection('home'); return; }
     
-    const plTracks = tracks.filter(t => playlist.tracks.includes(t.id));
+    const plTracks = getPlaylistTracks(playlist);
     
     if (plTracks.length === 0) {
         mainSection.innerHTML = `<div class="empty-illustration-state"><i class="fa-solid fa-compact-disc"></i><h3>${t('emptyPlaylistState')}</h3><p>${t('emptyPlaylistTip')}</p></div>`;
@@ -3040,7 +3206,7 @@ async function removeTrackFromPlaylist(playlistId, trackId) {
 function playTrackFromPlaylist(playlistId, trackId) {
     const playlist = playlists.find(p => p.id === playlistId);
     if (playlist) {
-        const plTracks = tracks.filter(t => playlist.tracks.includes(t.id));
+        const plTracks = getPlaylistTracks(playlist);
         playTrack(trackId, 'playlist', playlistId, plTracks);
     }
 }
@@ -3210,7 +3376,7 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
                 if (sourceType === 'playlist' && sourceId) {
                     const playlist = playlists.find(p => p.id === sourceId);
                     if (playlist) {
-                        const plTracks = tracks.filter(t => playlist.tracks.includes(t.id));
+                        const plTracks = getPlaylistTracks(playlist);
                         setPlaySource('playlist', sourceId, plTracks);
                     } else { setPlaySource('library'); }
                 } else if (sourceType === 'favorites') {
@@ -3463,7 +3629,26 @@ async function tryAutoPlayTrack(trackId, attempts = 5) {
 // =============================================================================
 
 function updatePlayerUI() {
-    if (!currentTrack) return;
+    if (!currentTrack) {
+        syncWithMiniPlayerWidget();
+        syncTrayPlaybackState();
+        ['playerTitle', 'playerArtist', 'miniTitle', 'miniArtist', 'fsTitle', 'fsArtist'].forEach(id => {
+            const element = document.getElementById(id);
+            if (element) element.textContent = '';
+        });
+        const fallbackIcons = {
+            playerAlbumArt: '<i class="fa-solid fa-music fallback-icon"></i>',
+            miniArt: '<i class="fa-solid fa-music"></i>',
+            fsAlbumArt: '<i class="fa-solid fa-music fallback-icon" style="font-size:3rem;"></i>'
+        };
+        Object.entries(fallbackIcons).forEach(([id, markup]) => {
+            const element = document.getElementById(id);
+            if (element) element.innerHTML = markup;
+        });
+        const fsBgBlur = document.getElementById('fsBgBlur');
+        if (fsBgBlur) fsBgBlur.style.backgroundImage = '';
+        return;
+    }
     syncWithMiniPlayerWidget();
     syncTrayPlaybackState();
 
@@ -3589,9 +3774,8 @@ function deleteTrack(trackId, event) {
                 const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/${trackId}`, { method: 'DELETE' });
                 if (res.ok) {
                     showNotification(t('notificationTrackRemoved'), 'success');
-                    await loadTracks();
+                    await loadTracks({ fresh: true });
                     await loadPlaylists();
-                    switchSection(currentActiveSection);
                 }
             } catch { showNotification(t('notificationConnectionFailed'), 'error'); }
         });
@@ -4207,10 +4391,10 @@ function showArtistDetail(artistName) {
         const isActive = currentTrackId === track.id;
         const indexText = isActive && isPlaying ? '<i class="fa-solid fa-pause"></i>' : (index + 1);
         listHtml += `
-            <li class="artist-track-item ${isActive ? 'active' : ''}" data-track-id="${track.id}">
-                <span class="track-index">${indexText}</span>
+            <li class="artist-track-item ${isActive ? 'active' : ''}" data-track-id="${track.id}" role="button" tabindex="0" aria-label="${escapeHtml(track.title || t('untitled'))} — ${formatTime(track.duration)}">
+                <span class="track-index"><span class="artist-track-number">${indexText}</span><i class="fa-solid fa-play artist-track-play-icon" aria-hidden="true"></i></span>
                 <span class="track-title">${escapeHtml(track.title || 'Untitled')}</span>
-                <span class="track-duration">${formatTime(track.duration)}</span>
+                <span class="track-duration"><i class="fa-regular fa-clock" aria-hidden="true"></i>${formatTime(track.duration)}</span>
             </li>`;
     });
 
@@ -4228,6 +4412,10 @@ function showArtistDetail(artistName) {
                 </div>
             </div>
             <div class="artist-tracks-list">
+                <div class="artist-tracks-heading">
+                    <span><i class="fa-solid fa-music" aria-hidden="true"></i>${t('tracks') || 'Tracks'}</span>
+                    <span>${artistTracks.length}</span>
+                </div>
                 <ul class="artist-track-list">
                     ${listHtml}
                 </ul>
@@ -4430,25 +4618,15 @@ async function handleImport() {
         showImportLoadingModal(filePaths.length);
         updateImportLoadingProgress(0, `Analyzing ${filePaths.length} selected file(s)...`);
 
-        const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filePaths })
+        const result = await importAudioFilesInBatches(filePaths, (processed, total) => {
+            updateImportLoadingProgress(Math.round((processed / total) * 100), `Analyzing ${processed} of ${total} selected file(s)...`);
         });
-
-        if (!res.ok) {
-            let message = 'Import failed';
-            try { message = (await res.json()).error || message; } catch (_) {}
-            throw new Error(message);
-        }
-
-        const result = await res.json();
         updateImportLoadingProgress(100, `Imported ${result.imported} track(s)!`);
 
         // Let the completion state render, then immediately replace stale local data with server truth.
         await new Promise(resolve => setTimeout(resolve, 140));
         hideImportLoadingModal();
-        showNotification(tf('notificationTracksImported', { count: result.imported }), 'success');
+        showNotification(result.skipped > 0 ? `Imported ${result.imported} track(s); ${result.skipped} file(s) were skipped.` : tf('notificationTracksImported', { count: result.imported }), result.skipped > 0 ? 'warning' : 'success');
 
         await loadTracks({ fresh: true });
         await loadPlaylists();
@@ -4469,7 +4647,7 @@ async function handleImport() {
                     }
                 }
                 if (!matched && result.imported > 0) {
-                    const importedTracks = tracks.slice(-result.imported);
+                    const importedTracks = tracks.slice(0, result.imported);
                     matched = importedTracks[importedTracks.length - 1] || importedTracks[0];
                 }
                 if (matched) await tryAutoPlayTrack(matched.id);
@@ -4478,7 +4656,6 @@ async function handleImport() {
             console.debug('Autoplay after import failed', e);
         }
 
-        switchSection(currentActiveSection);
     } catch (err) {
         console.error('Import error:', err);
         hideImportLoadingModal();
@@ -4493,8 +4670,9 @@ async function handleFolderImport() {
     }
 
     try {
-        showNotification(t('notificationScanningFolder'), 'info');
+        showFolderScanModal();
         const filePaths = await window.electronAPI.selectAudioFolder();
+        hideFolderScanModal();
 
         if (!filePaths || filePaths.length === 0) {
             showNotification(t('notificationNoAudioFiles'), 'warning');
@@ -4504,24 +4682,14 @@ async function handleFolderImport() {
         showImportLoadingModal(filePaths.length);
         updateImportLoadingProgress(0, `Analyzing ${filePaths.length} selected file(s)...`);
 
-        const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filePaths })
+        const result = await importAudioFilesInBatches(filePaths, (processed, total) => {
+            updateImportLoadingProgress(Math.round((processed / total) * 100), `Analyzing ${processed} of ${total} selected file(s)...`);
         });
-
-        if (!res.ok) {
-            let message = 'Import failed';
-            try { message = (await res.json()).error || message; } catch (_) {}
-            throw new Error(message);
-        }
-
-        const result = await res.json();
         updateImportLoadingProgress(100, `Imported ${result.imported} track(s)!`);
 
         await new Promise(resolve => setTimeout(resolve, 140));
         hideImportLoadingModal();
-        showNotification(tf('notificationTracksImported', { count: result.imported }), 'success');
+        showNotification(result.skipped > 0 ? `Imported ${result.imported} track(s); ${result.skipped} file(s) were skipped.` : tf('notificationTracksImported', { count: result.imported }), result.skipped > 0 ? 'warning' : 'success');
 
         await loadTracks({ fresh: true });
         await loadPlaylists();
@@ -4542,7 +4710,7 @@ async function handleFolderImport() {
                     }
                 }
                 if (!matched && result.imported > 0) {
-                    const importedTracks = tracks.slice(-result.imported);
+                    const importedTracks = tracks.slice(0, result.imported);
                     matched = importedTracks[importedTracks.length - 1] || importedTracks[0];
                 }
                 if (matched) await tryAutoPlayTrack(matched.id);
@@ -4551,9 +4719,9 @@ async function handleFolderImport() {
             console.debug('Autoplay after folder import failed', e);
         }
 
-        switchSection(currentActiveSection);
     } catch (err) {
         console.error('Folder import error:', err);
+        hideFolderScanModal();
         hideImportLoadingModal();
         showNotification(tf('notificationImportFailed', { error: err.message }), 'error');
     }
@@ -4574,7 +4742,10 @@ function promptDownloadFromUrl() {
         showNotification(t('notificationConfiguringCloud'), 'info');
         try {
             const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/download`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
-            if (res.ok) { showNotification(t('notificationAudioDownloaded'), 'success'); await loadTracks({ fresh: true }); switchSection(currentActiveSection); }
+            if (res.ok) {
+                showNotification(t('notificationAudioDownloaded'), 'success');
+                await loadTracks({ fresh: true });
+            }
             else { showNotification(t('notificationRequestFailed'), 'error'); }
         } catch (e) { showNotification(t('notificationCloudCaptureAborted'), 'error'); }
     };
@@ -5245,6 +5416,13 @@ function setupEventListeners() {
         });
 
         dynamicContainer.addEventListener('keydown', event => {
+            const artistTrack = event.target.closest('.artist-track-item[role="button"]');
+            if (artistTrack && (event.key === 'Enter' || event.key === ' ')) {
+                event.preventDefault();
+                const trackId = Number(artistTrack.dataset.trackId);
+                if (Number.isInteger(trackId)) playTrack(trackId);
+                return;
+            }
             const artistCard = event.target.closest('.artist-card[role="button"]');
             if (!artistCard || (event.key !== 'Enter' && event.key !== ' ')) return;
             if (event.target.closest('[data-artist-play]')) return;
@@ -5597,12 +5775,15 @@ window.addEventListener('DOMContentLoaded', async () => {
         await waitForAPI();
         if (splashProgress) splashProgress.style.width = '45%';
         if (isMiniWindowMode) { setupEventListeners(); updateBodyClasses(); document.body.classList.add('mini-window-active'); const mCard = document.getElementById('miniplayerCard'); if (mCard) { mCard.style.display = 'block'; mCard.classList.add('show'); } if (splash) splash.style.display = 'none'; console.debug('Floating mini player widget initialized'); return; }
-        await loadTracks();
+        await loadTracks({ fresh: true });
         if (splashProgress) splashProgress.style.width = '75%';
         await loadPlaylists();
         await loadEnabledPluginCss();
         if (splashProgress) splashProgress.style.width = '100%';
         try { const playbackRes = await fetch(`http://127.0.0.1:${apiPort}/api/playback/settings`); const playbackSettings = await playbackRes.json(); gaplessEnabled = playbackSettings.gaplessEnabled !== false; crossfadeDuration = playbackSettings.crossfadeDuration || 0; console.debug('Playback settings loaded:', { gaplessEnabled, crossfadeDuration }); } catch (err) { console.warn('Could not load playback settings, using defaults'); }
+        if (window.electronAPI && window.electronAPI.onScanProgress) {
+            window.electronAPI.onScanProgress(updateFolderScanProgress);
+        }
         setupEventListeners();
         setVolume(0.7);
         initAudio();
@@ -5619,7 +5800,6 @@ window.addEventListener('DOMContentLoaded', async () => {
                 showNotification(tf('notificationNoAudioFilesInPath', { path: folderPath }), 'warning');
             });
         }
-
         // Performance: pause heavy animations/visualizers when unfocused
         try { setupWindowFocusOptimization(); } catch (e) {}
 
@@ -5628,27 +5808,16 @@ window.addEventListener('DOMContentLoaded', async () => {
                 if (!files || files.length === 0) return;
                 showImportLoadingModal(files.length);
                 try {
-                    const res = await fetch(`http://127.0.0.1:${apiPort}/api/tracks/import`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ filePaths: files })
+                    const result = await importAudioFilesInBatches(files, (processed, total) => {
+                        updateImportLoadingProgress(Math.round((processed / total) * 100), `Analyzing ${processed} of ${total} selected file(s)...`);
                     });
-
-                    if (!res.ok) {
-                        hideImportLoadingModal();
-                        const error = await res.json().catch(() => ({}));
-                        showNotification(tf('notificationImportFailed', { error: error.error || t('notificationUnknownError') }), 'error');
-                        return;
-                    }
-
-                    const result = await res.json();
                     updateImportLoadingProgress(100, `Imported ${result.imported} track(s)!`);
 
                     // Small delay to show completion state
                     setTimeout(async () => {
                         hideImportLoadingModal();
-                        showNotification(tf('notificationTracksImported', { count: result.imported }), 'success');
-                        await loadTracks();
+                        showNotification(result.skipped > 0 ? `Imported ${result.imported} track(s); ${result.skipped} file(s) were skipped.` : tf('notificationTracksImported', { count: result.imported }), result.skipped > 0 ? 'warning' : 'success');
+                        await loadTracks({ fresh: true });
                         await loadPlaylists();
 
                         if (result.imported > 0 && tracks.length > 0) {
@@ -5664,14 +5833,13 @@ window.addEventListener('DOMContentLoaded', async () => {
                                     return;
                                 }
                             }
-                            const newTracks = tracks.slice(-result.imported);
+                            const newTracks = tracks.slice(0, result.imported);
                             const lastTrack = newTracks[newTracks.length - 1] || newTracks[0];
                             if (lastTrack) {
                                 await tryAutoPlayTrack(lastTrack.id).catch(e => console.debug('Autoplay failed', e));
                             }
                         }
 
-                        switchSection(currentActiveSection);
                     }, 500);
                 } catch (err) {
                     console.error('File association import error:', err);

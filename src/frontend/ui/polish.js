@@ -1,4 +1,4 @@
-/* KORAI 1.6 renderer polish: accessibility, keyboard navigation and responsive state. */
+/* Accessibility and responsive UI behavior. */
 (() => {
     'use strict';
 

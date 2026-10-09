@@ -1,6 +1,4 @@
-/* KORAI 1.6.4 — Home component-level behavior only.
- * Product-wide geometry and visual tokens live in ui.css.
- */
+/* Home component behavior. */
 
 .home-container-premium,
 .home-container-next {

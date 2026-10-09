@@ -1,4 +1,4 @@
-// recommender - local multi-factor recommendation engine (heuristic-based)
+// Local recommendation engine based on listening history and track features.
 
 const { cosineSimilarity, euclideanDistance } = require('./analyzer');
 
@@ -13,21 +13,21 @@ function stableUnit(seed) {
 }
 
 
-// Advanced multi-factor behavior weighting (UPGRADED)
+// Relative influence of listening actions.
 const BEHAVIOR_WEIGHTS = {
-    // Positive signals (amplified)
-    like: 0.50,                      // Very strong positive signal
-    favorite: 0.60,                  // Favorited track
+    // Positive signals
+    like: 0.50,
+    favorite: 0.60,
     play: 0.15,                      // Base play signal
-    repeat: 0.35,                    // High engagement - user replayed
+    repeat: 0.35,
     replay_within_week: 0.40,        // Re-engagement signal
     playlist_add: 0.22,              // Intentional curation
-    share: 0.45,                     // Very strong intent signal
+    share: 0.45,
     
-    // Negative signals (amplified)
-    skip: -0.40,                     // Strong negative signal
-    skip_quick: -0.50,               // Very strong negative (quick abandon)
-    skip_start: -0.55,               // Worst signal: skipped immediately
+    // Negative signals
+    skip: -0.40,
+    skip_quick: -0.50,
+    skip_start: -0.55,
     dislike: -0.60,                  // Explicit negative feedback
     
     // Duration-based engagement
@@ -41,7 +41,7 @@ const BEHAVIOR_WEIGHTS = {
     recommendation_accept: 0.30,     // Accepted our recommendation
 };
 
-// Advanced temporal decay with diminishing returns curve (UPGRADED)
+// Reduce the influence of older listening activity.
 const TEMPORAL_DECAY = {
     hours_1: 1.0,         // Last hour - full weight
     hours_3: 0.95,        // Last 3 hours
@@ -56,7 +56,7 @@ const TEMPORAL_DECAY = {
     older: 0.05           // 3+ months
 };
 
-// Advanced context awareness with mood & activity types (UPGRADED)
+// Context profiles used to tune recommendations.
 const CONTEXT_PROFILES = {
     morning: {
         mood: 'energetic',
@@ -155,8 +155,7 @@ const CONTEXT_PROFILES = {
 };
 
 /**
- * Advanced temporal decay with curve smoothing (UPGRADED)
- * Uses exponential decay for smoother diminishing returns
+ * Apply a gradual time-based reduction to listening signals.
  */
 function getTemporalDecay(lastInteractionTime) {
     if (!lastInteractionTime) return 0;
@@ -208,7 +207,7 @@ function getCurrentContext(userActivityPattern = null) {
 }
 
 /**
- * Advanced preference score with machine learning concepts (UPGRADED)
+ * Calculate a track preference score from listening signals.
  * Implements concepts similar to matrix factorization and neural collaborative filtering
  */
 function calculatePreferenceScore(trackId, userHistory, userProfile = {}) {
@@ -326,7 +325,7 @@ function calculateUserSimilarity(userHistoryA, userHistoryB, useVectorDistance =
 }
 
 /**
- * Advanced content similarity with multi-factor analysis (UPGRADED)
+ * Compare tracks across their available features.
  * Combines acoustic features, mood, genre, and artist information
  */
 function calculateContentSimilarity(sourceTrack, targetTrack) {
@@ -414,7 +413,7 @@ function applyDiversityBoost(recommendedTracks, diversityFactor = 0.85) {
 }
 
 /**
- * Advanced ensemble recommendation engine with collaborative filtering (UPGRADED)
+ * Combine track similarity and listening history to rank recommendations.
  * Combines: content-based, collaborative, context-aware, and graph-based methods
  */
 function getPersonalizedRecommendations(allTracks, sourceTrack, userHistory, limit = 12, userActivityContext = null, allUserHistories = null) {
@@ -530,7 +529,7 @@ function getPersonalizedRecommendations(allTracks, sourceTrack, userHistory, lim
 }
 
 /**
- * Advanced diversity boosting with feature variance
+ * Add variety to the recommended tracks.
  */
 function applyAdvancedDiversityBoost(recommendedTracks, diversityFactor = 0.82) {
     if (recommendedTracks.length <= 2) return recommendedTracks;
@@ -1362,14 +1361,14 @@ module.exports = {
     getContextAwareRecommendations,
     getDiscoveryRecommendations,
     
-    // NEW: Playlist generation
+    // Playlist generation
     generateSmartPlaylist,
     calculatePlaylistQuality,
     
-    // NEW: Intelligent search
+    // Search
     intelligentSearch,
     
-    // NEW: Pattern analysis
+    // Listening patterns
     analyzeUserBehaviorPatterns,
     getPatternBasedRecommendations,
     

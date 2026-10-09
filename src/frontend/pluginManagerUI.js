@@ -1,6 +1,5 @@
 /**
- * pluginManagerUI.js - KORAI Plugin Manager UI (Bilingual)
- * Supports English & Persian with full sync
+ * Plugin manager interface.
  */
 
 class PluginManagerUI {

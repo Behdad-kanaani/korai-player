@@ -1,4 +1,3 @@
-// KORAI HOME - PREMIUM REDESIGN RENDER FUNCTION
 
 function renderHomePremium() {
     const mainSection = document.getElementById('dynamicSectionContainer');
@@ -6,8 +5,11 @@ function renderHomePremium() {
 
     const tr = (key, fallback) => typeof t === 'function' ? (t(key) || fallback) : fallback;
     const welcomeText = typeof getDynamicWelcomeMessage === 'function' ? getDynamicWelcomeMessage() : (typeof getWelcomeMessage === 'function' ? getWelcomeMessage() : 'Welcome');
-    const currentTrackObj = window.currentTrack || null;
-    const currentTrackId = (currentTrackObj && currentTrackObj.id) || window.currentTrackId || null;
+    const availableTracks = window.tracks || [];
+    const currentTrackId = window.currentTrackId;
+    const currentTrackObj = currentTrackId == null
+        ? null
+        : availableTracks.find(track => Number(track.id) === Number(currentTrackId)) || null;
     const currentCover = currentTrackObj && currentTrackObj.hasCover ? `http://127.0.0.1:${window.apiPort || 3000}/api/tracks/${currentTrackObj.id}/cover` : null;
     const isPlaying = !!window.isPlaying;
 
@@ -37,7 +39,7 @@ function renderHomePremium() {
         suggestions = typeof getFallbackSuggestions === 'function' ? getFallbackSuggestions(window.tracks || [], 6) : [];
     }
 
-    // If library is empty but a track is currently playing, still render the hero with now-playing info
+    // Keep the current track visible when the library is empty.
     if ((window.tracks || []).length === 0 && !currentTrackId) {
         mainSection.innerHTML = getEmptyLibraryHTML ? getEmptyLibraryHTML() : '<div class="empty-state-premium">No tracks</div>';
         return;
@@ -254,10 +256,20 @@ function renderHomePremium() {
 
 function getFeaturedCardHTML(track, coverUrl, index) {
     const playCount = track.playCount || 0;
+    const coverVariant = Math.abs(Number(track.id) || index) % 5;
+    const title = track.title || (typeof t === 'function' ? t('untitled') : 'Untitled');
+    const safeTitle = typeof escapeHtml === 'function' ? escapeHtml(title) : title;
+    const coverInitial = Array.from(String(title).trim())[0] || '♫';
     return `
         <div class="featured-card-premium" data-track-id="${track.id}" onclick="playTrack(${track.id}, 'library')" oncontextmenu="event.preventDefault(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
-            <div class="featured-card-image">
-                ${coverUrl ? `<img src="${coverUrl}" alt="${typeof escapeHtml === 'function' ? escapeHtml(track.title || t('untitled')) : (track.title || t('untitled'))}" loading="lazy">` : '<div class="fallback-icon"><i class="fa-solid fa-music"></i></div>'}
+            <div class="featured-card-image ${coverUrl ? 'has-cover' : 'no-cover'}" data-cover-variant="${coverVariant}">
+                <div class="featured-cover-placeholder" aria-hidden="true">
+                    <span class="featured-cover-orbit"><i class="fa-solid fa-compact-disc"></i></span>
+                    <span class="featured-cover-initial">${typeof escapeHtml === 'function' ? escapeHtml(coverInitial) : coverInitial}</span>
+                    <span class="featured-cover-label">${safeTitle}</span>
+                    <span class="featured-cover-equalizer"><i></i><i></i><i></i><i></i><i></i></span>
+                </div>
+                ${coverUrl ? `<img src="${coverUrl}" alt="${safeTitle}" loading="lazy" onerror="this.hidden=true; this.parentElement.classList.add('no-cover')">` : ''}
                 <div class="card-play-overlay">
                     <div class="play-circle-btn"><i class="fa-solid fa-play"></i></div>
                 </div>

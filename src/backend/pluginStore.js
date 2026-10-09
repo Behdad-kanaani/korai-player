@@ -1,6 +1,5 @@
-// KORAI plugin catalog client.
-// The catalog is intentionally data-only: plugins are never executed until the
-// normal permission + worker lifecycle validates/loads them locally.
+// The catalog contains metadata only; plugins are loaded through the normal
+// permission and worker checks.
 
 const fs = require('fs');
 const path = require('path');
@@ -62,7 +61,7 @@ class PluginStore {
           rawPlugins = remotePlugins.length ? remotePlugins : rawPlugins;
         }
       } catch (error) {
-        // Offline-first: a local catalog remains usable and no fake entries are injected.
+        // Keep using the local catalog when offline.
         console.warn('[pluginStore] Remote catalog unavailable:', error.message);
       }
     }

@@ -1,9 +1,4 @@
-/**
- * vazir.css - Persian Font Integration
- * 
- * Vazirmatn font family for Persian/Farsi text rendering
- * Includes Thin, Light, Medium, and Bold weights
- */
+/* Vazirmatn font faces. */
 
 @font-face {
     font-family: 'Vazirmatn';

@@ -13,7 +13,7 @@
        1. VARIABLES & RESET & PREMIUM BASE
        ========================================= */
     :root {
-      /* Refined Neon Colors */
+      /* Accent colors */
       --primary: #00f0ff;
       --primary-glow: rgba(0, 240, 255, 0.5);
       --secondary: #9d00ff;
@@ -23,18 +23,18 @@
       --musicdel: #ff6b4a;
       --musicdel-glow: rgba(255, 107, 74, 0.4);
       
-      /* Deep Dark Premium Backgrounds */
+      /* Backgrounds */
       --bg-dark: #050507;
       --bg-light: #0d0b14;
       
-      /* Advanced Glassmorphism */
+      /* Glass effects */
       --glass-bg: rgba(255, 255, 255, 0.03);
       --glass-border: rgba(255, 255, 255, 0.08);
       --glass-border-highlight: rgba(255, 255, 255, 0.15);
       --glass-blur: blur(20px);
       --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
       
-      /* Text Colors */
+      /* Text colors */
       --text-main: #ffffff;
       --text-muted: #9494a8;
       --text-dim: #5c5c70;
@@ -50,7 +50,7 @@
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
-    /* Custom Scrollbar for a premium feel */
+    /* Scrollbar */
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-track { background: var(--bg-dark); }
     ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
@@ -67,7 +67,7 @@
       position: relative;
     }
 
-    /* Cinematic Noise Overlay */
+    /* Background texture */
     body::before {
       content: "";
       position: fixed;
@@ -313,7 +313,7 @@
       z-index: 5;
     }
 
-    /* Glowing back-ring for search bar focus */
+    /* Search focus ring */
     .search-box::before {
       content: '';
       position: absolute;
@@ -395,7 +395,7 @@
       overflow: hidden;
     }
 
-    /* Glossy reflection shimmer */
+    /* Reflection */
     .btn-search::after {
       content: '';
       position: absolute;

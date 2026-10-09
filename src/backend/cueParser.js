@@ -1,12 +1,9 @@
-// cueParser - simple CUE sheet parser
+// CUE sheet parsing and generation.
 
 const fs = require('fs');
 const path = require('path');
 const { resolveSafePath } = require('./securityUtils');
 
-/**
- * Parse a CUE sheet file
- */
 function parseCueSheet(cuePath) {
     const safeCuePath = resolveSafePath(cuePath, process.cwd());
     if (!safeCuePath || !fs.existsSync(safeCuePath)) {
@@ -35,7 +32,6 @@ function parseCueSheet(cuePath) {
         
         switch (command) {
             case 'REM':
-                // Comment - can be ignored or parsed for metadata
                 if (args.startsWith('GENRE')) {
                     result.genre = args.replace('GENRE ', '');
                 } else if (args.startsWith('DATE')) {
@@ -76,7 +72,6 @@ function parseCueSheet(cuePath) {
                     result.files.push(currentFile);
                 }
                 
-                // Parse FILE line: FILE "filename.wav" WAVE
                 const fileMatch = line.match(/FILE\s+["'](.+?)["']\s+(\w+)/);
                 if (fileMatch) {
                     currentFile = {
@@ -140,9 +135,6 @@ function parseCueSheet(cuePath) {
     return result;
 }
 
-/**
- * Get all tracks from CUE sheet with resolved paths
- */
 function getTracksFromCue(cuePath, audioBaseDir = null) {
     const cue = parseCueSheet(cuePath);
     const tracks = [];
@@ -181,9 +173,6 @@ function getTracksFromCue(cuePath, audioBaseDir = null) {
     return tracks;
 }
 
-/**
- * Generate a CUE sheet from a playlist
- */
 function generateCueSheet(playlist, tracks, outputPath) {
     const safeOutputPath = resolveSafePath(outputPath, process.cwd());
     if (!safeOutputPath) {
@@ -220,7 +209,7 @@ function generateCueSheet(playlist, tracks, outputPath) {
             content += `    TITLE "${track.title || 'Unknown'}"\n`;
             content += `    PERFORMER "${track.artist || 'Unknown Artist'}"\n`;
             
-            // Calculate index position (simplified - assumes tracks are sequential)
+            // CUE indexes are written relative to the source file.
             const startMinutes = Math.floor((track.cuePosition || 0) / 60);
             const startSeconds = Math.floor((track.cuePosition || 0) % 60);
             const startFrames = Math.floor(((track.cuePosition || 0) % 1) * 75);

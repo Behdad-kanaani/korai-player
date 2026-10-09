@@ -13,10 +13,7 @@ function stableUnit(seed) {
 }
 
 
-/**
- * UPGRADED: Advanced BPM detection from multiple signals
- * Uses pattern recognition and harmonic analysis
- */
+/* Estimate tempo from detected beat intervals. */
 function estimateBPMFromPeaks(peaks, sampleRate, hopSize) {
     if (peaks.length < 4) return 120;
     
@@ -61,13 +58,7 @@ function estimateBPMFromPeaks(peaks, sampleRate, hopSize) {
     return Math.max(60, Math.min(200, bestBPM));
 }
 
-/**
- * UPGRADED: Extract rich feature vector with approximate psychoacoustic features
- * 
- * NOTE: These features are calculated from metadata (bitrate, duration, BPM)
- * rather than actual DSP spectral analysis. They provide good approximations
- * for genre detection and recommendation engine, but are not true psychoacoustic measurements.
- */
+/* These estimates use file metadata rather than audio signal analysis. */
 async function extractFeatureVector(filePath) {
     const metadata = await mm.parseFile(filePath, { duration: true });
     const duration = metadata.format.duration || 180;
@@ -76,13 +67,11 @@ async function extractFeatureVector(filePath) {
     let bpm = metadata.common.bpm || 120;
     let genre = metadata.common.genre ? (Array.isArray(metadata.common.genre) ? metadata.common.genre[0] : metadata.common.genre) : '';
     
-    // UPGRADED: More sophisticated energy calculation
     const bitrateFactor = (bitrate / 320000);
     const durationFactor = duration < 120 ? 1.15 : duration > 300 ? 0.85 : 1.0;
     const bpmFactor = Math.min(1, bpm / 150);
     let energy = Math.min(0.95, Math.max(0.15, (bitrateFactor * durationFactor * bpmFactor) * 0.95));
     
-    // UPGRADED: Extended feature set with more audio descriptors
     const features = {
         // Temporal features
         tempo_norm: Math.min(1, Math.max(0, (bpm - 60) / 160)),
@@ -93,7 +82,7 @@ async function extractFeatureVector(filePath) {
         energy_variance: 0.8 + stableUnit(`${filePath}:variance`) * 0.15, // Perceived energy variation
         perceived_loudness: Math.min(1, -6 + (energy * 22)) / 20,
         
-        // Spectral features (upgraded)
+        // Estimated spectral features
         bitrate_norm: Math.min(1, bitrate / 320000),
         spectral_centroid: Math.min(1, (bitrate / 320000) * 0.65 + 0.15),
         spectral_spread: Math.min(1, (1 - energy) * 0.3 + 0.4),
@@ -116,15 +105,12 @@ async function extractFeatureVector(filePath) {
         noise_content: Math.min(1, (1 - (bitrate / 320000)) * 0.4)
     };
     
-    const audioProfile = calculateAdvancedAudioProfile(bpm, energy, duration, genre, features);
+    const audioProfile = calculateAdvancedAudioProfile(bpm, energy, duration, genre, features, filePath);
     return { features, bpm, genre, energy, duration, featureVector: Object.values(features), ...audioProfile };
 }
 
-/**
- * UPGRADED: Advanced audio profile with multiple mood dimensions
- */
-function calculateAdvancedAudioProfile(bpm, energy, duration, genre, features = {}) {
-    // UPGRADED: Multi-dimensional mood analysis
+/* Build an estimated mood profile from track features. */
+function calculateAdvancedAudioProfile(bpm, energy, duration, genre, features = {}, filePath = '') {
     
     // Valence (positivity) - based on BPM, energy, and spectral features
     let valence = 0.5;
@@ -265,9 +251,7 @@ function calculateAdvancedAudioProfile(bpm, energy, duration, genre, features = 
     };
 }
 
-/**
- * UPGRADED: Normalize features to feature vector with more dimensions
- */
+/* Normalize track features for similarity comparisons. */
 function normalizeFeatures(raw) {
     return [
         raw.tempo_norm || 0,
@@ -319,9 +303,7 @@ function cosineSimilarity(vecA, vecB) {
     return dot / (Math.sqrt(magA) * Math.sqrt(magB));
 }
 
-/**
- * UPGRADED: Advanced intelligent genre detection with confidence scoring
- */
+/* Estimate a genre and confidence from track features. */
 function detectGenreIntelligent(bpm, energy, bitrate, vocalPresence = 0.5) {
     // Extended genre scoring system
     const score = {
@@ -333,7 +315,6 @@ function detectGenreIntelligent(bpm, energy, bitrate, vocalPresence = 0.5) {
         Latin: 0, Funk: 0, Soul: 0
     };
     
-    // BPM-based scoring (UPGRADED)
     if (bpm < 60) {
         score.Ambient += 0.35;
         score.Classical += 0.30;
@@ -410,7 +391,6 @@ function detectGenreIntelligent(bpm, energy, bitrate, vocalPresence = 0.5) {
         score.Pop += 0.05;
     }
     
-    // Vocal characteristics (UPGRADED)
     if (vocalPresence > 0.70) {
         score.Pop += 0.20;
         score.RAndB += 0.18;
@@ -515,7 +495,6 @@ async function analyzeAudioFile(filePath) {
     let artist = metadata.common.artist || metadata.common.artists?.[0] || '';
     let album = metadata.common.album || '';
     
-    // UPGRADED: Use enhanced feature extraction
     let energy = Math.min(0.95, Math.max(0.15, (bitrate / 320000) * (duration < 120 ? 1.15 : duration > 300 ? 0.85 : 1)));
     
     let vocalPresence = 0.5;
@@ -533,7 +512,6 @@ async function analyzeAudioFile(filePath) {
         }
     }
     
-    // UPGRADED: Enhanced feature extraction
     const rawFeatures = {
         tempo_norm: Math.min(1, Math.max(0, (bpm - 60) / 160)),
         energy: energy,
@@ -562,20 +540,17 @@ async function analyzeAudioFile(filePath) {
     
     const featureVector = normalizeFeatures(rawFeatures);
     
-    // UPGRADED: Use advanced genre detection
     const genreResult = detectGenreIntelligent(bpm, energy, bitrate, vocalPresence);
     const finalGenre = (genreTag && genreTag !== '') ? genreTag : genreResult.genre;
     const genreConfidence = (genreTag && genreTag !== '') ? 0.92 : genreResult.confidence;
     
-    // UPGRADED: Get advanced audio profile
-    const audioProfile = calculateAdvancedAudioProfile(bpm, energy, duration, finalGenre, rawFeatures);
+    const audioProfile = calculateAdvancedAudioProfile(bpm, energy, duration, finalGenre, rawFeatures, filePath);
     
     let coverImage = null;
     if (metadata.common.picture && metadata.common.picture.length > 0) {
         coverImage = metadata.common.picture[0].data;
     }
     
-    // UPGRADED: Better debugging output
     console.debug(` Analyzed: ${title} by ${artist} | ${bpm}BPM | Energy:${Math.round(energy*100)}% | Valence:${Math.round(audioProfile.valence*100)}% | ${finalGenre}`);
     
     return {
@@ -597,7 +572,7 @@ async function analyzeAudioFile(filePath) {
         bitrate,
         codec,
         
-        // Advanced audio profile (UPGRADED)
+        // Audio profile
         ...audioProfile,
         
         // Feature data

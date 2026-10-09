@@ -118,10 +118,7 @@ function getCurrentVersion() {
     return '0.0.0';
 }
 
-/**
- * Get latest version from GitHub package.json (NO RATE LIMIT)
- * This uses raw.githubusercontent.com which has NO rate limit
- */
+/* Read the latest version from the published package.json. */
 async function getLatestVersionFromGitHub() {
     try {
         const content = await downloadFileFromGitHub(PACKAGE_JSON_URL);
@@ -197,7 +194,7 @@ function fetchGitHubJSON(url) {
 }
 
 /**
- * Download a file from GitHub raw URL (NO RATE LIMIT)
+ * Download a file from a GitHub raw URL.
  * Uses raw.githubusercontent.com which has no rate limit
  */
 function downloadFileFromGitHub(rawUrl, maxBytes = 2 * 1024 * 1024) {
@@ -387,7 +384,7 @@ async function checkForUpdates() {
             return result;
         }
 
-        // Get latest version from GitHub (NO RATE LIMIT)
+        // Check the latest published version.
         const latestVersion = await getLatestVersionFromGitHub();
         if (!latestVersion) {
             throw new Error('Could not fetch latest version from GitHub');

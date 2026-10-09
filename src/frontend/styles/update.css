@@ -1,12 +1,5 @@
 
-/**
- * update.css - Update UI Styles
- * Add these to the main update stylesheet
- */
-
-/* ==========================================================================
-   UPDATE NOTIFICATION
-   ========================================================================== */
+/* Update notifications and progress modal */
 
 .update-notification {
     position: fixed;
@@ -33,10 +26,6 @@
 .update-notification .update-now-btn:active {
     transform: scale(0.97);
 }
-
-/* ==========================================================================
-   UPDATE PROGRESS MODAL
-   ========================================================================== */
 
 .update-progress-modal {
     position: fixed;
@@ -97,10 +86,6 @@
         opacity: 1; 
     }
 }
-
-/* ==========================================================================
-   RESPONSIVE
-   ========================================================================== */
 
 @media (max-width: 520px) {
     .update-notification {

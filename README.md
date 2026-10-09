@@ -4,7 +4,7 @@
 
 # KORAI Player
 
-### v1.6.5 · Local-first desktop music player
+### v1.6.6 · Local-first desktop music player
 
 **A cleaner way to enjoy the music you already own.**
 
@@ -53,7 +53,7 @@ KORAI started with a simple idea:
 
 That idea shaped the 1.6.x redesign.
 
-v1.6.5 is not just a visual refresh or a new color palette. The interface was reworked around clearer hierarchy, calmer surfaces, stronger typography, smoother states, better responsive behavior, and a more focused relationship between browsing and playback.
+v1.6.6 is not just a visual refresh or a new color palette. The interface was reworked around clearer hierarchy, calmer surfaces, stronger typography, smoother states, better responsive behavior, and a more focused relationship between browsing and playback.
 
 The goal is not to fill the screen with effects.
 
@@ -79,7 +79,7 @@ That means KORAI can remain a complete music player even when you do not use its
 
 # A major redesign
 
-The biggest change in v1.6.5 is the way KORAI **feels**.
+The biggest change in v1.6.6 is the way KORAI **feels**.
 
 Instead of treating every page as a separate interface, the redesign brings the application under one visual language.
 
@@ -174,7 +174,7 @@ The player includes:
 
 ### Real BPM analysis
 
-One important improvement in v1.6.5 is that BPM analysis is now based on the actual recording instead of a synthetic waveform path.
+One important improvement in v1.6.6 is that BPM analysis is now based on the actual recording instead of a synthetic waveform path.
 
 KORAI can use an existing BPM tag when available. Otherwise it decodes a bounded mono preview through FFmpeg, builds an onset envelope, estimates tempo from the recording, and accounts for common half-time / double-time ambiguity.
 
@@ -198,7 +198,7 @@ These include:
 
 The recommendation system is intentionally lightweight and local rather than relying on a large online model.
 
-In v1.6.5, generated analyzer fields are deterministic, so analyzing the same file again produces stable feature values instead of changing recommendation signals randomly.
+In v1.6.6, generated analyzer fields are deterministic, so analyzing the same file again produces stable feature values instead of changing recommendation signals randomly.
 
 ---
 
@@ -269,8 +269,8 @@ This functionality is intentionally separated from the local library path, so KO
 <table>
   <tr>
     <td align="center" width="50%">
-      <strong>v1.6.5</strong><br><br>
-      <img src="screenshot/V1.6.5/overview.png" alt="KORAI Player v1.6.5 overview" width="100%">
+      <strong>v1.6.6</strong><br><br>
+      <img src="screenshot/V1.6.6/overview.png" alt="KORAI Player v1.6.6 overview" width="100%">
     </td>
     <td align="center" width="50%">
       <strong>v1.5.0</strong><br><br>
@@ -291,11 +291,11 @@ This functionality is intentionally separated from the local library path, so KO
 
 ---
 
-# v1.5 → v1.6.5
+# v1.5 → v1.6.6
 
-v1.6.5 represents a broader product cleanup rather than a single isolated feature release.
+v1.6.6 represents a broader product cleanup rather than a single isolated feature release.
 
-| Area | v1.5.x | v1.6.5 |
+| Area | v1.5.x | v1.6.6 |
 |---|---|---|
 | **Design** | Mature dark/glass interface | Refined, unified UI system |
 | **Typography** | Persian support | Bundled Vazirmatn + stronger RTL presentation |
@@ -317,7 +317,7 @@ The engineering direction is straightforward:
 
 # Security & reliability
 
-The 1.6.5 release also strengthens the boundaries around files, URLs, plugins, downloads, IPC, and updates.
+The 1.6.6 release also strengthens the boundaries around files, URLs, plugins, downloads, IPC, and updates.
 
 Security handling is centralized in:
 
@@ -335,7 +335,7 @@ The updater was also redesigned around validation, staging, backup, rollback, an
 
 KORAI does not chase performance by simply removing features.
 
-Instead, v1.6.5 removes work that does not meaningfully improve the experience.
+Instead, v1.6.6 removes work that does not meaningfully improve the experience.
 
 The renderer uses lighter visual treatment, simplified animation paths, optimization hooks, and debounced durable writes.
 
@@ -457,7 +457,7 @@ The release includes static auditing and GitHub Actions-based security scanning 
 
 # Release
 
-### v1.6.5
+### v1.6.6
 
 
 The important part is not the size of the diff.
@@ -500,7 +500,7 @@ See [`LICENSE`](LICENSE) for the exact terms.
 
 <div align="center">
 
-### KORAI Player v1.6.5
+### KORAI Player v1.6.6
 
 **Free. Local-first. Built for people who own their music.**
 

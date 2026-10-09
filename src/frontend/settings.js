@@ -620,7 +620,7 @@ async function checkForUpdates() {
     showToast(t('systemCheckUpdates') + '...', 'info');
     try {
         if (window.electronAPI && window.electronAPI.checkUpdateStatus) {
-            const status = await window.electronAPI.checkUpdateStatus();
+            const status = await window.electronAPI.checkUpdateStatus({ manual: true });
             if (status && status.hasUpdate) {
                 showToast(`${t('updateAvailable')}: v${status.latestVersion}`, 'success');
                 const versionDisplay = document.getElementById('currentVersionDisplay');

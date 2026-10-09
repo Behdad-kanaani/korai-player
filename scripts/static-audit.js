@@ -43,8 +43,9 @@ if (!exists('build/license.txt')) issues.push('build/license.txt is missing');
 for (const forbidden of ['src/frontend/homeEnhancements.js', 'src/frontend/libraryMasonry.js', 'src/frontend/pluginStoreUI.js']) {
   if (exists(forbidden)) issues.push(`obsolete frontend file remains: ${forbidden}`);
 }
-for (const file of walk('.').filter(f => /\.(md|markdown)$/i.test(f))) {
-  issues.push(`documentation file must not be shipped in final 1.6 package: ${file}`);
+const markdownExclusions = packageJson.build?.files || [];
+if (!markdownExclusions.includes('!README.md') || !markdownExclusions.includes('!**/*.md') || !markdownExclusions.includes('!**/*.markdown')) {
+  issues.push('build.files must exclude Markdown documentation from packaged application files');
 }
 if (fs.existsSync(path.join(ROOT, 'src/frontend/additional.css')) || fs.readFileSync(path.join(ROOT, 'src/frontend/index.html'), 'utf8').includes('additional.css')) issues.push('index.html still references removed additional.css');
 

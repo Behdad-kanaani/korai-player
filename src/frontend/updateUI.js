@@ -84,6 +84,10 @@ class UpdateUI {
 
     handleUpdateStatus(updateInfo) {
         if (!updateInfo) return;
+        if (updateInfo.autoUpdateDisabled) {
+            this.dismissNotification();
+            return;
+        }
         if (updateInfo.checking) return;
         if (updateInfo.isDownloaded) {
             this.showUpdateReady(updateInfo);
@@ -167,7 +171,7 @@ class UpdateUI {
         const button = this.notification?.querySelector('#updateNowBtn');
         if (button) {
             button.innerHTML = '<i class="fa-solid fa-rotate"></i> Retry';
-            button.onclick = () => this.checkForUpdates();
+            button.onclick = () => this.checkForUpdates(true);
         }
     }
 
@@ -176,12 +180,13 @@ class UpdateUI {
         window.setTimeout(() => this.dismissNotification(), 3000);
     }
 
-    async checkForUpdates() {
+    async checkForUpdates(manual = false) {
         this.showCheckingForUpdates();
         try {
             if (!window.electronAPI?.checkUpdateStatus) throw new Error('Update API not available');
-            const result = await window.electronAPI.checkUpdateStatus();
+            const result = await window.electronAPI.checkUpdateStatus({ manual: Boolean(manual) });
             if (!result) throw new Error('No response from update service');
+            if (result.autoUpdateDisabled) { this.dismissNotification(); return; }
             this.handleUpdateStatus(result);
         } catch (error) {
             console.warn('[UpdateUI] Failed to check updates:', error);

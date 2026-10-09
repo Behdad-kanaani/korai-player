@@ -5,7 +5,8 @@ const path = require('path');
 const fs = require('fs');
 const findFreePort = require('find-free-port');
 const { scanAudioDirectory } = require('./src/backend/folderScanner');
-const { autoUpdater: windowsAutoUpdater } = require('electron-updater');
+const { autoUpdater } = require('electron-updater');
+const { normalizeReleaseVersion, isNewerRelease, supportsNativeUpdater } = require('./src/backend/updatePolicy');
 
 // UPDATE SYSTEM IMPORTS
 
@@ -28,32 +29,71 @@ try {
 // AUTO-UPDATER
 
 const { startUpdateChecker, onUpdateCheck, getCurrentVersion } = updater;
-let windowsUpdaterConfigured = false;
-let windowsUpdateCheckPromise = null;
-let windowsUpdateDownloaded = false;
+let packagedUpdaterConfigured = false;
+let packagedUpdateCheckPromise = null;
+let packagedUpdateDownloaded = false;
+let packagedUpdateTimer = null;
 
-function isPackagedWindows() {
-    return app.isPackaged && process.platform === 'win32';
+function usesNativeAutoUpdater() {
+    return supportsNativeUpdater({
+        platform: process.platform,
+        isPackaged: app.isPackaged,
+        execPath: process.execPath,
+        env: process.env
+    });
 }
 
-function sendWindowsUpdateStatus(status) {
+function shouldAutomaticallyCheckUpdates() {
+    try {
+        const { getDb } = require('./src/backend/database');
+        return getDb().getSettings().autoUpdate !== false;
+    } catch {
+        // Settings may not be initialized during early startup; keep the default enabled.
+        return true;
+    }
+}
+
+async function checkPublishedReleaseUpdate() {
+    const currentVersion = app.getVersion() || getCurrentVersion();
+    const release = await updater.fetchGitHubJSON('https://api.github.com/repos/Behdad-kanaani/korai-player/releases/latest');
+    if (!release || typeof release.tag_name !== 'string') {
+        throw new Error('No published stable GitHub release was found.');
+    }
+
+    const latestVersion = normalizeReleaseVersion(release.tag_name);
+    if (!latestVersion) throw new Error(`Invalid version tag in the latest GitHub release: ${release.tag_name}`);
+
+    return {
+        hasUpdate: isNewerRelease(latestVersion, currentVersion),
+        currentVersion,
+        latestVersion,
+        canUpdate: false,
+        autoDownload: false,
+        source: 'github-release',
+        url: 'https://github.com/Behdad-kanaani/korai-player/releases/latest'
+    };
+}
+
+function sendPackagedUpdateStatus(status) {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('update-status', status);
     }
 }
 
-function setupWindowsAutoUpdater() {
-    if (windowsUpdaterConfigured || process.platform !== 'win32') return;
-    windowsUpdaterConfigured = true;
-    windowsAutoUpdater.autoDownload = true;
-    windowsAutoUpdater.autoInstallOnAppQuit = true;
-    windowsAutoUpdater.allowDowngrade = false;
+function setupPackagedAutoUpdater() {
+    if (packagedUpdaterConfigured || !usesNativeAutoUpdater()) return;
+    packagedUpdaterConfigured = true;
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.allowDowngrade = false;
+    autoUpdater.autoRunAppAfterInstall = true;
+    autoUpdater.logger = console;
 
-    windowsAutoUpdater.on('checking-for-update', () => {
-        sendWindowsUpdateStatus({ checking: true, currentVersion: getCurrentVersion() });
+    autoUpdater.on('checking-for-update', () => {
+        sendPackagedUpdateStatus({ checking: true, currentVersion: getCurrentVersion() });
     });
-    windowsAutoUpdater.on('update-available', (info) => {
-        sendWindowsUpdateStatus({
+    autoUpdater.on('update-available', (info) => {
+        sendPackagedUpdateStatus({
             hasUpdate: true,
             autoDownload: true,
             canUpdate: true,
@@ -61,15 +101,15 @@ function setupWindowsAutoUpdater() {
             latestVersion: info.version
         });
     });
-    windowsAutoUpdater.on('update-not-available', (info) => {
-        windowsUpdateDownloaded = false;
-        sendWindowsUpdateStatus({
+    autoUpdater.on('update-not-available', (info) => {
+        packagedUpdateDownloaded = false;
+        sendPackagedUpdateStatus({
             hasUpdate: false,
             currentVersion: getCurrentVersion(),
             latestVersion: info.version
         });
     });
-    windowsAutoUpdater.on('download-progress', (progress) => {
+    autoUpdater.on('download-progress', (progress) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('update-progress', {
                 status: 'downloading',
@@ -80,9 +120,9 @@ function setupWindowsAutoUpdater() {
             });
         }
     });
-    windowsAutoUpdater.on('update-downloaded', (info) => {
-        windowsUpdateDownloaded = true;
-        sendWindowsUpdateStatus({
+    autoUpdater.on('update-downloaded', (info) => {
+        packagedUpdateDownloaded = true;
+        sendPackagedUpdateStatus({
             hasUpdate: true,
             isDownloaded: true,
             canUpdate: true,
@@ -98,9 +138,9 @@ function setupWindowsAutoUpdater() {
             });
         }
     });
-    windowsAutoUpdater.on('error', (error) => {
-        console.error('[updater] Windows update failed:', error);
-        sendWindowsUpdateStatus({ hasUpdate: false, error: error.message });
+    autoUpdater.on('error', (error) => {
+        console.error('[updater] Packaged auto-update failed:', error);
+        sendPackagedUpdateStatus({ hasUpdate: false, error: error.message });
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('update-progress', {
                 status: 'error',
@@ -111,9 +151,9 @@ function setupWindowsAutoUpdater() {
     });
 }
 
-function checkPackagedWindowsUpdate() {
-    if (windowsUpdateCheckPromise) return windowsUpdateCheckPromise;
-    windowsUpdateCheckPromise = windowsAutoUpdater.checkForUpdates()
+function checkPackagedUpdate() {
+    if (packagedUpdateCheckPromise) return packagedUpdateCheckPromise;
+    packagedUpdateCheckPromise = autoUpdater.checkForUpdates()
         .then((result) => {
             if (!result) {
                 return { hasUpdate: false, currentVersion: getCurrentVersion() };
@@ -121,25 +161,29 @@ function checkPackagedWindowsUpdate() {
             return {
                 hasUpdate: result.isUpdateAvailable,
                 autoDownload: result.isUpdateAvailable,
-                isDownloaded: windowsUpdateDownloaded,
+                isDownloaded: packagedUpdateDownloaded,
                 canUpdate: true,
                 currentVersion: getCurrentVersion(),
                 latestVersion: result.updateInfo.version
             };
         })
         .finally(() => {
-            windowsUpdateCheckPromise = null;
+            packagedUpdateCheckPromise = null;
         });
-    return windowsUpdateCheckPromise;
+    return packagedUpdateCheckPromise;
 }
 
-function startPackagedWindowsUpdateChecks() {
-    void checkPackagedWindowsUpdate().catch((error) => {
-        console.warn('[updater] Initial Windows update check failed:', error.message);
-    });
-    setInterval(() => {
-        void checkPackagedWindowsUpdate().catch((error) => {
-            console.warn('[updater] Periodic Windows update check failed:', error.message);
+function startPackagedUpdateChecks() {
+    if (packagedUpdateTimer) return;
+    if (shouldAutomaticallyCheckUpdates()) {
+        void checkPackagedUpdate().catch((error) => {
+            console.warn('[updater] Initial packaged update check failed:', error.message);
+        });
+    }
+    packagedUpdateTimer = setInterval(() => {
+        if (!shouldAutomaticallyCheckUpdates()) return;
+        void checkPackagedUpdate().catch((error) => {
+            console.warn('[updater] Periodic packaged update check failed:', error.message);
         });
     }, 24 * 60 * 60 * 1000);
 }
@@ -701,24 +745,35 @@ function stopHealthCheck() {
 
 async function sendUpdateStatusToRenderer() {
     if (!mainWindow || mainWindow.isDestroyed()) return;
-    
-    const currentVersion = getCurrentVersion();
-    
-    mainWindow.webContents.send('app-version', { 
-        version: currentVersion || 'unknown',
-        hasUpdate: false 
-    });
 
-    if (isPackagedWindows()) {
+    const currentVersion = getCurrentVersion();
+    mainWindow.webContents.send('app-version', { version: currentVersion || 'unknown', hasUpdate: false });
+
+    if (!shouldAutomaticallyCheckUpdates()) {
+        mainWindow.webContents.send('update-status', { hasUpdate: false, currentVersion, autoUpdateDisabled: true });
+        return;
+    }
+
+    if (usesNativeAutoUpdater()) {
         try {
-            const updateInfo = await checkPackagedWindowsUpdate();
-            sendWindowsUpdateStatus(updateInfo);
+            const updateInfo = await checkPackagedUpdate();
+            sendPackagedUpdateStatus(updateInfo);
         } catch (err) {
-            sendWindowsUpdateStatus({ hasUpdate: false, currentVersion, error: err.message });
+            sendPackagedUpdateStatus({ hasUpdate: false, currentVersion, error: err.message });
         }
         return;
     }
-    
+
+    if (app.isPackaged) {
+        try {
+            const updateInfo = await checkPublishedReleaseUpdate();
+            mainWindow.webContents.send('update-status', updateInfo);
+        } catch (err) {
+            mainWindow.webContents.send('update-status', { hasUpdate: false, currentVersion, error: err.message, canUpdate: false });
+        }
+        return;
+    }
+
     try {
         const updateInfo = await updater.fetchLatestVersion(true);
         mainWindow.webContents.send('update-status', {
@@ -925,9 +980,9 @@ async function createWindow() {
 
         createSystemTray();
         
-        if (isPackagedWindows()) {
-            startPackagedWindowsUpdateChecks();
-        } else {
+        if (usesNativeAutoUpdater()) {
+            startPackagedUpdateChecks();
+        } else if (!app.isPackaged && shouldAutomaticallyCheckUpdates()) {
             startUpdateChecker(24).catch((err) => {
                 console.warn('Updater not available:', err && err.message ? err.message : err);
             });
@@ -981,9 +1036,13 @@ registerIpcListener('open-external', (event, url) => {
     void openExternalSafely(url);
 });
 
-registerIpcHandler('check-update-status', async () => {
+registerIpcHandler('check-update-status', async (_event, options = {}) => {
     try {
-        if (isPackagedWindows()) return await checkPackagedWindowsUpdate();
+        if (options.manual !== true && !shouldAutomaticallyCheckUpdates()) {
+            return { hasUpdate: false, currentVersion: app.getVersion() || getCurrentVersion(), autoUpdateDisabled: true };
+        }
+        if (usesNativeAutoUpdater()) return await checkPackagedUpdate();
+        if (app.isPackaged) return await checkPublishedReleaseUpdate();
         const result = await updateManager.checkAndPrepareUpdate();
         return result;
     } catch (err) {
@@ -993,7 +1052,7 @@ registerIpcHandler('check-update-status', async () => {
 });
 
 registerIpcListener('install-update', (event) => {
-    if (!isPackagedWindows() || !windowsUpdateDownloaded) {
+    if (!usesNativeAutoUpdater() || !packagedUpdateDownloaded) {
         event.sender.send('update-progress', {
             status: 'error',
             progress: 0,
@@ -1001,10 +1060,19 @@ registerIpcListener('install-update', (event) => {
         });
         return;
     }
-    windowsAutoUpdater.quitAndInstall(false, true);
+    autoUpdater.quitAndInstall(false, true);
 });
 
 registerIpcListener('apply-update', async (event, updateInfo) => {
+    if (app.isPackaged) {
+        event.sender.send('update-progress', {
+            status: 'error',
+            progress: 0,
+            message: 'Packaged applications must be updated through the official release installer.'
+        });
+        return;
+    }
+
     console.log('[main] Starting update application...');
     
     try {
@@ -1485,7 +1553,7 @@ handleFileOpen();
 
 app.whenReady().then(async () => {
     registerKoraiProtocol();
-    setupWindowsAutoUpdater();
+    setupPackagedAutoUpdater();
     try {
         if (createStartupTimer) {
             try { startupTimer = createStartupTimer(); startupTimer.mark && startupTimer.mark('main-process-init'); } catch(e){}

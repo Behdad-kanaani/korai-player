@@ -84,6 +84,15 @@ class UpdateUI {
 
     handleUpdateStatus(updateInfo) {
         if (!updateInfo) return;
+        if (updateInfo.checking) return;
+        if (updateInfo.isDownloaded) {
+            this.showUpdateReady(updateInfo);
+            return;
+        }
+        if (updateInfo.autoDownload && updateInfo.hasUpdate) {
+            this.showUpdateDownloading(updateInfo);
+            return;
+        }
         if (updateInfo.hasUpdate) this.showUpdateAvailable(updateInfo);
         else if (updateInfo.updated) this.showUpdateApplied(updateInfo);
         else if (updateInfo.error) this.showUpdateError(updateInfo.error);
@@ -120,6 +129,27 @@ class UpdateUI {
                 else this.startUpdate();
             };
         }
+    }
+
+    showUpdateDownloading(info) {
+        this.updateInfo = info;
+        this.isUpdating = true;
+        this.setState('downloading', 'fa-download', 'Downloading update', `Downloading KORAI <strong>v${String(info.latestVersion || 'latest')}</strong>.`, false);
+        this.showProgressModal();
+    }
+
+    showUpdateReady(info) {
+        this.updateInfo = info;
+        this.isUpdating = false;
+        this.setState('ready', 'fa-circle-check', 'Update ready', `KORAI <strong>v${String(info.latestVersion || 'latest')}</strong> is downloaded. Restart to install it.`, true);
+        const button = this.notification?.querySelector('#updateNowBtn');
+        if (button) {
+            button.innerHTML = '<i class="fa-solid fa-rotate"></i> Restart to install';
+            button.onclick = () => window.electronAPI?.installUpdate?.();
+        }
+        const dismiss = this.notification?.querySelector('#dismissUpdateBtn');
+        if (dismiss) dismiss.textContent = 'Later';
+        if (this.progressModal) this.progressModal.style.display = 'none';
     }
 
     showUpToDate(info) {
@@ -180,6 +210,14 @@ class UpdateUI {
 
     async startUpdate() {
         if (this.isUpdating || !this.updateInfo) return;
+        if (this.updateInfo.isDownloaded) {
+            window.electronAPI?.installUpdate?.();
+            return;
+        }
+        if (this.updateInfo.autoDownload) {
+            this.showUpdateDownloading(this.updateInfo);
+            return;
+        }
         if (this.updateInfo.canUpdate === false) {
             this.openRelease();
             return;
@@ -220,12 +258,21 @@ class UpdateUI {
         if (fill) fill.style.width = `${value}%`;
         if (percent) percent.textContent = `${Math.round(value)}%`;
         if (fileCount && progress.totalFiles !== undefined) fileCount.textContent = `${progress.fileIndex || 0} / ${progress.totalFiles || 0} files`;
-        const labels = { starting: 'Initializing…', backup: 'Backing up current files…', downloading: 'Downloading update files…', applying: 'Applying changes…', cleaning: 'Cleaning up…', complete: 'Update complete. Restarting…', error: 'Update failed.' };
+        if (fileCount && progress.status === 'downloading' && progress.total) {
+            const toMegabytes = bytes => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+            fileCount.textContent = `${toMegabytes(progress.transferred || 0)} / ${toMegabytes(progress.total)}`;
+        }
+        const labels = { starting: 'Initializing…', backup: 'Backing up current files…', downloading: 'Downloading update files…', applying: 'Applying changes…', cleaning: 'Cleaning up…', complete: 'Update complete. Restarting…', downloaded: 'Download complete. Restart to install.', error: 'Update failed.' };
         if (message && progress.status) message.textContent = labels[progress.status] || String(progress.message || progress.status);
         if (progress.status === 'complete') {
             this.isUpdating = false;
             window.setTimeout(() => { if (this.progressModal) this.progressModal.style.display = 'none'; }, 1200);
         }
+        if (progress.status === 'downloaded') {
+            if (this.progressModal) this.progressModal.style.display = 'none';
+            if (this.updateInfo) this.showUpdateReady({ ...this.updateInfo, isDownloaded: true });
+        }
+        if (progress.status === 'error') this.showError(progress.message);
     }
 
     showError(message) {

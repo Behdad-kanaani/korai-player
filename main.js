@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const findFreePort = require('find-free-port');
 const { scanAudioDirectory } = require('./src/backend/folderScanner');
+const { autoUpdater: windowsAutoUpdater } = require('electron-updater');
 
 // UPDATE SYSTEM IMPORTS
 
@@ -27,6 +28,121 @@ try {
 // AUTO-UPDATER
 
 const { startUpdateChecker, onUpdateCheck, getCurrentVersion } = updater;
+let windowsUpdaterConfigured = false;
+let windowsUpdateCheckPromise = null;
+let windowsUpdateDownloaded = false;
+
+function isPackagedWindows() {
+    return app.isPackaged && process.platform === 'win32';
+}
+
+function sendWindowsUpdateStatus(status) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update-status', status);
+    }
+}
+
+function setupWindowsAutoUpdater() {
+    if (windowsUpdaterConfigured || process.platform !== 'win32') return;
+    windowsUpdaterConfigured = true;
+    windowsAutoUpdater.autoDownload = true;
+    windowsAutoUpdater.autoInstallOnAppQuit = true;
+    windowsAutoUpdater.allowDowngrade = false;
+
+    windowsAutoUpdater.on('checking-for-update', () => {
+        sendWindowsUpdateStatus({ checking: true, currentVersion: getCurrentVersion() });
+    });
+    windowsAutoUpdater.on('update-available', (info) => {
+        sendWindowsUpdateStatus({
+            hasUpdate: true,
+            autoDownload: true,
+            canUpdate: true,
+            currentVersion: getCurrentVersion(),
+            latestVersion: info.version
+        });
+    });
+    windowsAutoUpdater.on('update-not-available', (info) => {
+        windowsUpdateDownloaded = false;
+        sendWindowsUpdateStatus({
+            hasUpdate: false,
+            currentVersion: getCurrentVersion(),
+            latestVersion: info.version
+        });
+    });
+    windowsAutoUpdater.on('download-progress', (progress) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-progress', {
+                status: 'downloading',
+                progress: progress.percent,
+                transferred: progress.transferred,
+                total: progress.total,
+                bytesPerSecond: progress.bytesPerSecond
+            });
+        }
+    });
+    windowsAutoUpdater.on('update-downloaded', (info) => {
+        windowsUpdateDownloaded = true;
+        sendWindowsUpdateStatus({
+            hasUpdate: true,
+            isDownloaded: true,
+            canUpdate: true,
+            currentVersion: getCurrentVersion(),
+            latestVersion: info.version
+        });
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-progress', {
+                status: 'downloaded',
+                progress: 100,
+                transferred: 1,
+                total: 1
+            });
+        }
+    });
+    windowsAutoUpdater.on('error', (error) => {
+        console.error('[updater] Windows update failed:', error);
+        sendWindowsUpdateStatus({ hasUpdate: false, error: error.message });
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-progress', {
+                status: 'error',
+                progress: 0,
+                message: error.message
+            });
+        }
+    });
+}
+
+function checkPackagedWindowsUpdate() {
+    if (windowsUpdateCheckPromise) return windowsUpdateCheckPromise;
+    windowsUpdateCheckPromise = windowsAutoUpdater.checkForUpdates()
+        .then((result) => {
+            if (!result) {
+                return { hasUpdate: false, currentVersion: getCurrentVersion() };
+            }
+            return {
+                hasUpdate: result.isUpdateAvailable,
+                autoDownload: result.isUpdateAvailable,
+                isDownloaded: windowsUpdateDownloaded,
+                canUpdate: true,
+                currentVersion: getCurrentVersion(),
+                latestVersion: result.updateInfo.version
+            };
+        })
+        .finally(() => {
+            windowsUpdateCheckPromise = null;
+        });
+    return windowsUpdateCheckPromise;
+}
+
+function startPackagedWindowsUpdateChecks() {
+    void checkPackagedWindowsUpdate().catch((error) => {
+        console.warn('[updater] Initial Windows update check failed:', error.message);
+    });
+    setInterval(() => {
+        void checkPackagedWindowsUpdate().catch((error) => {
+            console.warn('[updater] Periodic Windows update check failed:', error.message);
+        });
+    }, 24 * 60 * 60 * 1000);
+}
 
 // GLOBAL ERROR HANDLERS
 
@@ -592,6 +708,16 @@ async function sendUpdateStatusToRenderer() {
         version: currentVersion || 'unknown',
         hasUpdate: false 
     });
+
+    if (isPackagedWindows()) {
+        try {
+            const updateInfo = await checkPackagedWindowsUpdate();
+            sendWindowsUpdateStatus(updateInfo);
+        } catch (err) {
+            sendWindowsUpdateStatus({ hasUpdate: false, currentVersion, error: err.message });
+        }
+        return;
+    }
     
     try {
         const updateInfo = await updater.fetchLatestVersion(true);
@@ -799,9 +925,13 @@ async function createWindow() {
 
         createSystemTray();
         
-        startUpdateChecker(24).catch((err) => {
-            console.warn('Updater not available:', err && err.message ? err.message : err);
-        });
+        if (isPackagedWindows()) {
+            startPackagedWindowsUpdateChecks();
+        } else {
+            startUpdateChecker(24).catch((err) => {
+                console.warn('Updater not available:', err && err.message ? err.message : err);
+            });
+        }
 
     } catch (err) {
         console.error('Fatal error in createWindow:', err);
@@ -853,12 +983,25 @@ registerIpcListener('open-external', (event, url) => {
 
 registerIpcHandler('check-update-status', async () => {
     try {
+        if (isPackagedWindows()) return await checkPackagedWindowsUpdate();
         const result = await updateManager.checkAndPrepareUpdate();
         return result;
     } catch (err) {
         console.error('[main] Update check error:', err);
         return { hasUpdate: false, error: err.message };
     }
+});
+
+registerIpcListener('install-update', (event) => {
+    if (!isPackagedWindows() || !windowsUpdateDownloaded) {
+        event.sender.send('update-progress', {
+            status: 'error',
+            progress: 0,
+            message: 'The update has not finished downloading.'
+        });
+        return;
+    }
+    windowsAutoUpdater.quitAndInstall(false, true);
 });
 
 registerIpcListener('apply-update', async (event, updateInfo) => {
@@ -1342,6 +1485,7 @@ handleFileOpen();
 
 app.whenReady().then(async () => {
     registerKoraiProtocol();
+    setupWindowsAutoUpdater();
     try {
         if (createStartupTimer) {
             try { startupTimer = createStartupTimer(); startupTimer.mark && startupTimer.mark('main-process-init'); } catch(e){}

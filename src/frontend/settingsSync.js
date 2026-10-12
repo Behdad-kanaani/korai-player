@@ -68,6 +68,9 @@ class SettingsSync {
         this.applyEQ(settings.eq);
 
         // Playback settings
+        if (typeof window.applyPlaybackModesFromSettings === 'function') {
+            window.applyPlaybackModesFromSettings(settings);
+        }
         this.applyPlaybackSettings(settings);
 
         // AI recommendations
@@ -108,6 +111,21 @@ class SettingsSync {
                 break;
             case 'gaplessEnabled':
             case 'crossfadeDuration':
+            case 'replayGainMode':
+            case 'replayGainPreampDb':
+            case 'replayGainPreventClipping':
+                this.applyPlaybackSettings(this.store.getAll());
+                break;
+            case 'repeatMode':
+                if (typeof window.applyPlaybackModesFromSettings === 'function') {
+                    window.applyPlaybackModesFromSettings(this.store.getAll(), { repeat: true, shuffle: false });
+                }
+                this.applyPlaybackSettings(this.store.getAll());
+                break;
+            case 'shuffleDefault':
+                if (typeof window.applyPlaybackModesFromSettings === 'function') {
+                    window.applyPlaybackModesFromSettings(this.store.getAll(), { repeat: false, shuffle: true });
+                }
                 this.applyPlaybackSettings(this.store.getAll());
                 break;
             case 'aiRecommendations':
@@ -187,6 +205,9 @@ class SettingsSync {
     }
 
     applyPlaybackSettings(settings) {
+        if (typeof window.applyPlaybackTransitionSettings === 'function') {
+            window.applyPlaybackTransitionSettings(settings);
+        }
         if (window.electronAPI?.setPlaybackSettings) {
             window.electronAPI.setPlaybackSettings({
                 gapless: settings.gaplessEnabled,
@@ -199,6 +220,14 @@ class SettingsSync {
 
         const crossfadeSlider = document.getElementById('crossfadeSlider');
         if (crossfadeSlider) crossfadeSlider.value = settings.crossfadeDuration;
+        const replayGainMode = document.getElementById('replayGainModeSelect');
+        if (replayGainMode) replayGainMode.value = settings.replayGainMode || 'off';
+        const replayGainPreamp = document.getElementById('replayGainPreampSlider');
+        if (replayGainPreamp) replayGainPreamp.value = settings.replayGainPreampDb || 0;
+        const replayGainClipping = document.getElementById('replayGainPreventClippingToggle');
+        if (replayGainClipping) replayGainClipping.checked = settings.replayGainPreventClipping !== false;
+        const preampLabel = document.getElementById('replayGainPreampLabel');
+        if (preampLabel) preampLabel.textContent = `${settings.replayGainPreampDb || 0} dB`;
 
         // Update repeat mode
         const repeatBtn = document.getElementById('repeatBtnK');

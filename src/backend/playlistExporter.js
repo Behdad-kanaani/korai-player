@@ -67,13 +67,20 @@ async function importFromM3U(filePath, baseDir = null) {
         if (trimmed.startsWith('#EXTINF:')) {
             const match = trimmed.match(/#EXTINF:(\d+),(.*)/);
             if (match) {
-                currentTrack = { duration: parseInt(match[1]), title: match[2].trim() };
+                const label = match[2].trim();
+                const artistTitleSeparator = label.indexOf(' - ');
+                const artist = artistTitleSeparator > 0 ? label.slice(0, artistTitleSeparator).trim() : '';
+                const title = artistTitleSeparator > 0 ? label.slice(artistTitleSeparator + 3).trim() : label;
+                currentTrack = artist && title
+                    ? { duration: parseInt(match[1]), artist, title }
+                    : { duration: parseInt(match[1]), title: label };
             }
         } else if (!trimmed.startsWith('#')) {
             const filePathResolved = resolvePlaylistImportPath(trimmed, baseDir || path.dirname(safeFilePath));
             if (filePathResolved && fs.existsSync(filePathResolved)) {
                 tracks.push({
                     filePath: filePathResolved,
+                    artist: currentTrack?.artist || '',
                     title: currentTrack?.title || path.basename(filePathResolved, path.extname(filePathResolved)),
                     duration: currentTrack?.duration || 0
                 });
@@ -313,7 +320,13 @@ async function importFromJSON(filePath, baseDir = null) {
     return tracks;
 }
 
-// ===================== CSV Exports (unchanged) =====================
+function toCsvTextCell(value) {
+    const text = String(value ?? '');
+    const safeText = /^[\u0000-\u0020]*[=+\-@]/.test(text) ? `'${text}` : text;
+    return `"${safeText.replace(/"/g, '""')}"`;
+}
+
+// ===================== CSV Exports =====================
 function exportLibraryToCSV(tracks, outputPath, baseDir = null) {
     const safeOutputPath = resolveExportPath(outputPath, baseDir);
     if (!safeOutputPath) throw new Error('Invalid output path');
@@ -322,16 +335,16 @@ function exportLibraryToCSV(tracks, outputPath, baseDir = null) {
     for (const track of tracks) {
         rows.push([
             track.id,
-            `"${(track.title || '').replace(/"/g, '""')}"`,
-            `"${(track.artist || '').replace(/"/g, '""')}"`,
-            `"${(track.album || '').replace(/"/g, '""')}"`,
-            `"${(track.genre || '').replace(/"/g, '""')}"`,
+            toCsvTextCell(track.title),
+            toCsvTextCell(track.artist),
+            toCsvTextCell(track.album),
+            toCsvTextCell(track.genre),
             track.duration || 0,
-            track.bpm || 120,
-            track.energy || 0.5,
+            Number.isFinite(track.bpm) ? track.bpm : '',
+            Number.isFinite(track.energy) ? track.energy : '',
             track.playCount || 0,
             track.likeCount || 0,
-            `"${track.filePath || ''}"`
+            toCsvTextCell(track.filePath)
         ]);
     }
     const csvContent = rows.map(row => row.join(',')).join('\n');
@@ -350,12 +363,12 @@ function exportPlaylistToCSV(playlist, tracks, outputPath, baseDir = null) {
         if (!track) continue;
         rows.push([
             index++,
-            `"${(track.title || '').replace(/"/g, '""')}"`,
-            `"${(track.artist || '').replace(/"/g, '""')}"`,
-            `"${(track.album || '').replace(/"/g, '""')}"`,
+            toCsvTextCell(track.title),
+            toCsvTextCell(track.artist),
+            toCsvTextCell(track.album),
             track.duration || 0,
-            track.bpm || 120,
-            track.energy || 0.5
+            Number.isFinite(track.bpm) ? track.bpm : '',
+            Number.isFinite(track.energy) ? track.energy : ''
         ]);
     }
     const csvContent = rows.map(row => row.join(',')).join('\n');

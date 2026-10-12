@@ -4,12 +4,31 @@ const fs = require('fs');
 const path = require('path');
 const { resolveSafePath } = require('./securityUtils');
 
+const MAX_CUE_FILE_BYTES = 10 * 1024 * 1024;
+
 function parseCueSheet(cuePath) {
     const safeCuePath = resolveSafePath(cuePath, process.cwd());
     if (!safeCuePath || !fs.existsSync(safeCuePath)) {
         throw new Error('CUE file not found');
     }
-    const content = fs.readFileSync(safeCuePath, 'utf-8');
+    const cueBuffer = fs.readFileSync(safeCuePath);
+    if (cueBuffer.length > MAX_CUE_FILE_BYTES) {
+        throw new Error('CUE file exceeds the 10 MiB size limit');
+    }
+    let content;
+    if (cueBuffer[0] === 0xFF && cueBuffer[1] === 0xFE) {
+        content = cueBuffer.subarray(2).toString('utf16le');
+    } else if (cueBuffer[0] === 0xFE && cueBuffer[1] === 0xFF) {
+        const littleEndian = Buffer.from(cueBuffer.subarray(2));
+        for (let index = 0; index + 1 < littleEndian.length; index += 2) {
+            const byte = littleEndian[index];
+            littleEndian[index] = littleEndian[index + 1];
+            littleEndian[index + 1] = byte;
+        }
+        content = littleEndian.toString('utf16le');
+    } else {
+        content = cueBuffer.toString('utf-8').replace(/^\uFEFF/, '');
+    }
     const lines = content.split(/\r?\n/);
     
     const result = {
@@ -21,21 +40,24 @@ function parseCueSheet(cuePath) {
     
     let currentFile = null;
     let currentTrack = null;
+    const seenTrackNumbers = new Set();
     
+    const unquote = value => value.replace(/^["']|["']$/g, '').replace(/\\(["'\\])/g, '$1');
     for (let line of lines) {
         line = line.trim();
         if (line === '') continue;
-        
-        const parts = line.split(' ');
-        const command = parts[0].toUpperCase();
-        const args = parts.slice(1).join(' ').replace(/^["']|["']$/g, '');
+        const commandMatch = line.match(/^(\S+)(?:\s+(.*))?$/);
+        if (!commandMatch) continue;
+        const command = commandMatch[1].toUpperCase();
+        const rawArgs = commandMatch[2] || '';
+        const args = unquote(rawArgs);
         
         switch (command) {
             case 'REM':
-                if (args.startsWith('GENRE')) {
-                    result.genre = args.replace('GENRE ', '');
-                } else if (args.startsWith('DATE')) {
-                    result.date = args.replace('DATE ', '');
+                if (/^GENRE\s+/i.test(rawArgs)) {
+                    result.genre = unquote(rawArgs.replace(/^GENRE\s+/i, ''));
+                } else if (/^DATE\s+/i.test(rawArgs)) {
+                    result.date = unquote(rawArgs.replace(/^DATE\s+/i, ''));
                 }
                 break;
                 
@@ -71,26 +93,35 @@ function parseCueSheet(cuePath) {
                 if (currentFile && currentFile.tracks) {
                     result.files.push(currentFile);
                 }
-                
-                const fileMatch = line.match(/FILE\s+["'](.+?)["']\s+(\w+)/);
+                const fileMatch = rawArgs.match(/^(?:"((?:[^"\\]|\\.)+)"|'((?:[^'\\]|\\.)+)'|(.+))\s+(\S+)\s*$/);
                 if (fileMatch) {
+                    const filename = unquote(fileMatch[1] || fileMatch[2] || fileMatch[3].trim());
                     currentFile = {
-                        path: fileMatch[1],
-                        type: fileMatch[2],
+                        path: filename,
+                        type: fileMatch[4].toUpperCase(),
                         performer: null,
                         title: null,
                         tracks: []
                     };
+                } else {
+                    throw new Error(`Invalid FILE directive: ${line}`);
                 }
                 currentTrack = null;
                 break;
                 
             case 'TRACK':
-                const trackMatch = line.match(/TRACK\s+(\d+)\s+(\w+)/);
+                const trackMatch = rawArgs.match(/^(\d{1,3})\s+(\S+)$/);
+                if (!trackMatch || !currentFile || Number(trackMatch[1]) < 1) {
+                    throw new Error(`Invalid TRACK directive: ${line}`);
+                }
+                if (seenTrackNumbers.has(Number(trackMatch[1]))) {
+                    throw new Error(`Duplicate CUE track number: ${trackMatch[1]}`);
+                }
+                seenTrackNumbers.add(Number(trackMatch[1]));
                 if (trackMatch && currentFile) {
                     currentTrack = {
                         number: parseInt(trackMatch[1]),
-                        type: trackMatch[2],
+                        type: trackMatch[2].toUpperCase(),
                         title: null,
                         performer: null,
                         index: null,
@@ -102,19 +133,29 @@ function parseCueSheet(cuePath) {
                 
             case 'INDEX':
                 if (currentTrack) {
-                    const indexMatch = line.match(/INDEX\s+(\d+)\s+(\d+):(\d+):(\d+)/);
+                    const indexMatch = rawArgs.match(/^(\d{1,2})\s+(\d+):(\d{2}):(\d{2})$/);
                     if (indexMatch) {
                         const indexNum = parseInt(indexMatch[1]);
                         const minutes = parseInt(indexMatch[2]);
                         const seconds = parseInt(indexMatch[3]);
                         const frames = parseInt(indexMatch[4]);
+                        if (seconds >= 60 || frames >= 75) {
+                            throw new Error(`Invalid INDEX timestamp: ${line}`);
+                        }
                         const timeInSeconds = minutes * 60 + seconds + (frames / 75);
-                        
+                        const previous = currentTrack.indexes?.[indexNum];
+                        if (previous !== undefined && previous !== timeInSeconds) {
+                            throw new Error(`Conflicting INDEX ${indexNum} on track ${currentTrack.number}`);
+                        }
+                        if (!currentTrack.indexes) currentTrack.indexes = {};
+                        currentTrack.indexes[indexNum] = timeInSeconds;
                         if (indexNum === 0) {
                             currentTrack.pregap = timeInSeconds;
                         } else if (indexNum === 1) {
                             currentTrack.start = timeInSeconds;
                         }
+                    } else {
+                        throw new Error(`Invalid INDEX directive: ${line}`);
                     }
                 }
                 break;
@@ -131,6 +172,13 @@ function parseCueSheet(cuePath) {
     if (currentFile && currentFile.tracks) {
         result.files.push(currentFile);
     }
+    for (const file of result.files) {
+        for (const track of file.tracks) {
+            if (Number.isFinite(track.pregap) && Number.isFinite(track.start) && track.pregap > track.start) {
+                throw new Error(`Track ${track.number} has INDEX 00 after INDEX 01`);
+            }
+        }
+    }
     
     return result;
 }
@@ -138,17 +186,32 @@ function parseCueSheet(cuePath) {
 function getTracksFromCue(cuePath, audioBaseDir = null) {
     const cue = parseCueSheet(cuePath);
     const tracks = [];
-    
+
     for (const file of cue.files) {
         let audioPath = file.path;
-        if (audioPath.startsWith('file://')) audioPath = decodeURI(audioPath.slice(7));
+        if (/^file:\/\//i.test(audioPath)) {
+            try {
+                audioPath = require('url').fileURLToPath(audioPath);
+            } catch {
+                throw new Error(`Invalid audio file URL in CUE: ${file.path}`);
+            }
+        }
         const safePath = resolveSafePath(audioPath, audioBaseDir || path.dirname(cuePath));
         if (!safePath || !fs.existsSync(safePath)) {
-            console.warn(`Audio file not found or unsafe: ${audioPath}`);
-            continue;
+            throw new Error(`Audio file not found or unsafe: ${audioPath}`);
         }
-        
-        for (const track of file.tracks) {
+
+        const fileTracks = file.tracks.filter(track => track.type === 'AUDIO');
+        for (let index = 0; index < fileTracks.length; index++) {
+            const track = fileTracks[index];
+            if (!Number.isFinite(track.start)) {
+                throw new Error(`Track ${track.number} has no valid INDEX 01`);
+            }
+            const nextTrack = fileTracks.slice(index + 1).find(candidate => Number.isFinite(candidate.start));
+            const endTime = nextTrack ? nextTrack.start : null;
+            if (endTime !== null && endTime <= track.start) {
+                throw new Error(`Track ${track.number} has a non-increasing INDEX 01`);
+            }
             tracks.push({
                 filePath: safePath,
                 title: track.title || `${file.title || cue.title || 'Unknown'} - Track ${track.number}`,
@@ -156,20 +219,13 @@ function getTracksFromCue(cuePath, audioBaseDir = null) {
                 album: file.title || cue.title || 'Unknown Album',
                 trackNumber: track.number,
                 startTime: track.start || 0,
-                endTime: track.nextTrackStart || null,
+                endTime,
                 flags: track.flags,
                 cueIndex: track.number
             });
         }
-        
-        // Calculate end times for tracks
-        for (let i = 0; i < tracks.length; i++) {
-            if (i < tracks.length - 1 && tracks[i].filePath === tracks[i + 1].filePath) {
-                tracks[i].endTime = tracks[i + 1].startTime;
-            }
-        }
     }
-    
+    if (!tracks.length) throw new Error('CUE sheet contains no playable AUDIO tracks');
     return tracks;
 }
 
@@ -210,9 +266,11 @@ function generateCueSheet(playlist, tracks, outputPath) {
             content += `    PERFORMER "${track.artist || 'Unknown Artist'}"\n`;
             
             // CUE indexes are written relative to the source file.
-            const startMinutes = Math.floor((track.cuePosition || 0) / 60);
-            const startSeconds = Math.floor((track.cuePosition || 0) % 60);
-            const startFrames = Math.floor(((track.cuePosition || 0) % 1) * 75);
+            const startTime = Number(track.cueStartTime ?? track.cuePosition) || 0;
+            const totalFrames = Math.max(0, Math.round(startTime * 75));
+            const startMinutes = Math.floor(totalFrames / (60 * 75));
+            const startSeconds = Math.floor((totalFrames % (60 * 75)) / 75);
+            const startFrames = totalFrames % 75;
             content += `    INDEX 01 ${startMinutes.toString().padStart(2, '0')}:${startSeconds.toString().padStart(2, '0')}:${startFrames.toString().padStart(2, '0')}\n`;
         }
         

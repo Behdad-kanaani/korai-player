@@ -6,7 +6,12 @@ const path = require('path');
 
 // Safe imports with fallbacks - using require instead of import
 let mm = null;
-let detectRealBPM = null;
+let analyzeBPM = null;
+let decodeAudioToMono = null;
+let measureAudioSignal = null;
+let analyzeVoiceFile = null;
+let extractReplayGain = null;
+let detectMusicalKey = null;
 
 try {
   mm = require('music-metadata');
@@ -15,10 +20,35 @@ try {
 }
 
 try {
+  ({ extractReplayGain } = require('../../frontend/audioNormalization'));
+} catch (e) {
+  console.error('[worker] ReplayGain metadata helper not available:', e.message);
+}
+
+try {
   const bpmModule = require('../bpmDetector');
-  detectRealBPM = bpmModule.detectRealBPM;
+  analyzeBPM = bpmModule.analyzeBPM;
+  decodeAudioToMono = bpmModule.decodeAudioToMono;
 } catch (e) {
   console.error('[worker] bpmDetector not available:', e.message);
+}
+
+try {
+  ({ measureAudioSignal } = require('../analyzer'));
+} catch (e) {
+  console.error('[worker] Audio signal analyzer not available:', e.message);
+}
+
+try {
+  ({ analyzeVoiceFile } = require('../voiceAnalyzer'));
+} catch (e) {
+  console.error('[worker] Voice fingerprint analyzer not available:', e.message);
+}
+
+try {
+  ({ detectMusicalKey } = require('../keyDetector'));
+} catch (e) {
+  console.error('[worker] Musical key detector not available:', e.message);
 }
 
 /**
@@ -29,23 +59,37 @@ async function analyzeFile(filePath) {
   // Default results (safe fallback)
   const results = {
     duration: 0,
-    bpm: 120,
-    energy: 0.5,
-    loudness: -12,
+    bpm: null,
+    bpmConfidence: 0,
+    bpmSource: 'unavailable',
+    musicalKey: null,
+    keyConfidence: 0,
+    keySource: 'unavailable',
+    energy: null,
+    energySource: 'unavailable',
+    rmsLevel: null,
+    analysisVersion: null,
+    loudness: null,
     sampleRate: 0,
     bitrate: 0,
     codec: '',
     title: path.basename(filePath, path.extname(filePath)),
     artist: '',
-    genre: 'Pop',
-    genreConfidence: 0.6,
+    genre: null,
+    genreSource: 'unavailable',
+    genreConfidence: 0,
     year: null,
     trackNumber: null,
+    replayGainTrackDb: null,
+    replayGainTrackPeak: null,
+    replayGainAlbumDb: null,
+    replayGainAlbumPeak: null,
     album: '',
     coverImage: null,
     lyrics: null,
     composer: '',
-    publisher: ''
+    publisher: '',
+    voiceFingerprint: null
   };
 
   try {
@@ -54,12 +98,20 @@ async function analyzeFile(filePath) {
     }
 
     const metadata = await mm.parseFile(filePath, { duration: true, native: true });
+    if (extractReplayGain) Object.assign(results, extractReplayGain(metadata.common));
 
     // Basic format info
     results.duration = metadata.format.duration || 0;
     results.sampleRate = metadata.format.sampleRate || 0;
     results.bitrate = metadata.format.bitrate || 0;
     results.codec = metadata.format.codec || 'unknown';
+    if (analyzeVoiceFile) {
+      try {
+        results.voiceFingerprint = await analyzeVoiceFile(filePath, results.duration);
+      } catch (voiceErr) {
+        console.warn(`[worker] Voice fingerprint unavailable for ${filePath}:`, voiceErr.message);
+      }
+    }
 
     // Common tags
     if (metadata.common.title) results.title = metadata.common.title;
@@ -83,33 +135,45 @@ async function analyzeFile(filePath) {
     }
     if (metadata.common.publisher) results.publisher = metadata.common.publisher;
 
-    // BPM detection (real or metadata fallback)
-    let bpmDetected = false;
-    if (detectRealBPM) {
+    if (analyzeBPM) {
       try {
-        const realBpm = await detectRealBPM(filePath);
-        if (realBpm && realBpm > 0) {
-          results.bpm = realBpm;
-          bpmDetected = true;
-        }
+        const bpmResult = await analyzeBPM(filePath);
+        results.bpm = bpmResult.bpm;
+        results.bpmConfidence = bpmResult.confidence;
+        results.bpmSource = bpmResult.source;
       } catch (bpmErr) {
         console.warn(`[worker] Real BPM detection failed for ${filePath}:`, bpmErr.message);
       }
     }
-    if (!bpmDetected && metadata.common.bpm) {
-      results.bpm = metadata.common.bpm;
+
+    if (decodeAudioToMono && measureAudioSignal) {
+      try {
+        const { samples, sampleRate } = await decodeAudioToMono(filePath, 11025, 30);
+        const signal = measureAudioSignal(samples, sampleRate);
+        if (signal) {
+          results.energy = signal.rmsLevel;
+          results.rmsLevel = signal.rmsLevel;
+          results.energySource = 'waveform-rms';
+          results.analysisVersion = 'waveform-v2';
+          results.loudness = signal.loudnessDbfs;
+          results.audioFeatures = signal;
+        }
+        if (detectMusicalKey) {
+          try {
+            const key = detectMusicalKey(samples, sampleRate);
+            results.musicalKey = key.key;
+            results.keyConfidence = key.confidence;
+            results.keySource = key.source;
+          } catch (keyError) {
+            console.warn(`[worker] Musical key detection unavailable for ${path.basename(filePath)}:`, keyError.message);
+          }
+        }
+      } catch (signalErr) {
+        console.warn(`[worker] Signal feature analysis unavailable for ${filePath}:`, signalErr.message);
+      }
     }
 
-    // Energy estimation (based on bitrate and duration)
-    if (results.bitrate > 0) {
-      results.energy = Math.min(0.95, Math.max(0.15, results.bitrate / 320000));
-      if (results.duration && results.duration < 120) results.energy *= 1.15;
-      if (results.duration && results.duration > 300) results.energy *= 0.85;
-      results.energy = Math.min(0.95, Math.max(0.15, results.energy));
-    }
-    results.loudness = -23 + (results.energy * 16);
-
-    // Genre detection (tag or BPM-based)
+    // Genre is reported only when a tag provides explicit evidence.
     let genreTag = null;
     if (metadata.common.genre) {
       genreTag = Array.isArray(metadata.common.genre)
@@ -118,15 +182,8 @@ async function analyzeFile(filePath) {
     }
     if (genreTag && genreTag !== '') {
       results.genre = genreTag;
-      results.genreConfidence = 0.9;
-    } else if (results.bpm) {
-      if (results.bpm < 70) results.genre = 'Ambient / Classical';
-      else if (results.bpm < 95) results.genre = 'Jazz / Blues';
-      else if (results.bpm < 110) results.genre = 'Hip Hop / R&B';
-      else if (results.bpm < 130) results.genre = 'Pop / Rock';
-      else if (results.bpm < 160) results.genre = 'Electronic / Dance';
-      else results.genre = 'Drum & Bass / Metal';
-      results.genreConfidence = 0.7;
+      results.genreSource = 'metadata';
+      results.genreConfidence = 1;
     }
 
     // Cover image (binary data)
@@ -134,7 +191,11 @@ async function analyzeFile(filePath) {
       results.coverImage = metadata.common.picture[0].data;
     }
 
-    console.debug(`[worker] Analyzed: ${results.title} | ${results.bpm}BPM | ${Math.round(results.energy * 100)}% energy`);
+    const bpmLabel = Number.isFinite(results.bpm) ? `${results.bpm}BPM` : 'BPM unavailable';
+    const energyLabel = Number.isFinite(results.energy)
+      ? `${Math.round(results.energy * 100)}% measured energy`
+      : 'energy unavailable';
+    console.debug(`[worker] Analyzed: ${results.title} | ${bpmLabel} | ${energyLabel}`);
 
   } catch (error) {
     console.error(`[worker] Fatal analysis error for ${filePath}:`, error.message);
@@ -181,9 +242,11 @@ async function analyzeBatch(filePaths) {
         analysis: {
           title: path.basename(filePath, path.extname(filePath)),
           duration: 0,
-          bpm: 120,
-          energy: 0.5,
-          genre: 'Unknown'
+          bpm: null,
+          bpmConfidence: 0,
+          bpmSource: 'unavailable',
+          energy: null,
+          genre: null
         }
       });
     }

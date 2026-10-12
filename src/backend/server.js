@@ -7,15 +7,21 @@ const fs = require('fs');
 const http = require('http');
 const https = require('https');
 const { URL, fileURLToPath } = require('url');
+const mm = require('music-metadata');
 const { initDatabase, getDb } = require('./database');
-const { analyzeAudioFile, cosineSimilarity } = require('./analyzer');
+const { analyzeAudioFile } = require('./analyzer');
 const { 
     getPersonalizedRecommendations, 
+    calculateContentSimilarity,
+    generateListenerProfile,
     updateUserHistory, 
     loadUserHistory, 
     getDiscoveryRecommendations 
 } = require('./recommender');
-const { detectRealBPM } = require('./bpmDetector');
+const { analyzeBPM, decodeAudioToMono } = require('./bpmDetector');
+const { detectMusicalKey } = require('./keyDetector');
+const { analyzeVoiceFile, compareVoiceFingerprints } = require('./voiceAnalyzer');
+const { findDuplicateGroups } = require('./duplicateDetector');
 const { exportToM3U, exportToPLS, exportLibraryToCSV, exportPlaylistToCSV, 
         importFromM3U, importFromPLS, importFromXSPF, importFromASX, 
         importFromWPL, importFromJSON } = require('./playlistExporter');
@@ -30,6 +36,8 @@ const PluginSettings = require('./pluginSettings');
 const PluginPerformanceMonitor = require('./pluginPerformanceMonitor');
 const { createRateLimiter, assertSafeUrl, fetchSafeUrl, resolveSafePath, resolveExistingFile } = require('./securityUtils');
 const { filterAvailableTracks } = require('./trackAvailability');
+const { planAudioImport } = require('./libraryImport');
+const { normalizeTagUpdates, normalizeTrackIds } = require('./tagUpdates');
 
 const MAX_REMOTE_AUDIO_BYTES = 250 * 1024 * 1024;
 const MAX_PROXY_HTML_BYTES = 5 * 1024 * 1024;
@@ -601,6 +609,89 @@ async function downloadFile(fileUrl, destPath, redirectCount = 0) {
 function setupRoutes() {
     const fileOperationLimiter = createRateLimiter(20, 60_000);
     const getAvailableTracks = (db) => filterAvailableTracks(db.getAllTracks());
+    const duplicateScans = new Map();
+    let activeDuplicateScanId = null;
+
+    app.post('/api/duplicates/scan', (req, res) => {
+        try {
+            if (activeDuplicateScanId) {
+                const activeScan = duplicateScans.get(activeDuplicateScanId);
+                if (activeScan?.status === 'running') {
+                    return res.status(202).json({ scanId: activeScan.id, status: activeScan.status });
+                }
+                activeDuplicateScanId = null;
+            }
+
+            const db = getDb();
+            const tracksToScan = getAvailableTracks(db);
+            const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const scan = {
+                id,
+                status: 'running',
+                completed: 0,
+                total: tracksToScan.length,
+                phase: 'hash',
+                groups: [],
+                scannedTracks: 0,
+                scanErrors: [],
+                error: null
+            };
+            duplicateScans.set(id, scan);
+            activeDuplicateScanId = id;
+            while (duplicateScans.size > 3) duplicateScans.delete(duplicateScans.keys().next().value);
+            res.status(202).json({ scanId: id, status: scan.status, total: scan.total });
+
+            findDuplicateGroups(tracksToScan, (completed, total, phase) => {
+                scan.completed = completed;
+                scan.total = total;
+                scan.phase = phase;
+            }).then(result => {
+                scan.groups = result.groups.map(group => ({
+                    type: group.type,
+                    evidence: group.evidence,
+                    mixedEvidence: group.mixedEvidence,
+                    recommendedKeepTrackId: group.recommendedKeepTrackId,
+                    tracks: group.tracks.map(track => ({
+                        id: track.id,
+                        title: track.title,
+                        artist: track.artist,
+                        duration: track.duration,
+                        bitrate: track.bitrate,
+                        codec: track.codec,
+                        playCount: track.playCount,
+                        isLiked: track.isLiked,
+                        hasCover: track.hasCover,
+                        format: path.extname(track.filePath).slice(1).toUpperCase()
+                    }))
+                }));
+                scan.scannedTracks = result.scannedTracks;
+                scan.scanErrors = result.scanErrors.map(error => ({
+                    trackId: error.trackId,
+                    message: error.message
+                }));
+                scan.scanWarnings = result.scanWarnings;
+                scan.completed = scan.total;
+                scan.phase = 'complete';
+                scan.status = 'complete';
+                if (activeDuplicateScanId === id) activeDuplicateScanId = null;
+            }).catch(error => {
+                scan.status = 'failed';
+                scan.error = error.message;
+                if (activeDuplicateScanId === id) activeDuplicateScanId = null;
+                console.error('[duplicates] Scan failed:', error);
+            });
+        } catch (error) {
+            console.error('[duplicates] Could not start scan:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    app.get('/api/duplicates/scan/:scanId', (req, res) => {
+        const scan = duplicateScans.get(req.params.scanId);
+        if (!scan) return res.status(404).json({ error: 'Duplicate scan not found' });
+        res.set('Cache-Control', 'no-store');
+        res.json(scan);
+    });
 
     app.get('/api/settings', (req, res) => {
         try {
@@ -924,47 +1015,83 @@ function setupRoutes() {
             }
 
             const db = getDb();
-            const existing = normalizedPaths.filter(fp => {
-                try {
-                    return fs.existsSync(fp);
-                } catch (e) {
-                    return false;
-                }
-            });
-            console.debug(` import: ${existing.length}/${normalizedPaths.length} paths exist on disk`);
-            if (existing.length === 0) {
+            if (normalizedPaths.length === 0) {
                 return res.status(422).json({
                     error: 'The selected audio files are no longer accessible. Check the USB/removable drive connection and try again.'
                 });
             }
+            const importPlan = planAudioImport(normalizedPaths, db.getAllTracks());
             const results = [];
+            const updatedTracks = [];
             const failures = [];
             const CONCURRENCY = 3;
-            async function processOne(filePath) {
+            async function processOne(item) {
+                const { filePath, existingTrackId } = item;
                 try {
+                    const startedStats = fs.statSync(filePath);
+                    if (!startedStats.isFile()) throw new Error('Path is no longer a regular file');
                     console.debug(` Analyzing: ${path.basename(filePath)}`);
                     const analysis = await analyzeAudioFile(filePath);
-                    const track = db.addTrack({
+                    const completedStats = fs.statSync(filePath);
+                    if (startedStats.size !== completedStats.size ||
+                        startedStats.mtimeMs !== completedStats.mtimeMs) {
+                        throw new Error('File changed while it was being analyzed; scan it again to import a consistent version.');
+                    }
+                    const analyzedTrack = {
                         title: analysis.title || path.basename(filePath, path.extname(filePath)),
                         artist: analysis.artist || '',
                         filePath: filePath,
+                        fileSize: completedStats.size,
+                        fileMtimeMs: completedStats.mtimeMs,
                         duration: analysis.duration,
                         bpm: analysis.bpm,
+                        bpmConfidence: analysis.bpmConfidence,
+                        bpmSource: analysis.bpmSource,
+                        musicalKey: analysis.musicalKey,
+                        keyConfidence: analysis.keyConfidence,
+                        keySource: analysis.keySource,
                         energy: analysis.energy,
+                        rmsLevel: analysis.rmsLevel,
+                        energySource: analysis.energySource,
                         loudness: analysis.loudness,
                         genre: analysis.genre,
+                        genreSource: analysis.genreSource,
                         genreConfidence: analysis.genreConfidence,
                         album: analysis.album,
+                        replayGainTrackDb: analysis.replayGainTrackDb,
+                        replayGainTrackPeak: analysis.replayGainTrackPeak,
+                        replayGainAlbumDb: analysis.replayGainAlbumDb,
+                        replayGainAlbumPeak: analysis.replayGainAlbumPeak,
                         coverImage: analysis.coverImage,
                         lyrics: analysis.lyrics,
                         sampleRate: analysis.sampleRate,
                         bitrate: analysis.bitrate,
                         codec: analysis.codec,
+                        analysisVersion: analysis.analysisVersion,
                         featureVector: analysis.featureVector,
-                        rawFeatures: analysis.rawFeatures
-                    }, false);
-                    results.push(track);
-                    console.debug(` Imported: ${track.title}`);
+                        rawFeatures: analysis.rawFeatures,
+                        voiceFingerprint: analysis.voiceFingerprint
+                    };
+                    if (existingTrackId !== null) {
+                        const current = db.getMutableTrackById(existingTrackId);
+                        if (!current) throw new Error('The existing library record disappeared during import.');
+                        const persistedAnalysis = { ...analyzedTrack };
+                        delete persistedAnalysis.coverImage;
+                        Object.assign(current, persistedAnalysis, {
+                            id: existingTrackId,
+                            playCount: current.playCount || 0,
+                            likeCount: current.likeCount || 0,
+                            isLiked: Boolean(current.isLiked),
+                            createdAt: current.createdAt
+                        });
+                        current.updatedAt = Date.now();
+                        updatedTracks.push({ id: current.id, filePath: current.filePath, title: current.title });
+                        console.debug(` Refreshed: ${current.title}`);
+                    } else {
+                        const track = db.addTrack(analyzedTrack, false);
+                        results.push(track);
+                        console.debug(` Imported: ${track.title}`);
+                    }
                 } catch (err) {
                     failures.push({ filePath, error: err.message || 'Audio analysis failed' });
                     console.error(` Failed to import ${filePath}:`, err.message);
@@ -972,16 +1099,17 @@ function setupRoutes() {
             }
             async function run() {
                 const workers = [];
-                for (let i = 0; i < existing.length; i++) {
-                    const task = processOne(existing[i]);
+                for (let i = 0; i < importPlan.toAnalyze.length; i++) {
+                    const task = processOne(importPlan.toAnalyze[i]);
                     workers.push(task);
-                    if (workers.length >= CONCURRENCY || i === existing.length - 1) {
+                    if (workers.length >= CONCURRENCY || i === importPlan.toAnalyze.length - 1) {
                         await Promise.all(workers);
                         workers.length = 0;
                     }
                 }
-                db.save();
-                if (results.length === 0) {
+                if (results.length > 0 || updatedTracks.length > 0) db.save();
+                if (results.length === 0 && updatedTracks.length === 0 &&
+                    importPlan.unchanged.length === 0 && failures.length > 0) {
                     const sampleErrors = failures.slice(0, 3).map(item => `${path.basename(item.filePath)}: ${item.error}`).join('; ');
                     return res.status(422).json({
                         error: sampleErrors
@@ -993,10 +1121,12 @@ function setupRoutes() {
                 res.json({
                     success: true,
                     imported: results.length,
-                    total: filePaths.length,
-                    skipped: Math.max(0, filePaths.length - results.length),
+                    updated: updatedTracks.length,
+                    unchanged: importPlan.unchanged.length,
+                    total: normalizedPaths.length,
+                    skipped: importPlan.unchanged.length,
                     failed: failures.length,
-                    importedTracks
+                    importedTracks: importedTracks.concat(updatedTracks)
                 });
             }
             run().catch(err => {
@@ -1052,12 +1182,27 @@ function setupRoutes() {
                 filePath: tempFilePath,
                 duration: analysisResult.duration,
                 bpm: analysisResult.bpm,
+                bpmConfidence: analysisResult.bpmConfidence,
+                bpmSource: analysisResult.bpmSource,
+                musicalKey: analysisResult.musicalKey,
+                keyConfidence: analysisResult.keyConfidence,
+                keySource: analysisResult.keySource,
                 energy: analysisResult.energy,
+                rmsLevel: analysisResult.rmsLevel,
+                energySource: analysisResult.energySource,
                 loudness: analysisResult.loudness,
                 genre: analysisResult.genre,
+                genreSource: analysisResult.genreSource,
                 album: analysisResult.album,
+                replayGainTrackDb: analysisResult.replayGainTrackDb,
+                replayGainTrackPeak: analysisResult.replayGainTrackPeak,
+                replayGainAlbumDb: analysisResult.replayGainAlbumDb,
+                replayGainAlbumPeak: analysisResult.replayGainAlbumPeak,
                 coverImage: analysisResult.coverImage,
-                featureVector: analysisResult.featureVector
+                analysisVersion: analysisResult.analysisVersion,
+                featureVector: analysisResult.featureVector,
+                rawFeatures: analysisResult.rawFeatures,
+                voiceFingerprint: analysisResult.voiceFingerprint
             });
             res.json({ success: true, track: newTrack });
         } catch (error) {
@@ -1151,9 +1296,13 @@ function setupRoutes() {
                 console.warn('Audio analysis failed, using fallback metadata:', analysisErr.message);
                 analysis = {
                     duration: 0,
-                    bpm: 120,
-                    energy: 0.5,
-                    loudness: -12,
+                    bpm: null,
+                    bpmConfidence: 0,
+                    bpmSource: 'unavailable',
+                    energy: null,
+                    rmsLevel: null,
+                    energySource: 'unavailable',
+                    loudness: null,
                     sampleRate: 44100,
                     bitrate: 0,
                     codec: path.extname(finalPath).replace('.', '') || 'mp3',
@@ -1177,12 +1326,27 @@ function setupRoutes() {
                 filePath: finalPath,
                 duration: analysis.duration,
                 bpm: analysis.bpm,
+                bpmConfidence: analysis.bpmConfidence,
+                bpmSource: analysis.bpmSource,
+                musicalKey: analysis.musicalKey,
+                keyConfidence: analysis.keyConfidence,
+                keySource: analysis.keySource,
                 energy: analysis.energy,
+                rmsLevel: analysis.rmsLevel,
+                energySource: analysis.energySource,
                 loudness: analysis.loudness,
                 genre: analysis.genre || 'Downloaded',
+                genreSource: analysis.genreSource,
                 album: analysis.album || '',
+                replayGainTrackDb: analysis.replayGainTrackDb,
+                replayGainTrackPeak: analysis.replayGainTrackPeak,
+                replayGainAlbumDb: analysis.replayGainAlbumDb,
+                replayGainAlbumPeak: analysis.replayGainAlbumPeak,
                 coverImage: analysis.coverImage,
+                analysisVersion: analysis.analysisVersion,
                 featureVector: analysis.featureVector,
+                rawFeatures: analysis.rawFeatures,
+                voiceFingerprint: analysis.voiceFingerprint,
                 sampleRate: analysis.sampleRate,
                 bitrate: analysis.bitrate,
                 codec: analysis.codec,
@@ -1218,6 +1382,19 @@ function setupRoutes() {
         }
     });
 
+    app.post('/api/playlists/smart', (req, res) => {
+        try {
+            if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+                return res.status(400).json({ error: 'A smart playlist definition is required.' });
+            }
+            const { name, criteria } = req.body;
+            const playlist = getDb().createSmartPlaylist(name, criteria);
+            res.status(201).json(playlist);
+        } catch (error) {
+            res.status(400).json({ error: error.message || 'Could not create smart playlist.' });
+        }
+    });
+
     app.delete('/api/playlists/:id', (req, res) => {
         try {
             const db = getDb();
@@ -1232,7 +1409,11 @@ function setupRoutes() {
         try {
             const db = getDb();
             const { trackId } = req.body;
-            const added = db.addTrackToPlaylist(parseInt(req.params.id), parseInt(trackId));
+            const numericTrackId = parseInt(trackId);
+            const added = db.addTrackToPlaylist(parseInt(req.params.id), numericTrackId);
+            if (added && serverUserDataPath) {
+                updateUserHistory(userHistory, numericTrackId, 'playlist_add', serverUserDataPath);
+            }
             res.json({ success: added });
         } catch (e) {
             res.status(500).json({ error: e.message });
@@ -1337,9 +1518,13 @@ function setupRoutes() {
                 console.warn('Audio analysis failed for extracted file, using fallback metadata:', analysisErr.message);
                 analysis = {
                     duration: 0,
-                    bpm: 120,
-                    energy: 0.5,
-                    loudness: -12,
+                    bpm: null,
+                    bpmConfidence: 0,
+                    bpmSource: 'unavailable',
+                    energy: null,
+                    rmsLevel: null,
+                    energySource: 'unavailable',
+                    loudness: null,
                     sampleRate: 22050,
                     bitrate: 0,
                     codec: 'wav',
@@ -1366,17 +1551,31 @@ function setupRoutes() {
                 filePath: outputFilePath,
                 duration: analysis.duration,
                 bpm: analysis.bpm,
+                bpmConfidence: analysis.bpmConfidence,
+                bpmSource: analysis.bpmSource,
+                musicalKey: analysis.musicalKey,
+                keyConfidence: analysis.keyConfidence,
+                keySource: analysis.keySource,
                 energy: analysis.energy,
+                rmsLevel: analysis.rmsLevel,
+                energySource: analysis.energySource,
                 loudness: analysis.loudness,
                 genre: analysis.genre,
+                genreSource: analysis.genreSource,
                 album: track.album,
+                replayGainTrackDb: analysis.replayGainTrackDb,
+                replayGainTrackPeak: analysis.replayGainTrackPeak,
+                replayGainAlbumDb: analysis.replayGainAlbumDb,
+                replayGainAlbumPeak: analysis.replayGainAlbumPeak,
                 coverImage: coverImage,
                 lyrics: track.lyrics,
                 sampleRate: analysis.sampleRate,
                 bitrate: analysis.bitrate,
                 codec: analysis.codec,
+                analysisVersion: analysis.analysisVersion,
                 featureVector: analysis.featureVector,
-                rawFeatures: analysis.rawFeatures
+                rawFeatures: analysis.rawFeatures,
+                voiceFingerprint: analysis.voiceFingerprint
             });
             console.debug(` Extracted vocal track added: ${newTrack.title} (ID: ${newTrack.id})`);
             res.json({ success: true, track: newTrack });
@@ -1404,13 +1603,174 @@ function setupRoutes() {
         }
     });
 
+    app.get('/api/ai/profile', (req, res) => {
+        try {
+            const db = getDb();
+            const profile = generateListenerProfile(getAvailableTracks(db), userHistory, db.getSettings());
+            res.json({ profile });
+        } catch (error) {
+            console.error('AI listener profile error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    app.get('/api/ai/voice-match/:trackId', async (req, res) => {
+        try {
+            const db = getDb();
+            const allTracks = getAvailableTracks(db);
+            const trackId = Number(req.params.trackId);
+            const sourceTrack = allTracks.find(track => track.id === trackId);
+            if (!sourceTrack) return res.status(404).json({ error: 'Track not found or audio file is unavailable' });
+
+            const persistFingerprint = (track, fingerprint) => {
+                const mutableTrack = db.getMutableTrackById(track.id);
+                if (!mutableTrack) throw new Error(`Track ${track.id} is no longer available`);
+                mutableTrack.voiceFingerprint = fingerprint;
+                db.save();
+                track.voiceFingerprint = fingerprint;
+            };
+
+            let sourceFingerprint = sourceTrack.voiceFingerprint;
+            if (!sourceFingerprint) {
+                sourceFingerprint = await analyzeVoiceFile(sourceTrack.filePath, sourceTrack.duration);
+                if (sourceFingerprint) persistFingerprint(sourceTrack, sourceFingerprint);
+            }
+            if (!sourceFingerprint) {
+                return res.json({
+                    matches: [],
+                    analyzedReferences: 0,
+                    message: 'No sufficiently voiced segment was found in the selected sample.'
+                });
+            }
+
+            const sourceArtist = String(sourceTrack.artist || '').trim().toLocaleLowerCase();
+            const artistReferences = new Map();
+            for (const candidate of allTracks) {
+                const artist = String(candidate.artist || '').trim();
+                const key = artist.toLocaleLowerCase();
+                if (!artist || key === sourceArtist || candidate.id === sourceTrack.id) continue;
+                const existing = artistReferences.get(key);
+                if (!existing || (!existing.voiceFingerprint && candidate.voiceFingerprint) ||
+                    (Boolean(existing.voiceFingerprint) === Boolean(candidate.voiceFingerprint) &&
+                        (Number(candidate.playCount) || 0) > (Number(existing.playCount) || 0))) {
+                    artistReferences.set(key, candidate);
+                }
+            }
+
+            const references = [...artistReferences.values()];
+            const missingReferences = references
+                .filter(track => !track.voiceFingerprint)
+                .sort((a, b) => (Number(b.playCount) || 0) - (Number(a.playCount) || 0))
+                .slice(0, 8);
+            let analyzedReferences = 0;
+
+            for (const candidate of missingReferences) {
+                try {
+                    const fingerprint = await analyzeVoiceFile(candidate.filePath, candidate.duration);
+                    if (fingerprint) {
+                        persistFingerprint(candidate, fingerprint);
+                        analyzedReferences++;
+                    }
+                } catch (error) {
+                    console.warn(`[voice-match] Could not analyze ${candidate.title}: ${error.message}`);
+                }
+            }
+
+            const scoresByArtist = new Map();
+            for (const candidate of references) {
+                if (!candidate.voiceFingerprint || Number(candidate.voiceFingerprint.confidence) < 0.15) continue;
+                const similarity = compareVoiceFingerprints(sourceFingerprint, candidate.voiceFingerprint);
+                if (similarity === null) continue;
+                const key = String(candidate.artist).trim().toLocaleLowerCase();
+                const current = scoresByArtist.get(key) || {
+                    artist: String(candidate.artist).trim(),
+                    scores: [],
+                    referenceTracks: 0,
+                    representative: null,
+                    representativeSimilarity: -1
+                };
+                current.scores.push(similarity);
+                current.referenceTracks++;
+                if (similarity > current.representativeSimilarity) {
+                    current.representative = candidate;
+                    current.representativeSimilarity = similarity;
+                }
+                scoresByArtist.set(key, current);
+            }
+
+            const matches = [...scoresByArtist.values()]
+                .map(match => ({
+                    artist: match.artist,
+                    similarity: Math.round(match.scores.sort((a, b) => b - a).slice(0, 3).reduce((sum, score) => sum + score, 0) /
+                        Math.min(3, match.scores.length)),
+                    referenceTracks: match.referenceTracks,
+                    track: match.representative ? {
+                        id: match.representative.id,
+                        title: match.representative.title,
+                        duration: match.representative.duration,
+                        hasCover: Boolean(match.representative.hasCover),
+                        format: match.representative.format
+                    } : null
+                }))
+                .sort((a, b) => b.similarity - a.similarity)
+                .slice(0, 8);
+
+            res.json({
+                matches,
+                analyzedReferences,
+                availableReferences: references.filter(track => track.voiceFingerprint).length,
+                pendingReferences: Math.max(0, references.filter(track => !track.voiceFingerprint).length),
+                message: 'Offline acoustic similarity only; this is not proof of singer identity.'
+            });
+        } catch (error) {
+            console.error('Voice similarity analysis failed:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    app.get('/api/ai/recommendations', (req, res) => {
+        try {
+            const db = getDb();
+            const allTracks = getAvailableTracks(db);
+            const settings = db.getSettings();
+            const requestedTrackId = Number(req.query.trackId);
+            const sourceTrack = Number.isInteger(requestedTrackId)
+                ? allTracks.find(item => item.id === requestedTrackId) || null
+                : null;
+            const recommendations = settings.aiRecommendations === false
+                ? []
+                : getPersonalizedRecommendations(allTracks, sourceTrack, userHistory, 12, settings);
+            const profile = generateListenerProfile(allTracks, userHistory, settings);
+            const safeRecs = recommendations.map(track => ({
+                id: track.id,
+                title: track.title,
+                artist: track.artist,
+                duration: track.duration,
+                bpm: track.bpm,
+                energy: track.energy,
+                similarity: track.similarity,
+                reason: track.reason,
+                genre: track.genre,
+                hasCover: track.hasCover,
+                coverUrl: track.hasCover ? `/api/tracks/${track.id}/cover` : null
+            }));
+            res.json({ recommendations: safeRecs, profile, enabled: settings.aiRecommendations !== false });
+        } catch (error) {
+            console.error('AI recommendation error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
     app.get('/api/ai/recommend/personal/:trackId', (req, res) => {
         try {
             const db = getDb();
             const allTracks = getAvailableTracks(db);
             const track = allTracks.find(item => item.id === parseInt(req.params.trackId));
             if (!track) return res.status(404).json({ error: 'Track not found or audio file is unavailable' });
-            const recommendations = getPersonalizedRecommendations(allTracks, track, userHistory, 12);
+            const settings = db.getSettings();
+            const recommendations = settings.aiRecommendations === false
+                ? []
+                : getPersonalizedRecommendations(allTracks, track, userHistory, 12, settings);
             const safeRecs = recommendations.map(r => ({
                 id: r.id,
                 title: r.title,
@@ -1439,7 +1799,9 @@ function setupRoutes() {
         try {
             const db = getDb();
             const allTracks = getAvailableTracks(db);
-            const discoveries = getDiscoveryRecommendations(allTracks, userHistory, 15);
+            const settings = db.getSettings();
+            if (settings.discoveryMode === false) return res.json({ recommendations: [], enabled: false });
+            const discoveries = getDiscoveryRecommendations(allTracks, userHistory, 15, settings);
             const safeDisc = discoveries.map(d => ({
                 id: d.id,
                 title: d.title,
@@ -1450,7 +1812,7 @@ function setupRoutes() {
                 hasCover: d.hasCover,
                 coverUrl: d.hasCover ? `/api/tracks/${d.id}/cover` : null
             }));
-            res.json({ recommendations: safeDisc });
+            res.json({ recommendations: safeDisc, enabled: true });
         } catch (error) {
             res.status(500).json({ error: error.message });
         }
@@ -1462,7 +1824,10 @@ function setupRoutes() {
             const allTracks = getAvailableTracks(db);
             const track = allTracks.find(item => item.id === parseInt(req.params.trackId));
             if (!track) return res.status(404).json({ error: 'Track not found or audio file is unavailable' });
-            const recommendations = getPersonalizedRecommendations(allTracks, track, userHistory, 10);
+            const settings = db.getSettings();
+            const recommendations = settings.aiRecommendations === false
+                ? []
+                : getPersonalizedRecommendations(allTracks, track, userHistory, 10, settings);
             const safeRecs = recommendations.map(r => ({
                 id: r.id,
                 title: r.title,
@@ -1496,16 +1861,7 @@ function setupRoutes() {
             }
             const scored = otherTracks.map(track => {
                 let similarity = 0;
-                if (sourceTrack.featureVector && track.featureVector) {
-                    similarity = cosineSimilarity(sourceTrack.featureVector, track.featureVector);
-                } else {
-                    const bpmSim = 1 - Math.abs((sourceTrack.bpm - track.bpm) / 160);
-                    const energySim = 1 - Math.abs((sourceTrack.energy - track.energy));
-                    similarity = (bpmSim * 0.6) + (energySim * 0.4);
-                }
-                if (sourceTrack.genre && track.genre && sourceTrack.genre === track.genre && similarity > 0) {
-                    similarity = Math.min(0.95, similarity + 0.12);
-                }
+                similarity = calculateContentSimilarity(sourceTrack, track);
                 return { track, similarity };
             });
             const similarTracks = scored
@@ -1557,23 +1913,39 @@ function setupRoutes() {
     app.put('/api/tracks/:id/tags', async (req, res) => {
         try {
             const db = getDb();
-            const track = db.getMutableTrackById(parseInt(req.params.id));
+            const trackId = Number(req.params.id);
+            if (!Number.isSafeInteger(trackId) || trackId <= 0) return res.status(400).json({ error: 'Track ID is invalid.' });
+            const track = db.getMutableTrackById(trackId);
             if (!track) return res.status(404).json({ error: 'Track not found' });
-            const { title, artist, album, genre, year, trackNumber, composer, lyrics } = req.body;
-            if (title !== undefined) track.title = title;
-            if (artist !== undefined) track.artist = artist;
-            if (album !== undefined) track.album = album;
-            if (genre !== undefined) track.genre = genre;
-            if (year !== undefined) track.year = year;
-            if (trackNumber !== undefined) track.trackNumber = trackNumber;
-            if (composer !== undefined) track.composer = composer;
-            if (lyrics !== undefined) track.lyrics = lyrics;
+            const updates = normalizeTagUpdates(req.body);
+            Object.assign(track, updates);
             track.updatedAt = Date.now();
             db.save();
             res.json({ success: true, track });
         } catch (error) {
             console.error('Tag update error:', error);
-            res.status(500).json({ error: error.message });
+            res.status(400).json({ error: error.message });
+        }
+    });
+
+    app.put('/api/tracks/tags/batch', (req, res) => {
+        try {
+            if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+                return res.status(400).json({ error: 'Batch tag update body is invalid.' });
+            }
+            const ids = normalizeTrackIds(req.body.trackIds);
+            const updates = normalizeTagUpdates(req.body.updates);
+            const db = getDb();
+            const selectedTracks = ids.map(id => db.getMutableTrackById(id));
+            if (selectedTracks.some(track => !track)) {
+                return res.status(404).json({ error: 'One or more selected tracks no longer exist; no tags were changed.' });
+            }
+            const updatedAt = Date.now();
+            for (const track of selectedTracks) Object.assign(track, updates, { updatedAt });
+            db.save();
+            res.json({ success: true, updatedCount: selectedTracks.length, trackIds: ids });
+        } catch (error) {
+            res.status(400).json({ error: error.message || 'Could not update tags.' });
         }
     });
 
@@ -1635,9 +2007,13 @@ function setupRoutes() {
                         console.warn('Audio analysis failed for imported file, using fallback:', imported.filePath, analysisErr.message);
                         analysis = {
                             duration: 0,
-                            bpm: 120,
-                            energy: 0.5,
-                            loudness: -12,
+                            bpm: null,
+                            bpmConfidence: 0,
+                            bpmSource: 'unavailable',
+                            energy: null,
+                            rmsLevel: null,
+                            energySource: 'unavailable',
+                            loudness: null,
                             sampleRate: 44100,
                             bitrate: 0,
                             codec: path.extname(imported.filePath).replace('.', '') || 'unknown',
@@ -1652,15 +2028,30 @@ function setupRoutes() {
                     }
                     existing = db.addTrack({
                         title: imported.title || analysis.title,
-                        artist: analysis.artist,
+                        artist: imported.artist || analysis.artist,
                         filePath: imported.filePath,
                         duration: analysis.duration,
                         bpm: analysis.bpm,
+                        bpmConfidence: analysis.bpmConfidence,
+                        bpmSource: analysis.bpmSource,
+                        musicalKey: analysis.musicalKey,
+                        keyConfidence: analysis.keyConfidence,
+                        keySource: analysis.keySource,
                         energy: analysis.energy,
+                        rmsLevel: analysis.rmsLevel,
+                        energySource: analysis.energySource,
                         genre: analysis.genre,
+                        genreSource: analysis.genreSource,
                         album: analysis.album,
+                        replayGainTrackDb: analysis.replayGainTrackDb,
+                        replayGainTrackPeak: analysis.replayGainTrackPeak,
+                        replayGainAlbumDb: analysis.replayGainAlbumDb,
+                        replayGainAlbumPeak: analysis.replayGainAlbumPeak,
                         coverImage: analysis.coverImage,
-                        featureVector: analysis.featureVector
+                        analysisVersion: analysis.analysisVersion,
+                        featureVector: analysis.featureVector,
+                        rawFeatures: analysis.rawFeatures,
+                        voiceFingerprint: analysis.voiceFingerprint
                     }, false);
                 }
                 if (existing) {
@@ -1730,9 +2121,13 @@ function setupRoutes() {
                         console.warn('Audio analysis failed for imported file, using fallback:', imported.filePath, analysisErr.message);
                         analysis = {
                             duration: 0,
-                            bpm: 120,
-                            energy: 0.5,
-                            loudness: -12,
+                            bpm: null,
+                            bpmConfidence: 0,
+                            bpmSource: 'unavailable',
+                            energy: null,
+                            rmsLevel: null,
+                            energySource: 'unavailable',
+                            loudness: null,
                             sampleRate: 44100,
                             bitrate: 0,
                             codec: path.extname(imported.filePath).replace('.', '') || 'unknown',
@@ -1751,11 +2146,26 @@ function setupRoutes() {
                         filePath: imported.filePath,
                         duration: analysis.duration,
                         bpm: analysis.bpm,
+                        bpmConfidence: analysis.bpmConfidence,
+                        bpmSource: analysis.bpmSource,
+                        musicalKey: analysis.musicalKey,
+                        keyConfidence: analysis.keyConfidence,
+                        keySource: analysis.keySource,
                         energy: analysis.energy,
+                        rmsLevel: analysis.rmsLevel,
+                        energySource: analysis.energySource,
                         genre: analysis.genre,
+                        genreSource: analysis.genreSource,
                         album: analysis.album,
+                        replayGainTrackDb: analysis.replayGainTrackDb,
+                        replayGainTrackPeak: analysis.replayGainTrackPeak,
+                        replayGainAlbumDb: analysis.replayGainAlbumDb,
+                        replayGainAlbumPeak: analysis.replayGainAlbumPeak,
                         coverImage: analysis.coverImage,
-                        featureVector: analysis.featureVector
+                        analysisVersion: analysis.analysisVersion,
+                        featureVector: analysis.featureVector,
+                        rawFeatures: analysis.rawFeatures,
+                        voiceFingerprint: analysis.voiceFingerprint
                     }, false);
                 }
                 if (existing) {
@@ -1784,6 +2194,40 @@ function setupRoutes() {
         }
     });
 
+    app.get('/api/library/backup', fileOperationLimiter, (req, res) => {
+        try {
+            const backup = getDb().createBackup();
+            res.set('Cache-Control', 'no-store');
+            res.type('application/json');
+            res.attachment(`korai-backup-${new Date().toISOString().slice(0, 10)}.json`);
+            res.send(JSON.stringify(backup));
+        } catch (error) {
+            console.error('Library backup error:', error);
+            res.status(500).json({ error: error.message || 'Could not create library backup' });
+        }
+    });
+
+    app.post('/api/library/restore', fileOperationLimiter,
+        express.raw({ type: 'application/octet-stream', limit: '256mb' }),
+        (req, res) => {
+            try {
+                if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+                    return res.status(400).json({ error: 'Backup file is empty or missing.' });
+                }
+                let backup;
+                try {
+                    backup = JSON.parse(req.body.toString('utf8'));
+                } catch {
+                    return res.status(400).json({ error: 'Backup file is not valid JSON.' });
+                }
+                const result = getDb().restoreBackup(backup);
+                res.json({ success: true, ...result });
+            } catch (error) {
+                console.error('Library restore error:', error);
+                res.status(400).json({ error: error.message || 'Could not restore library backup' });
+            }
+        });
+
     app.post('/api/cue/parse', fileOperationLimiter, async (req, res) => {
         try {
             const { cuePath, audioBaseDir } = req.body;
@@ -1794,6 +2238,75 @@ function setupRoutes() {
         } catch (error) {
             console.error('CUE parse error:', error);
             res.status(500).json({ error: error.message });
+        }
+    });
+
+    app.post('/api/cue/import', fileOperationLimiter, async (req, res) => {
+        try {
+            const { cuePath, audioBaseDir } = req.body;
+            const safeCuePath = resolveSafePath(cuePath, serverUserDataPath || os.homedir());
+            if (!safeCuePath || !fs.existsSync(safeCuePath)) {
+                return res.status(404).json({ error: 'CUE file not found' });
+            }
+
+            const cueTracks = getTracksFromCue(safeCuePath, audioBaseDir);
+            const fileMetadata = new Map();
+            const preparedTracks = [];
+            for (const cueTrack of cueTracks) {
+                let metadata = fileMetadata.get(cueTrack.filePath);
+                if (!metadata) {
+                    metadata = await mm.parseFile(cueTrack.filePath, { duration: true, native: false });
+                    const duration = Number(metadata.format.duration) || 0;
+                    if (!Number.isFinite(duration) || duration <= 0) {
+                        throw new Error(`Could not determine source duration for ${path.basename(cueTrack.filePath)}`);
+                    }
+                    metadata = { duration, format: metadata.format };
+                    fileMetadata.set(cueTrack.filePath, metadata);
+                }
+
+                const sourceDuration = metadata.duration;
+                if (cueTrack.startTime >= sourceDuration) {
+                    throw new Error(`Track ${cueTrack.trackNumber} starts beyond the source audio duration`);
+                }
+                if (cueTrack.endTime !== null && cueTrack.endTime > sourceDuration + (1 / 75)) {
+                    throw new Error(`Track ${cueTrack.trackNumber} ends beyond the source audio duration`);
+                }
+                const endTime = cueTrack.endTime === null
+                    ? sourceDuration
+                    : Math.min(sourceDuration, cueTrack.endTime);
+                if (endTime <= cueTrack.startTime) {
+                    throw new Error(`Track ${cueTrack.trackNumber} has an invalid segment duration`);
+                }
+                preparedTracks.push({
+                    ...cueTrack,
+                    cueSheetPath: safeCuePath,
+                    cueStartTime: cueTrack.startTime,
+                    cueEndTime: endTime,
+                    duration: endTime - cueTrack.startTime,
+                    sampleRate: metadata.format.sampleRate || 0,
+                    bitrate: metadata.format.bitrate || 0,
+                    codec: metadata.format.codec || ''
+                });
+            }
+
+            const db = getDb();
+            const playlistName = `CUE: ${path.basename(safeCuePath, path.extname(safeCuePath))}`;
+            const playlist = db.getPlaylists().find(item => item.cueSheetPath === safeCuePath)
+                || db.createPlaylist(playlistName, { cueSheetPath: safeCuePath });
+            const importedTracks = preparedTracks.map(track => {
+                const stored = db.addTrack({
+                    ...track,
+                    cueTrackNumber: track.trackNumber,
+                    trackNumber: track.trackNumber
+                }, false);
+                db.addTrackToPlaylist(playlist.id, stored.id);
+                return stored;
+            });
+            db.save();
+            res.json({ success: true, playlistId: playlist.id, tracks: importedTracks });
+        } catch (error) {
+            console.error('CUE import error:', error);
+            res.status(400).json({ error: error.message || 'Failed to import CUE sheet' });
         }
     });
 
@@ -1831,13 +2344,45 @@ function setupRoutes() {
             const db = getDb();
             const track = db.getMutableTrackById(parseInt(req.params.id));
             if (!track || !track.filePath) return res.status(404).json({ error: 'Track not found' });
-            const realBpm = await detectRealBPM(track.filePath);
-            track.bpm = realBpm;
+            const bpmResult = await analyzeBPM(track.filePath);
+            track.bpm = bpmResult.bpm;
+            track.bpmConfidence = bpmResult.confidence;
+            track.bpmSource = bpmResult.source;
             track.updatedAt = Date.now();
             db.save();
-            res.json({ success: true, bpm: realBpm });
+            res.json({
+                success: true,
+                bpm: bpmResult.bpm,
+                confidence: bpmResult.confidence,
+                source: bpmResult.source
+            });
         } catch (error) {
             console.error('BPM detection error:', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    app.post('/api/tracks/:id/detect-key', async (req, res) => {
+        try {
+            const trackId = Number(req.params.id);
+            if (!Number.isSafeInteger(trackId) || trackId <= 0) {
+                return res.status(400).json({ error: 'Invalid track ID' });
+            }
+            const db = getDb();
+            const track = db.getMutableTrackById(trackId);
+            if (!track || !track.filePath) return res.status(404).json({ error: 'Track not found' });
+            if (!fs.existsSync(track.filePath)) return res.status(404).json({ error: 'Track audio file is missing' });
+
+            const { samples, sampleRate } = await decodeAudioToMono(track.filePath, 11025, 30);
+            const result = detectMusicalKey(samples, sampleRate);
+            track.musicalKey = result.key;
+            track.keyConfidence = result.confidence;
+            track.keySource = result.source;
+            track.updatedAt = Date.now();
+            db.save();
+            res.json({ success: true, ...result });
+        } catch (error) {
+            console.error('Musical key detection error:', error);
             res.status(500).json({ error: error.message });
         }
     });

@@ -68,7 +68,7 @@
                     <div class="setting-item">
                         <div class="setting-info">
                             <label data-translate="playbackGapless">Gapless Playback</label>
-                            <span class="setting-desc" data-translate="playbackGaplessDesc">Seamless transition between tracks</span>
+                            <span class="setting-desc" data-translate="playbackGaplessDesc">Preloads the next track to reduce transition delays; a perfectly gapless result depends on the audio format</span>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="gaplessToggle">
@@ -82,6 +82,37 @@
                             <span class="setting-desc" id="crossfadeValueLabel" data-translate="playbackCrossfadeDesc">Fade duration between tracks</span>
                         </div>
                         <input type="range" class="setting-slider" id="crossfadeSlider" min="0" max="12" step="0.5" value="0">
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label data-translate="replayGainMode">ReplayGain normalization</label>
+                            <span class="setting-desc" data-translate="replayGainModeDesc">Uses ReplayGain tags embedded in audio files; files without tags stay unchanged</span>
+                        </div>
+                        <select class="setting-select" id="replayGainModeSelect">
+                            <option value="off" data-translate="off">Off</option>
+                            <option value="track" data-translate="replayGainTrack">Track</option>
+                            <option value="album" data-translate="replayGainAlbum">Album</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label data-translate="replayGainPreamp">ReplayGain preamp</label>
+                            <span class="setting-desc"><span data-translate="replayGainPreampDesc">Additional gain applied to tagged tracks</span> (<span id="replayGainPreampLabel">0 dB</span>)</span>
+                        </div>
+                        <input type="range" class="setting-slider" id="replayGainPreampSlider" min="-12" max="12" step="0.5" value="0">
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label data-translate="replayGainPreventClipping">Limit gain from peak tags</label>
+                            <span class="setting-desc" data-translate="replayGainPreventClippingDesc">Uses embedded peak tags to limit ReplayGain; EQ boosts may still clip</span>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="replayGainPreventClippingToggle" checked>
+                            <span class="switch-slider"></span>
+                        </label>
                     </div>
 
                     <div class="setting-item">
@@ -274,6 +305,21 @@
                             <span class="setting-desc" id="maxScanDepthLabel" data-translate="libraryMaxScanDepthDesc">How deep to scan subfolders</span>
                         </div>
                         <input type="range" class="setting-slider" id="maxScanDepthSlider" min="10" max="200" step="10" value="100">
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label data-translate="libraryBackupTitle">Library Backup</label>
+                            <span class="setting-desc" data-translate="libraryBackupDesc">Back up playlists, settings, listening history, metadata, and artwork. Audio files are not copied.</span>
+                        </div>
+                        <button class="setting-btn" id="backupLibraryBtn" data-translate="libraryBackupCreate">Create Backup</button>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <label data-translate="libraryBackupRestoreTitle">Restore Library</label>
+                            <span class="setting-desc" data-translate="libraryBackupRestoreDesc">Restoring replaces your current library data and settings.</span>
+                        </div>
+                        <button class="setting-btn" id="restoreLibraryBackupBtn" data-translate="libraryBackupRestore">Restore Backup</button>
                     </div>
                 </div>
             </section>

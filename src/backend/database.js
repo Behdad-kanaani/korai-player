@@ -4,6 +4,7 @@
 const fs = require('fs');
 const fsPromises = fs.promises;
 const path = require('path');
+const { normalizeSmartCriteria, resolveSmartPlaylistTracks } = require('./smartPlaylist');
 
 let dbData = null;
 let dbPath = null;
@@ -20,6 +21,7 @@ const defaultData = {
   settings: { isFirstLaunch: true },
   nextIds: { track: 1, playlist: 1, history: 1, like: 1 }
 };
+const MUSICAL_KEY_PATTERN = /^(?:C|C#|D|D#|E|F|F#|G|G#|A|A#|B) (?:major|minor)$/;
 
 function cloneDefaultData() {
   return JSON.parse(JSON.stringify(defaultData));
@@ -27,6 +29,18 @@ function cloneDefaultData() {
 
 function maxId(items) {
   return items.reduce((max, item) => Math.max(max, Number(item?.id) || 0), 0);
+}
+
+function normalizeReplayGainDb(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= -60 && number <= 60 ? number : null;
+}
+
+function normalizeReplayGainPeak(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 && number <= 16 ? number : null;
 }
 
 function normalizeDatabase(data) {
@@ -42,12 +56,20 @@ function normalizeDatabase(data) {
     nextIds: source.nextIds && typeof source.nextIds === 'object' ? source.nextIds : {}
   };
 
-  normalized.playlists = normalized.playlists.map(playlist => ({
-    id: Number(playlist?.id) || 0,
-    name: String(playlist?.name || 'New Playlist'),
-    tracks: Array.isArray(playlist?.tracks) ? playlist.tracks.map(Number).filter(Number.isInteger) : [],
-    createdAt: Number(playlist?.createdAt) || Date.now()
-  })).filter(p => p.id > 0);
+  normalized.playlists = normalized.playlists.map(playlist => {
+    let smartCriteria = null;
+    if (playlist?.smartCriteria) {
+      try { smartCriteria = normalizeSmartCriteria(playlist.smartCriteria); } catch {}
+    }
+    return {
+      id: Number(playlist?.id) || 0,
+      name: String(playlist?.name || 'New Playlist'),
+      tracks: Array.isArray(playlist?.tracks) ? playlist.tracks.map(Number).filter(Number.isInteger) : [],
+      createdAt: Number(playlist?.createdAt) || Date.now(),
+      cueSheetPath: typeof playlist?.cueSheetPath === 'string' ? playlist.cueSheetPath : null,
+      smartCriteria
+    };
+  }).filter(p => p.id > 0);
 
   normalized.tracks = normalized.tracks.map(track => ({
     ...track,
@@ -55,15 +77,69 @@ function normalizeDatabase(data) {
     title: String(track?.title || 'Unknown Title'),
     artist: String(track?.artist || ''),
     filePath: typeof track?.filePath === 'string' ? track.filePath : '',
+    fileSize: track?.fileSize !== null && track?.fileSize !== undefined && track?.fileSize !== '' &&
+      Number.isSafeInteger(Number(track.fileSize)) && Number(track.fileSize) >= 0
+      ? Number(track.fileSize) : null,
+    fileMtimeMs: track?.fileMtimeMs !== null && track?.fileMtimeMs !== undefined && track?.fileMtimeMs !== '' &&
+      Number.isFinite(Number(track.fileMtimeMs)) && Number(track.fileMtimeMs) > 0
+      ? Number(track.fileMtimeMs) : null,
     duration: Number(track?.duration) || 0,
-    bpm: Number(track?.bpm) || 120,
-    energy: Number.isFinite(Number(track?.energy)) ? Number(track.energy) : 0.5,
-    loudness: Number.isFinite(Number(track?.loudness)) ? Number(track.loudness) : -12,
-    genre: String(track?.genre || ''),
-    genreConfidence: Number.isFinite(Number(track?.genreConfidence)) ? Number(track.genreConfidence) : 0,
+    bpm: ['metadata', 'waveform'].includes(track?.bpmSource) &&
+      track?.bpm !== null && track?.bpm !== undefined && Number.isFinite(Number(track.bpm))
+      ? Number(track.bpm)
+      : null,
+    bpmConfidence: ['metadata', 'waveform'].includes(track?.bpmSource) &&
+      track?.bpmConfidence !== null && track?.bpmConfidence !== undefined &&
+      Number.isFinite(Number(track?.bpmConfidence))
+      ? Math.min(1, Math.max(0, Number(track.bpmConfidence)))
+      : null,
+    bpmSource: ['metadata', 'waveform'].includes(track?.bpmSource) ? track.bpmSource : 'unavailable',
+    musicalKey: track?.keySource === 'waveform-chroma-v1' &&
+      typeof track?.musicalKey === 'string' && MUSICAL_KEY_PATTERN.test(track.musicalKey)
+      ? track.musicalKey : null,
+    keyConfidence: track?.keySource === 'waveform-chroma-v1' &&
+      Number.isFinite(Number(track?.keyConfidence))
+      ? Math.min(1, Math.max(0, Number(track.keyConfidence)))
+      : 0,
+    keySource: track?.keySource === 'waveform-chroma-v1' ? 'waveform-chroma-v1' : 'unavailable',
+    energy: track?.energySource === 'waveform-rms' &&
+      (track?.rmsLevel ?? track?.energy) !== null && (track?.rmsLevel ?? track?.energy) !== undefined &&
+      Number.isFinite(Number(track.rmsLevel ?? track.energy))
+      ? Number(track.rmsLevel ?? track.energy)
+      : null,
+    rmsLevel: track?.energySource === 'waveform-rms' &&
+      (track?.rmsLevel ?? track?.energy) !== null && (track?.rmsLevel ?? track?.energy) !== undefined &&
+      Number.isFinite(Number(track.rmsLevel ?? track.energy))
+      ? Number(track.rmsLevel ?? track.energy)
+      : null,
+    loudness: track?.energySource === 'waveform-rms' &&
+      track?.loudness !== null && track?.loudness !== undefined && Number.isFinite(Number(track.loudness))
+      ? Number(track.loudness)
+      : null,
+    energySource: track?.energySource === 'waveform-rms' ? 'waveform-rms' : 'unavailable',
+    genre: track?.genreSource === 'metadata' ? String(track?.genre || '') : '',
+    genreSource: track?.genreSource === 'metadata'
+      ? 'metadata'
+      : track?.genreSource === 'unavailable' ? 'unavailable' : '',
+    genreConfidence: track?.genreSource === 'metadata' &&
+      Number.isFinite(Number(track?.genreConfidence))
+      ? Math.min(1, Math.max(0, Number(track.genreConfidence)))
+      : 0,
     album: String(track?.album || ''),
     year: Number(track?.year) || null,
     trackNumber: Number(track?.trackNumber) || null,
+    cueSheetPath: typeof track?.cueSheetPath === 'string' ? track.cueSheetPath : null,
+    cueTrackNumber: Number(track?.cueTrackNumber) > 0 ? Number(track.cueTrackNumber) : null,
+    cueStartTime: track?.cueStartTime !== null && track?.cueStartTime !== undefined &&
+      track?.cueStartTime !== '' && Number.isFinite(Number(track.cueStartTime)) && Number(track.cueStartTime) >= 0
+      ? Number(track.cueStartTime) : null,
+    cueEndTime: track?.cueEndTime !== null && track?.cueEndTime !== undefined &&
+      track?.cueEndTime !== '' && Number.isFinite(Number(track.cueEndTime)) && Number(track.cueEndTime) > 0
+      ? Number(track.cueEndTime) : null,
+    replayGainTrackDb: normalizeReplayGainDb(track?.replayGainTrackDb),
+    replayGainTrackPeak: normalizeReplayGainPeak(track?.replayGainTrackPeak),
+    replayGainAlbumDb: normalizeReplayGainDb(track?.replayGainAlbumDb),
+    replayGainAlbumPeak: normalizeReplayGainPeak(track?.replayGainAlbumPeak),
     composer: String(track?.composer || ''),
     lyrics: track?.lyrics ?? null,
     coverPath: track?.coverPath || null,
@@ -77,8 +153,14 @@ function normalizeDatabase(data) {
     sampleRate: Number(track?.sampleRate) || 0,
     bitrate: Number(track?.bitrate) || 0,
     codec: String(track?.codec || ''),
-    featureVector: Array.isArray(track?.featureVector) ? track.featureVector : (track?.featureVector ?? null),
-    rawFeatures: track?.rawFeatures && typeof track.rawFeatures === 'object' ? track.rawFeatures : null
+    analysisVersion: track?.analysisVersion === 'waveform-v2' ? 'waveform-v2' : null,
+    featureVector: track?.analysisVersion === 'waveform-v2' && Array.isArray(track?.featureVector)
+      ? track.featureVector
+      : null,
+    rawFeatures: track?.analysisVersion === 'waveform-v2' && track?.rawFeatures && typeof track.rawFeatures === 'object'
+      ? track.rawFeatures
+      : null,
+    voiceFingerprint: track?.voiceFingerprint && typeof track.voiceFingerprint === 'object' ? track.voiceFingerprint : null
   })).filter(t => t.id > 0 && t.filePath);
 
   const trackIds = new Set(normalized.tracks.map(t => t.id));
@@ -191,8 +273,160 @@ function cloneTrack(track) {
   return {
     ...track,
     featureVector: Array.isArray(track.featureVector) ? [...track.featureVector] : track.featureVector,
-    rawFeatures: track.rawFeatures && typeof track.rawFeatures === 'object' ? { ...track.rawFeatures } : track.rawFeatures
+    rawFeatures: track.rawFeatures && typeof track.rawFeatures === 'object' ? { ...track.rawFeatures } : track.rawFeatures,
+    voiceFingerprint: track.voiceFingerprint && typeof track.voiceFingerprint === 'object'
+      ? { ...track.voiceFingerprint, spectralEnvelope: Array.isArray(track.voiceFingerprint.spectralEnvelope) ? [...track.voiceFingerprint.spectralEnvelope] : [] }
+      : null
   };
+}
+
+const BACKUP_FORMAT = 'korai-library-backup';
+const BACKUP_VERSION = 1;
+const MAX_BACKUP_COVER_BYTES = 10 * 1024 * 1024;
+const MAX_BACKUP_TOTAL_BYTES = 256 * 1024 * 1024;
+
+function createDatabaseBackup() {
+  const backupData = JSON.parse(JSON.stringify(dbData));
+  const coverAssets = {};
+  let totalCoverBytes = 0;
+  for (const track of backupData.tracks) {
+    const filename = typeof track.coverFilename === 'string' ? path.basename(track.coverFilename) : '';
+    const coverPath = filename ? path.join(coversDir, filename) : null;
+    if (!coverPath || !fs.existsSync(coverPath)) {
+      track.coverPath = null;
+      track.coverFilename = null;
+      track.hasCover = false;
+      continue;
+    }
+    const cover = fs.readFileSync(coverPath);
+    if (cover.length > MAX_BACKUP_COVER_BYTES) {
+      throw new Error(`Cover for "${track.title}" exceeds the backup size limit.`);
+    }
+    totalCoverBytes += cover.length;
+    if (totalCoverBytes > MAX_BACKUP_TOTAL_BYTES) {
+      throw new Error('Artwork exceeds the maximum backup size.');
+    }
+    coverAssets[String(track.id)] = cover.toString('base64');
+    track.coverPath = null;
+  }
+  const backup = {
+    format: BACKUP_FORMAT,
+    version: BACKUP_VERSION,
+    createdAt: new Date().toISOString(),
+    database: backupData,
+    coverAssets
+  };
+  if (Buffer.byteLength(JSON.stringify(backup), 'utf8') > MAX_BACKUP_TOTAL_BYTES) {
+    throw new Error('Library backup exceeds the 256 MiB size limit.');
+  }
+  return backup;
+}
+
+function restoreDatabaseBackup(backup) {
+  if (isSaving || saveQueued) {
+    throw new Error('The library database is busy saving; retry the restore shortly.');
+  }
+  if (!backup || typeof backup !== 'object' || Array.isArray(backup) ||
+      backup.format !== BACKUP_FORMAT || backup.version !== BACKUP_VERSION ||
+      !backup.database || typeof backup.database !== 'object' || Array.isArray(backup.database)) {
+    throw new Error('This file is not a supported KORAI library backup.');
+  }
+  if (!Array.isArray(backup.database.tracks) || backup.database.tracks.length > 200_000 ||
+      !Array.isArray(backup.database.playlists) ||
+      (backup.coverAssets !== undefined &&
+       (!backup.coverAssets || typeof backup.coverAssets !== 'object' || Array.isArray(backup.coverAssets)))) {
+    throw new Error('The backup data structure is invalid or exceeds supported limits.');
+  }
+  for (const playlist of backup.database.playlists) {
+    if (playlist?.smartCriteria) normalizeSmartCriteria(playlist.smartCriteria);
+  }
+
+  const rawTracks = backup.database.tracks;
+  const trackIds = new Set();
+  for (const track of rawTracks) {
+    const id = Number(track?.id);
+    if (!Number.isSafeInteger(id) || id <= 0 || trackIds.has(id) ||
+        typeof track?.filePath !== 'string' || !track.filePath.trim()) {
+      throw new Error('The backup contains an invalid or duplicate track record.');
+    }
+    trackIds.add(id);
+  }
+  const restoredData = normalizeDatabase(backup.database);
+  if (restoredData.tracks.length !== rawTracks.length) {
+    throw new Error('The backup contains track records that cannot be restored safely.');
+  }
+
+  const createdCoverPaths = [];
+  const oldCoverPaths = dbData.tracks
+    .map(track => track.coverPath)
+    .filter(coverPath => typeof coverPath === 'string' && path.dirname(path.resolve(coverPath)) === path.resolve(coversDir));
+  const timestamp = Date.now();
+  let totalCoverBytes = 0;
+  try {
+    for (const track of restoredData.tracks) {
+      track.coverPath = null;
+      track.coverFilename = null;
+      track.hasCover = false;
+      const encoded = backup.coverAssets && backup.coverAssets[String(track.id)];
+      if (encoded === undefined) continue;
+      if (typeof encoded !== 'string' || encoded.length > Math.ceil(MAX_BACKUP_COVER_BYTES * 4 / 3) + 4) {
+        throw new Error(`Artwork for track ${track.id} is invalid or too large.`);
+      }
+      const cover = Buffer.from(encoded, 'base64');
+      if (!cover.length || cover.toString('base64') !== encoded ||
+          cover.length > MAX_BACKUP_COVER_BYTES ||
+          !(cover.subarray(0, 3).equals(Buffer.from([0xFF, 0xD8, 0xFF])) ||
+            cover.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])) ||
+            cover.subarray(0, 4).toString('ascii') === 'RIFF' && cover.subarray(8, 12).toString('ascii') === 'WEBP')) {
+        throw new Error(`Artwork for track ${track.id} is not a supported image.`);
+      }
+      totalCoverBytes += cover.length;
+      if (totalCoverBytes > MAX_BACKUP_TOTAL_BYTES) throw new Error('Artwork exceeds the backup size limit.');
+      const imageExtension = cover.subarray(0, 3).equals(Buffer.from([0xFF, 0xD8, 0xFF]))
+        ? 'jpg'
+        : cover.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
+          ? 'png'
+          : 'webp';
+      const filename = `cover_${track.id}_restore_${timestamp}.${imageExtension}`;
+      const coverPath = path.join(coversDir, filename);
+      fs.writeFileSync(coverPath, cover, { flag: 'wx' });
+      createdCoverPaths.push(coverPath);
+      track.coverFilename = filename;
+      track.coverPath = coverPath;
+      track.hasCover = true;
+    }
+
+    const serialized = JSON.stringify(restoredData, null, 2);
+    if (Buffer.byteLength(serialized, 'utf8') > MAX_BACKUP_TOTAL_BYTES) {
+      throw new Error('Restored library exceeds the 256 MiB size limit.');
+    }
+    const tempPath = `${dbPath}.restore-${timestamp}.tmp`;
+    fs.writeFileSync(tempPath, serialized, { encoding: 'utf8', flag: 'wx' });
+    try {
+      fs.renameSync(tempPath, dbPath);
+    } catch (error) {
+      try { fs.unlinkSync(tempPath); } catch {}
+      throw error;
+    }
+    dbData = restoredData;
+    clearTimeout(saveDebounceTimer);
+    for (const coverPath of oldCoverPaths) {
+      if (!createdCoverPaths.includes(coverPath)) {
+        try { fs.unlinkSync(coverPath); } catch (error) {
+          console.warn('[database] Could not remove replaced artwork:', error.message);
+        }
+      }
+    }
+    return {
+      tracks: restoredData.tracks.length,
+      playlists: restoredData.playlists.length
+    };
+  } catch (error) {
+    for (const coverPath of createdCoverPaths) {
+      try { fs.unlinkSync(coverPath); } catch {}
+    }
+    throw error;
+  }
 }
 
 function getDb() {
@@ -211,8 +445,28 @@ function getDb() {
         throw new Error('A valid track with filePath is required');
       }
 
-      const existing = dbData.tracks.find(t => t.filePath === track.filePath);
-      if (existing) return cloneTrack(existing);
+      const existing = dbData.tracks.find(t => track.cueSheetPath
+        ? t.cueSheetPath === track.cueSheetPath && t.cueTrackNumber === Number(track.cueTrackNumber)
+        : t.filePath === track.filePath && !t.cueSheetPath);
+      if (existing) {
+        if (track.cueSheetPath) {
+          existing.filePath = track.filePath;
+          existing.title = String(track.title || existing.title);
+          existing.artist = String(track.artist || existing.artist || '');
+          existing.album = String(track.album || existing.album || '');
+          existing.duration = Number(track.duration) > 0 ? Number(track.duration) : existing.duration;
+          existing.trackNumber = Number(track.trackNumber) > 0 ? Number(track.trackNumber) : existing.trackNumber;
+          existing.cueStartTime = track.cueStartTime !== null && track.cueStartTime !== undefined &&
+            Number.isFinite(Number(track.cueStartTime)) && Number(track.cueStartTime) >= 0
+            ? Number(track.cueStartTime) : existing.cueStartTime;
+          existing.cueEndTime = track.cueEndTime !== null && track.cueEndTime !== undefined &&
+            Number.isFinite(Number(track.cueEndTime)) && Number(track.cueEndTime) > 0
+            ? Number(track.cueEndTime) : existing.cueEndTime;
+          existing.updatedAt = Date.now();
+          if (autoSave) saveDatabase();
+        }
+        return cloneTrack(existing);
+      }
 
       const newId = dbData.nextIds.track++;
       let coverPath = null;
@@ -234,15 +488,69 @@ function getDb() {
         title: String(track.title || 'Unknown Title'),
         artist: String(track.artist || ''),
         filePath: track.filePath,
+        fileSize: track.fileSize !== null && track.fileSize !== undefined && track.fileSize !== '' &&
+          Number.isSafeInteger(Number(track.fileSize)) && Number(track.fileSize) >= 0
+          ? Number(track.fileSize) : null,
+        fileMtimeMs: track.fileMtimeMs !== null && track.fileMtimeMs !== undefined && track.fileMtimeMs !== '' &&
+          Number.isFinite(Number(track.fileMtimeMs)) && Number(track.fileMtimeMs) > 0
+          ? Number(track.fileMtimeMs) : null,
         duration: Number(track.duration) || 0,
-        bpm: Number(track.bpm) || 120,
-        energy: Number.isFinite(Number(track.energy)) ? Number(track.energy) : 0.5,
-        loudness: Number.isFinite(Number(track.loudness)) ? Number(track.loudness) : -12,
-        genre: String(track.genre || ''),
-        genreConfidence: Number.isFinite(Number(track.genreConfidence)) ? Number(track.genreConfidence) : 0,
+        bpm: ['metadata', 'waveform'].includes(track.bpmSource) &&
+          track.bpm !== null && track.bpm !== undefined && Number.isFinite(Number(track.bpm))
+          ? Number(track.bpm)
+          : null,
+        bpmConfidence: ['metadata', 'waveform'].includes(track.bpmSource) &&
+          track.bpmConfidence !== null && track.bpmConfidence !== undefined &&
+          Number.isFinite(Number(track.bpmConfidence))
+          ? Math.min(1, Math.max(0, Number(track.bpmConfidence)))
+          : null,
+        bpmSource: ['metadata', 'waveform'].includes(track.bpmSource) ? track.bpmSource : 'unavailable',
+        musicalKey: track.keySource === 'waveform-chroma-v1' &&
+          typeof track.musicalKey === 'string' && MUSICAL_KEY_PATTERN.test(track.musicalKey)
+          ? track.musicalKey : null,
+        keyConfidence: track.keySource === 'waveform-chroma-v1' &&
+          Number.isFinite(Number(track.keyConfidence))
+          ? Math.min(1, Math.max(0, Number(track.keyConfidence)))
+          : 0,
+        keySource: track.keySource === 'waveform-chroma-v1' ? 'waveform-chroma-v1' : 'unavailable',
+        energy: track.energySource === 'waveform-rms' &&
+          (track.rmsLevel ?? track.energy) !== null && (track.rmsLevel ?? track.energy) !== undefined &&
+          Number.isFinite(Number(track.rmsLevel ?? track.energy))
+          ? Number(track.rmsLevel ?? track.energy)
+          : null,
+        rmsLevel: track.energySource === 'waveform-rms' &&
+          (track.rmsLevel ?? track.energy) !== null && (track.rmsLevel ?? track.energy) !== undefined &&
+          Number.isFinite(Number(track.rmsLevel ?? track.energy))
+          ? Number(track.rmsLevel ?? track.energy)
+          : null,
+        loudness: track.energySource === 'waveform-rms' &&
+          track.loudness !== null && track.loudness !== undefined && Number.isFinite(Number(track.loudness))
+          ? Number(track.loudness)
+          : null,
+        energySource: track.energySource === 'waveform-rms' ? 'waveform-rms' : 'unavailable',
+        genre: track.genreSource === 'metadata' ? String(track.genre || '') : '',
+        genreSource: track.genreSource === 'metadata'
+          ? 'metadata'
+          : track.genreSource === 'unavailable' ? 'unavailable' : '',
+        genreConfidence: track.genreSource === 'metadata' &&
+          Number.isFinite(Number(track.genreConfidence))
+          ? Math.min(1, Math.max(0, Number(track.genreConfidence)))
+          : 0,
         album: String(track.album || ''),
         year: Number(track.year) || null,
         trackNumber: Number(track.trackNumber) || null,
+        cueSheetPath: typeof track.cueSheetPath === 'string' ? track.cueSheetPath : null,
+        cueTrackNumber: Number(track.cueTrackNumber) > 0 ? Number(track.cueTrackNumber) : null,
+        cueStartTime: track.cueStartTime !== null && track.cueStartTime !== undefined &&
+          track.cueStartTime !== '' && Number.isFinite(Number(track.cueStartTime)) && Number(track.cueStartTime) >= 0
+          ? Number(track.cueStartTime) : null,
+        cueEndTime: track.cueEndTime !== null && track.cueEndTime !== undefined &&
+          track.cueEndTime !== '' && Number.isFinite(Number(track.cueEndTime)) && Number(track.cueEndTime) > 0
+          ? Number(track.cueEndTime) : null,
+        replayGainTrackDb: normalizeReplayGainDb(track.replayGainTrackDb),
+        replayGainTrackPeak: normalizeReplayGainPeak(track.replayGainTrackPeak),
+        replayGainAlbumDb: normalizeReplayGainDb(track.replayGainAlbumDb),
+        replayGainAlbumPeak: normalizeReplayGainPeak(track.replayGainAlbumPeak),
         composer: String(track.composer || ''),
         lyrics: track.lyrics ?? null,
         coverPath,
@@ -256,8 +564,16 @@ function getDb() {
         sampleRate: Number(track.sampleRate) || 0,
         bitrate: Number(track.bitrate) || 0,
         codec: String(track.codec || ''),
-        featureVector: Array.isArray(track.featureVector) ? [...track.featureVector] : (track.featureVector ?? null),
-        rawFeatures: track.rawFeatures && typeof track.rawFeatures === 'object' ? { ...track.rawFeatures } : null
+        analysisVersion: track.analysisVersion === 'waveform-v2' ? 'waveform-v2' : null,
+        featureVector: track.analysisVersion === 'waveform-v2' && Array.isArray(track.featureVector)
+          ? [...track.featureVector]
+          : null,
+        rawFeatures: track.analysisVersion === 'waveform-v2' && track.rawFeatures && typeof track.rawFeatures === 'object'
+          ? { ...track.rawFeatures }
+          : null,
+        voiceFingerprint: track.voiceFingerprint && typeof track.voiceFingerprint === 'object'
+          ? { ...track.voiceFingerprint, spectralEnvelope: Array.isArray(track.voiceFingerprint.spectralEnvelope) ? [...track.voiceFingerprint.spectralEnvelope] : [] }
+          : null
       };
 
       dbData.tracks.push(newTrack);
@@ -287,18 +603,45 @@ function getDb() {
       return true;
     },
 
-    getPlaylists: () => dbData.playlists.map(playlist => ({ ...playlist, tracks: [...playlist.tracks] })),
+    getPlaylists: () => dbData.playlists.map(playlist => ({
+      ...playlist,
+      tracks: playlist.smartCriteria
+        ? resolveSmartPlaylistTracks(dbData.tracks, playlist.smartCriteria).map(track => track.id)
+        : [...playlist.tracks]
+    })),
 
-    createPlaylist: (name) => {
+    createPlaylist: (name, metadata = {}) => {
       const newPlaylist = {
         id: dbData.nextIds.playlist++,
         name: String(name || 'New Playlist').trim().slice(0, 200) || 'New Playlist',
         tracks: [],
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        cueSheetPath: typeof metadata?.cueSheetPath === 'string' ? metadata.cueSheetPath : null,
+        smartCriteria: null
       };
       dbData.playlists.push(newPlaylist);
       saveDatabase();
       return { ...newPlaylist, tracks: [] };
+    },
+
+    createSmartPlaylist: (name, criteria) => {
+      const smartCriteria = normalizeSmartCriteria(criteria);
+      const playlistName = String(name || '').trim().slice(0, 200);
+      if (!playlistName) throw new Error('Playlist name cannot be empty.');
+      const newPlaylist = {
+        id: dbData.nextIds.playlist++,
+        name: playlistName,
+        tracks: [],
+        createdAt: Date.now(),
+        cueSheetPath: null,
+        smartCriteria
+      };
+      dbData.playlists.push(newPlaylist);
+      saveDatabase();
+      return {
+        ...newPlaylist,
+        tracks: resolveSmartPlaylistTracks(dbData.tracks, smartCriteria).map(track => track.id)
+      };
     },
 
     deletePlaylist: (id) => {
@@ -312,7 +655,7 @@ function getDb() {
     addTrackToPlaylist: (playlistId, trackId) => {
       const playlist = dbData.playlists.find(item => item.id === Number(playlistId));
       const numericTrackId = Number(trackId);
-      if (!playlist || !dbData.tracks.some(track => track.id === numericTrackId)) return false;
+      if (!playlist || playlist.smartCriteria || !dbData.tracks.some(track => track.id === numericTrackId)) return false;
       if (!playlist.tracks.includes(numericTrackId)) playlist.tracks.push(numericTrackId);
       saveDatabase();
       return true;
@@ -320,7 +663,7 @@ function getDb() {
 
     removeTrackFromPlaylist: (playlistId, trackId) => {
       const playlist = dbData.playlists.find(item => item.id === Number(playlistId));
-      if (!playlist) return false;
+      if (!playlist || playlist.smartCriteria) return false;
       const numericTrackId = Number(trackId);
       playlist.tracks = playlist.tracks.filter(item => item !== numericTrackId);
       saveDatabase();
@@ -389,6 +732,10 @@ function getDb() {
     },
 
     getDbSettings: () => ({ ...(dbData.settings || { isFirstLaunch: true }) }),
+
+    createBackup: () => createDatabaseBackup(),
+
+    restoreBackup: (backup) => restoreDatabaseBackup(backup),
 
     getStats: () => {
       const totalPlays = dbData.tracks.reduce((sum, track) => sum + (track.playCount || 0), 0);

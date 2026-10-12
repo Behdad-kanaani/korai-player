@@ -1660,6 +1660,18 @@ body.ltr .library-tracks-table tr td:last-child {
     font-weight: 700;
 }
 
+.track-key-cell {
+    color: var(--accent-pink);
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.track-key-cell small {
+    color: var(--spotify-text-muted);
+    font-size: 0.75em;
+    font-weight: 500;
+}
+
 .track-time-cell {
     color: var(--spotify-text-muted);
     font-family: monospace;
@@ -2696,6 +2708,10 @@ body.rtl .queue-drawer-panel.open {
 
 .track-badge-pill.energy {
     color: var(--accent-pink);
+}
+
+.track-badge-pill.key {
+    color: var(--accent-cyan);
 }
 
 .immersive-lyrics-column {

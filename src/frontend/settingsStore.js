@@ -36,6 +36,23 @@ class SettingsStore {
         this._notifyAll();
     }
 
+    async reload() {
+        if (this._saveTimeout) {
+            clearTimeout(this._saveTimeout);
+            this._saveTimeout = null;
+        }
+        const response = await this._apiFetch('/api/settings', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`Failed to reload settings (HTTP ${response.status}).`);
+        const refreshedSettings = await response.json();
+        const previousSettings = this.settings;
+        this.settings = refreshedSettings;
+        for (const [key, value] of Object.entries(refreshedSettings)) {
+            if (previousSettings[key] !== value) this._applySetting(key, value, previousSettings[key]);
+        }
+        this._notifyAll();
+        return this.getAll();
+    }
+
     /**
      * Get default settings
      */
@@ -44,6 +61,9 @@ class SettingsStore {
             // Playback
             gaplessEnabled: true,
             crossfadeDuration: 0,
+            replayGainMode: 'off',
+            replayGainPreampDb: 0,
+            replayGainPreventClipping: true,
             repeatMode: 'off',
             shuffleDefault: false,
             resumeOnStart: false,
@@ -183,6 +203,9 @@ class SettingsStore {
                 break;
             case 'gaplessEnabled':
             case 'crossfadeDuration':
+            case 'replayGainMode':
+            case 'replayGainPreampDb':
+            case 'replayGainPreventClipping':
                 this._applyPlaybackSettings();
                 break;
             case 'aiRecommendations':
@@ -272,6 +295,9 @@ class SettingsStore {
     }
 
     _applyPlaybackSettings() {
+        if (typeof window.applyPlaybackTransitionSettings === 'function') {
+            window.applyPlaybackTransitionSettings(this.settings);
+        }
         // Sync with main process
         if (window.electronAPI && window.electronAPI.setPlaybackSettings) {
             window.electronAPI.setPlaybackSettings({

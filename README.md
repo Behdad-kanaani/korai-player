@@ -190,13 +190,13 @@ These include:
 
 - play history
 - likes and skips
-- BPM and energy
+- measured BPM and provenance-validated waveform features
 - genre relationships
 - artist affinity
 - recent listening context
 - discovery preferences
 
-The recommendation system is intentionally lightweight and local rather than relying on a large online model.
+The recommendation system is intentionally lightweight and local rather than relying on a large online model. When compatible waveform analysis is available, recommendations can compare measured audio feature vectors; missing or legacy, unverified values are not treated as audio evidence.
 
 In v1.6.6, generated analyzer fields are deterministic, so analyzing the same file again produces stable feature values instead of changing recommendation signals randomly.
 

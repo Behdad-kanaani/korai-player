@@ -124,6 +124,55 @@ function showToast(message, type = 'info') {
     }, 3000);
 }
 
+async function createLibraryBackup() {
+    const button = document.getElementById('backupLibraryBtn');
+    if (!window.electronAPI?.backupLibrary) {
+        showToast(t('libraryBackupFailed').replace('{error}', 'Backup is only available in the desktop app.'), 'error');
+        return;
+    }
+    if (button) button.disabled = true;
+    try {
+        const result = await window.electronAPI.backupLibrary();
+        if (result) showToast(t('libraryBackupCreated'), 'success');
+    } catch (error) {
+        console.error('Library backup failed:', error);
+        showToast(t('libraryBackupFailed').replace('{error}', error.message || String(error)), 'error');
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+async function restoreLibraryBackup() {
+    const button = document.getElementById('restoreLibraryBackupBtn');
+    if (!window.electronAPI?.restoreLibraryBackup) {
+        showToast(t('libraryBackupFailed').replace('{error}', 'Restore is only available in the desktop app.'), 'error');
+        return;
+    }
+    if (!confirm(t('libraryBackupRestoreConfirm'))) return;
+    if (button) button.disabled = true;
+    try {
+        if (window.settingsStore?.initialized) await window.settingsStore.save();
+        const result = await window.electronAPI.restoreLibraryBackup();
+        if (result) {
+            if (window.settingsStore?.initialized && typeof window.settingsStore.reload === 'function') {
+                settingsData = await window.settingsStore.reload();
+                applySettingsToUI(settingsData);
+            } else {
+                await loadSettings();
+            }
+            const message = t('libraryBackupRestored')
+                .replace('{tracks}', Number(result.tracks) || 0)
+                .replace('{playlists}', Number(result.playlists) || 0);
+            showToast(message, 'success');
+        }
+    } catch (error) {
+        console.error('Library restore failed:', error);
+        showToast(t('libraryBackupFailed').replace('{error}', error.message || String(error)), 'error');
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
 // ============================================================
 // SETTINGS LOAD / SAVE
 // ============================================================
@@ -132,6 +181,9 @@ function getDefaultSettings() {
     return {
         gaplessEnabled: true,
         crossfadeDuration: 0,
+        replayGainMode: 'off',
+        replayGainPreampDb: 0,
+        replayGainPreventClipping: true,
         repeatMode: 'off',
         shuffleDefault: false,
         resumeOnStart: false,
@@ -194,6 +246,9 @@ async function saveSettings() {
         const updates = {
             gaplessEnabled: document.getElementById('gaplessToggle')?.checked ?? true,
             crossfadeDuration: parseFloat(document.getElementById('crossfadeSlider')?.value ?? 0),
+            replayGainMode: document.getElementById('replayGainModeSelect')?.value ?? 'off',
+            replayGainPreampDb: parseFloat(document.getElementById('replayGainPreampSlider')?.value ?? 0),
+            replayGainPreventClipping: document.getElementById('replayGainPreventClippingToggle')?.checked ?? true,
             repeatMode: document.getElementById('repeatModeSelect')?.value ?? 'off',
             shuffleDefault: document.getElementById('shuffleDefaultToggle')?.checked ?? false,
             resumeOnStart: document.getElementById('resumeOnStartToggle')?.checked ?? false,
@@ -301,6 +356,12 @@ function applySettingsToUI(s) {
     setSlider('crossfadeSlider', s.crossfadeDuration || 0);
     const crossfadeLabel = document.getElementById('crossfadeValueLabel');
     if (crossfadeLabel) crossfadeLabel.textContent = (s.crossfadeDuration || 0) + ' seconds';
+    const replayGainMode = document.getElementById('replayGainModeSelect');
+    if (replayGainMode) replayGainMode.value = ['off', 'track', 'album'].includes(s.replayGainMode) ? s.replayGainMode : 'off';
+    setSlider('replayGainPreampSlider', Number.isFinite(Number(s.replayGainPreampDb)) ? s.replayGainPreampDb : 0);
+    const replayGainPreampLabel = document.getElementById('replayGainPreampLabel');
+    if (replayGainPreampLabel) replayGainPreampLabel.textContent = `${Number(s.replayGainPreampDb) || 0} dB`;
+    setCheckbox('replayGainPreventClippingToggle', s.replayGainPreventClipping !== false);
     
     const repeatSelect = document.getElementById('repeatModeSelect');
     if (repeatSelect) repeatSelect.value = s.repeatMode || 'off';
@@ -358,29 +419,32 @@ function applySettingsToUI(s) {
 
     setCheckbox('aiRecommendationsToggle', s.aiRecommendations !== false);
     setCheckbox('discoveryModeToggle', s.discoveryMode !== false);
-    setSlider('weightLike', s.weightLike || 0.40);
+    const aiWeightDefaults = { weightLike: 0.40, weightPlay: 0.12, weightSkip: 0.30, weightRepeat: 0.25, weightPlaylistAdd: 0.15 };
+    const getAIWeight = key => s[key] != null && Number.isFinite(Number(s[key])) ? Number(s[key]) : aiWeightDefaults[key];
+    setSlider('weightLike', getAIWeight('weightLike'));
     const weightLikeVal = document.getElementById('weightLikeVal');
-    if (weightLikeVal) weightLikeVal.textContent = (s.weightLike || 0.40).toFixed(2);
+    if (weightLikeVal) weightLikeVal.textContent = getAIWeight('weightLike').toFixed(2);
     
-    setSlider('weightPlay', s.weightPlay || 0.12);
+    setSlider('weightPlay', getAIWeight('weightPlay'));
     const weightPlayVal = document.getElementById('weightPlayVal');
-    if (weightPlayVal) weightPlayVal.textContent = (s.weightPlay || 0.12).toFixed(2);
+    if (weightPlayVal) weightPlayVal.textContent = getAIWeight('weightPlay').toFixed(2);
     
-    setSlider('weightSkip', s.weightSkip || 0.30);
+    setSlider('weightSkip', getAIWeight('weightSkip'));
     const weightSkipVal = document.getElementById('weightSkipVal');
-    if (weightSkipVal) weightSkipVal.textContent = (s.weightSkip || 0.30).toFixed(2);
+    if (weightSkipVal) weightSkipVal.textContent = getAIWeight('weightSkip').toFixed(2);
     
-    setSlider('weightRepeat', s.weightRepeat || 0.25);
+    setSlider('weightRepeat', getAIWeight('weightRepeat'));
     const weightRepeatVal = document.getElementById('weightRepeatVal');
-    if (weightRepeatVal) weightRepeatVal.textContent = (s.weightRepeat || 0.25).toFixed(2);
+    if (weightRepeatVal) weightRepeatVal.textContent = getAIWeight('weightRepeat').toFixed(2);
     
-    setSlider('weightPlaylistAdd', s.weightPlaylistAdd || 0.15);
+    setSlider('weightPlaylistAdd', getAIWeight('weightPlaylistAdd'));
     const weightPlaylistAddVal = document.getElementById('weightPlaylistAddVal');
-    if (weightPlaylistAddVal) weightPlaylistAddVal.textContent = (s.weightPlaylistAdd || 0.15).toFixed(2);
+    if (weightPlaylistAddVal) weightPlaylistAddVal.textContent = getAIWeight('weightPlaylistAdd').toFixed(2);
     
-    setSlider('diversityBoostSlider', s.diversityBoost || 0.85);
+    const diversityBoost = s.diversityBoost != null && Number.isFinite(Number(s.diversityBoost)) ? Number(s.diversityBoost) : 0.85;
+    setSlider('diversityBoostSlider', diversityBoost);
     const diversityLabel = document.getElementById('diversityBoostLabel');
-    if (diversityLabel) diversityLabel.textContent = (s.diversityBoost || 0.85).toFixed(2);
+    if (diversityLabel) diversityLabel.textContent = diversityBoost.toFixed(2);
 
     setCheckbox('stayInTrayToggle', s.stayInTray !== false);
     setCheckbox('trayNotificationToggle', s.trayNotification !== false);
@@ -740,6 +804,14 @@ function setupEventListeners() {
         });
     }
 
+    const replayGainPreampSlider = document.getElementById('replayGainPreampSlider');
+    if (replayGainPreampSlider) {
+        replayGainPreampSlider.addEventListener('input', (event) => {
+            const label = document.getElementById('replayGainPreampLabel');
+            if (label) label.textContent = `${parseFloat(event.target.value)} dB`;
+        });
+    }
+
     const volumeSlider = document.getElementById('defaultVolumeSlider');
     if (volumeSlider) {
         volumeSlider.addEventListener('input', (e) => {
@@ -835,6 +907,9 @@ function setupEventListeners() {
     if (selectPathBtn) {
         selectPathBtn.addEventListener('click', selectScanPath);
     }
+
+    document.getElementById('backupLibraryBtn')?.addEventListener('click', createLibraryBackup);
+    document.getElementById('restoreLibraryBackupBtn')?.addEventListener('click', restoreLibraryBackup);
 
     const openDataBtn = document.getElementById('openDataDirBtn');
     if (openDataBtn) {

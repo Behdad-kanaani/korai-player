@@ -142,6 +142,10 @@
                     <i class="fa-solid fa-music"></i>
                     <span id="navLibText" data-translate="navLibText">My Library</span>
                 </div>
+                <div class="nav-item" id="navDuplicates" onclick="switchSection('duplicates')">
+                    <i class="fa-solid fa-clone"></i>
+                    <span data-translate="navDuplicates">Duplicate finder</span>
+                </div>
                 <div class="nav-item" id="navExplorer" onclick="window.location.href='explorer.html'">
                     <i class="fa-solid fa-compass"></i>
                     <span data-translate="navExplorerText">Explorer</span>
@@ -208,6 +212,7 @@
             <div class="playlists-sidebar-section">
                 <div class="playlists-header">
                     <span data-translate="menuTitle">Playlists Library</span>
+                    <button class="create-playlist-btn" onclick="promptCreateSmartPlaylist()" data-translate-title="smartPlaylistCreate" data-translate-aria="smartPlaylistCreate" aria-label="Create smart playlist"><i class="fa-solid fa-wand-magic-sparkles"></i></button>
                     <button class="create-playlist-btn" onclick="promptCreatePlaylist()" data-translate-title="createPlaylist" data-translate-aria="createPlaylist"><i class="fa-solid fa-plus"></i></button>
                 </div>
                 <div class="playlists-scroll-list" id="sidebarPlaylists"></div>
@@ -356,6 +361,7 @@
                 <div class="immersive-track-badges">
                     <span class="track-badge-pill" id="fsBpmBadge"><i class="fa-solid fa-heartbeat"></i> -- BPM</span>
                     <span class="track-badge-pill energy" id="fsEnergyBadge"><i class="fa-solid fa-bolt"></i> -- <span data-translate="energy">Energy</span></span>
+                    <span class="track-badge-pill key" id="fsKeyBadge"><i class="fa-solid fa-music"></i> —</span>
                 </div>
             </div>
 
@@ -396,6 +402,43 @@
             <div class="modal-buttons-footer">
                 <button class="modal-btn cancel" onclick="closeCreatePlaylistModal()" data-translate="dialogCancel">Cancel</button>
                 <button class="modal-btn confirm" id="confirmPlaylistCreateBtn" data-translate="createPlaylist">Create Playlist</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="custom-modal-overlay" id="smartPlaylistModal" style="display: none;">
+        <div class="custom-modal-card smart-playlist-modal-card" role="dialog" aria-modal="true" aria-labelledby="smartPlaylistTitle">
+            <div class="modal-indicator-header">
+                <i class="fa-solid fa-wand-magic-sparkles accent-icon"></i>
+                <h4 id="smartPlaylistTitle" data-translate="smartPlaylistCreate">Create Smart Playlist</h4>
+            </div>
+            <div class="modal-body-content modal-body-spaced">
+                <label class="smart-playlist-label" for="smartPlaylistName" data-translate="smartPlaylistName">Name</label>
+                <input type="text" id="smartPlaylistName" maxlength="200" data-translate-placeholder="playlistPlaceholder" placeholder="Enter playlist name...">
+                <div class="smart-playlist-options">
+                    <label><span data-translate="smartPlaylistMatch">Match</span>
+                        <select id="smartPlaylistMatch"><option value="all" data-translate="smartPlaylistAll">All rules</option><option value="any" data-translate="smartPlaylistAny">Any rule</option></select>
+                    </label>
+                    <label><span data-translate="smartPlaylistSort">Sort by</span>
+                        <select id="smartPlaylistSort">
+                            <option value="createdAt" data-translate="smartPlaylistRecentlyAdded">Recently added</option>
+                            <option value="title" data-translate="smartPlaylistTitleField">Title</option>
+                            <option value="artist" data-translate="smartPlaylistArtist">Artist</option>
+                            <option value="year" data-translate="smartPlaylistYear">Year</option>
+                            <option value="bpm" data-translate="smartPlaylistBpm">BPM</option>
+                            <option value="playCount" data-translate="smartPlaylistPlayCount">Play count</option>
+                        </select>
+                    </label>
+                    <label><span data-translate="smartPlaylistLimit">Maximum tracks</span>
+                        <select id="smartPlaylistLimit"><option value="0" data-translate="smartPlaylistUnlimited">Unlimited</option><option value="25">25</option><option value="50">50</option><option value="100">100</option><option value="500">500</option></select>
+                    </label>
+                </div>
+                <div id="smartPlaylistRules" class="smart-playlist-rules"></div>
+                <button type="button" class="modal-btn cancel smart-playlist-add-rule" onclick="addSmartPlaylistRule()" data-translate="smartPlaylistAddRule">Add condition</button>
+            </div>
+            <div class="modal-buttons-footer">
+                <button class="modal-btn cancel" onclick="closeSmartPlaylistModal()" data-translate="dialogCancel">Cancel</button>
+                <button class="modal-btn confirm" id="confirmSmartPlaylistBtn" onclick="submitSmartPlaylist()" data-translate="smartPlaylistCreate">Create Smart Playlist</button>
             </div>
         </div>
     </div>
@@ -480,8 +523,8 @@
                 </div>
 
                 <div class="dsp-toggle-row">
-                    <div class="dsp-toggle-copy"><i class="fa-solid fa-link"></i><div><strong data-translate="gaplessPlayback">Gapless Playback</strong><span data-translate="gaplessPlaybackDesc">Reduce silence between consecutive tracks</span></div></div>
-                    <label class="switch" data-translate-aria="gaplessPlayback" aria-label="Gapless Playback"><input type="checkbox" id="gaplessToggle" checked><span class="switch-slider"></span></label>
+                    <div class="dsp-toggle-copy"><i class="fa-solid fa-link"></i><div><strong data-translate="gaplessPlayback">Preload next track</strong><span data-translate="gaplessPlaybackDesc">Preloads the next track to reduce transition delays</span></div></div>
+                    <label class="switch" data-translate-aria="gaplessPlayback" aria-label="Preload next track"><input type="checkbox" id="gaplessToggle" checked><span class="switch-slider"></span></label>
                 </div>
 
                 <div class="dsp-control-group dsp-control-group-nested">
@@ -548,6 +591,10 @@
 
     <script src="lang.js"></script>
     <script src="pluginManagerUI.js"></script>
+    <script src="playbackQueueState.js"></script>
+    <script src="playbackTransition.js"></script>
+    <script src="audioNormalization.js"></script>
+    <script src="cuePlayback.js"></script>
     <script src="app.js"></script>
     <script src="homePremium.js"></script>
 <script src="settingsStore.js"></script>

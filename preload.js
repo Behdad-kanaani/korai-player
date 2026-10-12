@@ -155,6 +155,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // LIBRARY EXPORT
     
     exportLibrary: () => ipcRenderer.invoke('export-library'),
+    backupLibrary: () => ipcRenderer.invoke('backup-library'),
+    restoreLibraryBackup: () => ipcRenderer.invoke('restore-library-backup'),
+    onLibraryRestored: (callback) => ipcRenderer.on('library-restored', (event, result) => callback(result)),
     
     // CUE SHEET
     

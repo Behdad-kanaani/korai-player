@@ -1,6 +1,6 @@
 // Local recommendation engine based on listening history and track features.
 
-const { cosineSimilarity, euclideanDistance } = require('./analyzer');
+const { cosineSimilarity } = require('./analyzer');
 
 function stableUnit(seed) {
     const text = String(seed ?? '');
@@ -324,67 +324,163 @@ function calculateUserSimilarity(userHistoryA, userHistoryB, useVectorDistance =
     }
 }
 
+function normalizeTasteTag(value) {
+    return String(value || '').trim().toLocaleLowerCase();
+}
+
+function getReliableGenre(track) {
+    if (!track || track.genreSource !== 'metadata') return '';
+    const genre = String(track.genre || '').trim();
+    return /^(downloaded|imported|unknown|various)$/i.test(genre) ? '' : genre;
+}
+
+function getMeasuredEnergy(track) {
+    const rmsLevel = track?.rmsLevel ?? track?.energy;
+    return track?.energySource === 'waveform-rms' && Number.isFinite(rmsLevel)
+        ? rmsLevel
+        : null;
+}
+
+function getTrackListeningSignals(track, userHistory, settings = {}) {
+    const history = userHistory?.[String(track.id)] || {};
+    const playCount = Math.max(0, Number(history.playCount) || 0, Number(track.playCount) || 0);
+    const likeCount = Math.max(0, Number(history.likeCount) || 0, track.isLiked ? 1 : 0);
+    const repeatCount = Math.max(0, Number(history.repeatCount) || 0);
+    const playlistAddCount = Math.max(0, Number(history.playlistAddCount) || 0);
+    const skipCount = Math.max(0, Number(history.skipCount) || 0);
+    const skipQuickCount = Math.max(0, Number(history.skipQuickCount) || 0);
+    const completionCount = Math.max(0, Number(history.completionCount) || 0);
+    const decayTimestamp = history.lastInteractionAt || history.lastPlayed;
+    const decay = decayTimestamp ? getTemporalDecay(decayTimestamp) : 1;
+    const weight = (key, fallback) => {
+        const value = Number(settings[key]);
+        return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : fallback;
+    };
+    const positive = (
+        Math.log1p(playCount) * weight('weightPlay', 0.12) * 2 +
+        likeCount * weight('weightLike', 0.4) * 3 +
+        Math.log1p(repeatCount) * weight('weightRepeat', 0.25) * 2 +
+        Math.log1p(playlistAddCount) * weight('weightPlaylistAdd', 0.15) * 2 +
+        Math.log1p(completionCount) * 0.35
+    ) * decay;
+
+    return {
+        playCount,
+        likeCount,
+        repeatCount,
+        playlistAddCount,
+        completionCount,
+        skipCount,
+        skipQuickCount,
+        positive,
+        negative: (
+            Math.log1p(skipCount) + Math.log1p(skipQuickCount) * 0.6
+        ) * weight('weightSkip', 0.3) * 2
+    };
+}
+
 /**
- * Compare tracks across their available features.
- * Combines acoustic features, mood, genre, and artist information
+ * Summarize only observed listening behavior and explicit genre tags.
  */
-function calculateContentSimilarity(sourceTrack, targetTrack) {
-    let similarity = 0;
-    let factorCount = 0;
-    
-    // 1. Feature vector similarity (primary signal)
-    if (sourceTrack.featureVector && targetTrack.featureVector) {
-        const featureSim = cosineSimilarity(sourceTrack.featureVector, targetTrack.featureVector);
-        similarity += featureSim * 0.40;
-        factorCount += 0.40;
-    } else if (sourceTrack.bpm && targetTrack.bpm) {
-        // Fallback: BPM-based similarity
-        const bpmSim = 1 - Math.abs((sourceTrack.bpm - targetTrack.bpm) / 160);
-        const energySim = 1 - Math.abs((sourceTrack.energy - targetTrack.energy));
-        similarity += (bpmSim * 0.5 + energySim * 0.5) * 0.40;
-        factorCount += 0.40;
-    }
-    
-    // 2. Mood matching (secondary signal)
-    if (sourceTrack.mood && targetTrack.mood) {
-        const moodMatch = sourceTrack.mood === targetTrack.mood ? 1.0 : 0.3;
-        similarity += moodMatch * 0.20;
-        factorCount += 0.20;
-    } else if (sourceTrack.valence && targetTrack.valence) {
-        // Valence/arousal matching
-        const valenceSim = 1 - Math.abs(sourceTrack.valence - targetTrack.valence);
-        const arousalSim = sourceTrack.arousal && targetTrack.arousal 
-            ? 1 - Math.abs(sourceTrack.arousal - targetTrack.arousal)
-            : 0.5;
-        similarity += ((valenceSim * 0.6 + arousalSim * 0.4)) * 0.20;
-        factorCount += 0.20;
-    }
-    
-    // 3. Genre affinity (tertiary signal)
-    if (sourceTrack.genre && targetTrack.genre) {
-        const genreMatch = sourceTrack.genre === targetTrack.genre ? 1.0 : 
-                          areGenresSimilar(sourceTrack.genre, targetTrack.genre) ? 0.6 : 0.1;
-        similarity += genreMatch * 0.15;
-        factorCount += 0.15;
-    }
-    
-    // 4. Tempo compatibility
-    if (sourceTrack.bpm && targetTrack.bpm) {
-        const tempoMatch = 1 - Math.abs((sourceTrack.bpm - targetTrack.bpm) / 200);
-        similarity += Math.max(0, tempoMatch) * 0.10;
-        factorCount += 0.10;
-    }
-    
-    // 5. Artist/Album consistency (if available)
-    if (sourceTrack.artist && targetTrack.artist) {
-        if (sourceTrack.artist === targetTrack.artist) {
-            similarity += 0.05; // Same artist bonus
+function generateListenerProfile(allTracks, userHistory = {}, settings = {}) {
+    const genres = new Map();
+    const artists = new Map();
+    let evidenceTracks = 0;
+    let totalPlays = 0;
+    let likedTracks = 0;
+
+    for (const track of allTracks || []) {
+        const signals = getTrackListeningSignals(track, userHistory, settings);
+        totalPlays += signals.playCount;
+        if (signals.likeCount > 0) likedTracks++;
+
+        const weight = Math.max(0, signals.positive - signals.negative);
+        if (weight <= 0) continue;
+        evidenceTracks++;
+
+        const genre = getReliableGenre(track);
+        if (genre) {
+            const key = normalizeTasteTag(genre);
+            const current = genres.get(key) || { name: genre, score: 0, plays: 0, likes: 0 };
+            current.score += weight;
+            current.plays += signals.playCount;
+            current.likes += signals.likeCount > 0 ? 1 : 0;
+            genres.set(key, current);
+        }
+
+        const artist = String(track.artist || '').trim();
+        if (artist) {
+            const key = normalizeTasteTag(artist);
+            const current = artists.get(key) || { name: artist, score: 0, plays: 0, likes: 0 };
+            current.score += weight;
+            current.plays += signals.playCount;
+            current.likes += signals.likeCount > 0 ? 1 : 0;
+            artists.set(key, current);
         }
     }
-    
-    // Normalize
-    const finalSimilarity = factorCount > 0 ? similarity / factorCount : 0;
-    return Math.min(1.0, Math.max(0, finalSimilarity));
+
+    const rank = entries => [...entries.values()]
+        .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+        .slice(0, 5)
+        .map(({ name, score, plays, likes }) => ({ name, score, plays, likes }));
+
+    return {
+        evidenceTracks,
+        totalPlays,
+        likedTracks,
+        dataStrength: evidenceTracks >= 10 ? 'established' : evidenceTracks >= 3 ? 'building' : 'early',
+        topGenres: rank(genres),
+        topArtists: rank(artists)
+    };
+}
+
+/**
+ * Compare tracks using explicit genre tags and artist metadata only.
+ */
+function calculateContentSimilarity(sourceTrack, targetTrack) {
+    if (!sourceTrack || !targetTrack) return 0;
+    const sourceGenre = getReliableGenre(sourceTrack);
+    const targetGenre = getReliableGenre(targetTrack);
+    const sourceArtist = normalizeTasteTag(sourceTrack.artist);
+    const targetArtist = normalizeTasteTag(targetTrack.artist);
+    let score = 0;
+    let weight = 0;
+
+    if (sourceGenre && targetGenre) {
+        score += (normalizeTasteTag(sourceGenre) === normalizeTasteTag(targetGenre)
+            ? 1
+            : areGenresSimilar(sourceGenre, targetGenre) ? 0.65 : 0) * 0.35;
+        weight += 0.35;
+    }
+    if (sourceArtist && targetArtist) {
+        score += (sourceArtist === targetArtist ? 1 : 0) * 0.15;
+        weight += 0.15;
+    }
+
+    const sourceFeatures = sourceTrack.analysisVersion === 'waveform-v2' && Array.isArray(sourceTrack.featureVector)
+        ? sourceTrack.featureVector
+        : null;
+    const targetFeatures = targetTrack.analysisVersion === 'waveform-v2' && Array.isArray(targetTrack.featureVector)
+        ? targetTrack.featureVector
+        : null;
+    if (sourceFeatures && targetFeatures && sourceFeatures.length === targetFeatures.length) {
+        let sharedDimensions = 0;
+        let sourceMagnitude = 0;
+        let targetMagnitude = 0;
+        for (let index = 0; index < sourceFeatures.length; index++) {
+            const sourceValue = sourceFeatures[index];
+            const targetValue = targetFeatures[index];
+            if (!Number.isFinite(sourceValue) || !Number.isFinite(targetValue)) continue;
+            sharedDimensions++;
+            sourceMagnitude += sourceValue * sourceValue;
+            targetMagnitude += targetValue * targetValue;
+        }
+        if (sharedDimensions >= 2 && sourceMagnitude > 0 && targetMagnitude > 0) {
+            score += cosineSimilarity(sourceFeatures, targetFeatures) * 0.5;
+            weight += 0.5;
+        }
+    }
+    return weight > 0 ? score / weight : 0;
 }
 
 /**
@@ -397,10 +493,7 @@ function applyDiversityBoost(recommendedTracks, diversityFactor = 0.85) {
     
     for (let i = 1; i < boosted.length; i++) {
         for (let j = 0; j < i; j++) {
-            const sim = cosineSimilarity(
-                boosted[i].featureVector || [0],
-                boosted[j].featureVector || [0]
-            );
+            const sim = calculateContentSimilarity(boosted[i], boosted[j]);
             
             // Penalize very similar tracks (too repetitive)
             if (sim > 0.85) {
@@ -416,173 +509,133 @@ function applyDiversityBoost(recommendedTracks, diversityFactor = 0.85) {
  * Combine track similarity and listening history to rank recommendations.
  * Combines: content-based, collaborative, context-aware, and graph-based methods
  */
-function getPersonalizedRecommendations(allTracks, sourceTrack, userHistory, limit = 12, userActivityContext = null, allUserHistories = null) {
-    if (!allTracks.length || !sourceTrack) return [];
-    
-    const otherTracks = allTracks.filter(t => t.id !== sourceTrack.id);
-    const context = getCurrentContext(userActivityContext);
-    
-    // Score each candidate track using multiple models
-    const scored = otherTracks.map(track => {
-        // Model 1: Content-based similarity (40% weight)
-        const contentSimilarity = calculateContentSimilarity(sourceTrack, track);
-        const contentScore = contentSimilarity;
-        
-        // Model 2: Collaborative filtering - user's own preference (30% weight)
-        const collaborativeScore = (calculatePreferenceScore(track.id, userHistory) + 0.5) * 0.6;
-        
-        // Model 3: Context-aware matching (15% weight)
-        let contextScore = 0;
-        if (track.energy !== undefined && context.min_energy !== undefined) {
-            const energyMatch = track.energy >= context.min_energy && track.energy <= context.max_energy 
-                ? 1.0 
-                : Math.max(0, 1 - Math.abs(track.energy - (context.min_energy + context.max_energy) / 2) / 0.5);
-            contextScore += energyMatch * 0.7;
-        }
-        if (track.valence !== undefined && context.valence !== undefined) {
-            const valenceMatch = 1 - Math.abs(track.valence - context.valence) / 2;
-            contextScore += Math.max(0, valenceMatch) * 0.3;
-        }
-        contextScore = contextScore || 0.5; // Default if no context data
-        
-        // Model 4: Genre affinity (10% weight)
-        let genreScore = 0.5; // Default neutral
-        if (sourceTrack.genre && track.genre) {
-            if (sourceTrack.genre === track.genre) {
-                genreScore = 1.0;
-            } else if (areGenresSimilar(sourceTrack.genre, track.genre)) {
-                genreScore = 0.7;
-            } else {
-                genreScore = 0.3;
+function getPersonalizedRecommendations(allTracks, sourceTrack, userHistory = {}, limit = 12, settings = {}) {
+    if (!Array.isArray(allTracks) || allTracks.length === 0) return [];
+
+    const profile = generateListenerProfile(allTracks, userHistory, settings);
+    const genreScores = new Map(profile.topGenres.map(item => [
+        normalizeTasteTag(item.name),
+        item.score
+    ]));
+    const artistScores = new Map(profile.topArtists.map(item => [
+        normalizeTasteTag(item.name),
+        item.score
+    ]));
+    const maxGenreScore = Math.max(0, ...genreScores.values());
+    const maxArtistScore = Math.max(0, ...artistScores.values());
+
+    const scored = allTracks
+        .filter(track => !sourceTrack || String(track.id) !== String(sourceTrack.id))
+        .filter(track => sourceTrack || getTrackListeningSignals(track, userHistory, settings).playCount === 0)
+        .map(track => {
+            const signals = getTrackListeningSignals(track, userHistory, settings);
+            const genre = getReliableGenre(track);
+            const genrePreference = genreScores.get(normalizeTasteTag(genre));
+            const artistPreference = artistScores.get(normalizeTasteTag(track.artist));
+            const genreAffinity = genrePreference && maxGenreScore
+                ? genrePreference / maxGenreScore
+                : 0;
+            const artistAffinity = artistPreference && maxArtistScore
+                ? artistPreference / maxArtistScore
+                : 0;
+            const sourceSimilarity = sourceTrack ? calculateContentSimilarity(sourceTrack, track) : 0;
+
+            let weightedScore = 0;
+            let availableWeight = 0;
+            if (genre) {
+                weightedScore += genreAffinity * 0.55;
+                availableWeight += 0.55;
             }
-        }
-        
-        // Model 5: Popularity & discovery balance (5% weight)
-        const popularity = (track.popularity || 50) / 100;
-        const discoveryBonus = popularity > 0.8 ? 0.7 : popularity < 0.3 ? 1.0 : 0.85; // Favor mid-popularity for discovery
-        
-        // Ensemble: weighted combination of all models
-        let ensembleScore = (
-            contentScore * 0.40 +
-            collaborativeScore * 0.30 +
-            contextScore * 0.15 +
-            genreScore * 0.10 +
-            discoveryBonus * 0.05
-        );
-        
-        // Apply temporal context boost
-        const contextWeight = context.weight || 1.0;
-        ensembleScore *= contextWeight;
-        
-        // Add controlled serendipity (exploration bonus)
-        const serendipity = stableUnit(`${sourceTrack.id}:${track.id}:serendipity`) * 0.04;
-        ensembleScore += serendipity;
-        
-        // Cross-artist recommendation bonus (if different artist, boost novelty)
-        if (sourceTrack.artist && track.artist && sourceTrack.artist !== track.artist) {
-            ensembleScore *= 1.05; // Small bonus for introducing new artist
-        }
-        
-        return {
+            if (track.artist) {
+                weightedScore += artistAffinity * 0.30;
+                availableWeight += 0.30;
+            }
+            if (sourceTrack) {
+                weightedScore += sourceSimilarity * 0.15;
+                availableWeight += 0.15;
+            }
+
+            const skipRate = signals.skipCount / Math.max(1, signals.playCount + signals.skipCount);
+            const familiarityPenalty = Math.min(0.35, Math.log1p(signals.playCount) * 0.10);
+            const negativeFeedbackPenalty = Math.min(0.7, skipRate * 0.7);
+            const similarityScore = availableWeight > 0
+                ? Math.max(0, (weightedScore / availableWeight) * (1 - familiarityPenalty) * (1 - negativeFeedbackPenalty))
+                : 0;
+            const reasons = [];
+
+            if (genrePreference > 0) reasons.push('Matches a genre in your listening history');
+            if (artistPreference > 0) reasons.push('An artist you have listened to');
+            if (sourceTrack && sourceSimilarity >= 0.6) reasons.push('Shares reliable metadata with the current track');
+            if (reasons.length === 0 && profile.evidenceTracks > 0) reasons.push('Ranked from your listening history');
+            if (reasons.length === 0 && sourceSimilarity > 0) reasons.push('Matches the current track metadata');
+
+            return {
+                ...track,
+                similarityScore,
+                contentSimilarity: sourceSimilarity,
+                genreAffinity,
+                artistAffinity,
+                skipRate,
+                reason: reasons.slice(0, 2).join(' • ')
+            };
+        })
+        .filter(track => track.similarityScore > 0);
+
+    const configuredDiversity = Number(settings.diversityBoost);
+    const diversityFactor = Number.isFinite(configuredDiversity)
+        ? Math.min(1, Math.max(0.5, configuredDiversity))
+        : 0.85;
+    const diversified = applyAdvancedDiversityBoost(scored, diversityFactor);
+    return diversified
+        .slice(0, Math.max(0, Number(limit) || 0))
+        .map(track => ({
             ...track,
-            similarityScore: Math.min(0.99, Math.max(0, ensembleScore)),
-            contentSimilarity,
-            collaborativeScore,
-            contextScore,
-            genreScore,
-            discoveryScore: discoveryBonus,
-            models: {
-                content: contentScore,
-                collaborative: collaborativeScore,
-                context: contextScore,
-                genre: genreScore,
-                popularity: discoveryBonus
+            similarity: Math.round(track.similarityScore * 100),
+            explainability: {
+                topFactors: [
+                    { name: 'Genre history', influence: Math.round(track.genreAffinity * 100) },
+                    { name: 'Artist history', influence: Math.round(track.artistAffinity * 100) },
+                    { name: 'Current track metadata', influence: Math.round(track.contentSimilarity * 100) }
+                ].filter(factor => factor.influence > 0)
             }
-        };
-    });
-    
-    // Filter by minimum threshold
-    const valid = scored.filter(t => t.similarityScore > 0.20);
-    
-    if (valid.length === 0) {
-        // Fallback: return tracks with basic filtering
-        return scored.sort((a, b) => b.similarityScore - a.similarityScore).slice(0, limit);
-    }
-    
-    // Apply advanced diversity boosting
-    const diversified = applyAdvancedDiversityBoost(valid, 0.82);
-    
-    // Sort by score
-    const sorted = diversified.sort((a, b) => b.similarityScore - a.similarityScore);
-    
-    // Return top recommendations with detailed metadata
-    return sorted.slice(0, limit).map(t => ({
-        ...t,
-        similarity: Math.round(t.similarityScore * 100),
-        reason: generateIntelligentReason(t, sourceTrack, context),
-        confidence: calculateAdvancedConfidence(t),
-        explainability: {
-            topFactors: getTopFactors(t),
-            whyRecommended: generateDetailedExplanation(t, sourceTrack, context)
-        }
-    }));
+        }));
 }
 
 /**
  * Add variety to the recommended tracks.
  */
 function applyAdvancedDiversityBoost(recommendedTracks, diversityFactor = 0.82) {
-    if (recommendedTracks.length <= 2) return recommendedTracks;
-    
-    const boosted = [...recommendedTracks];
-    
-    // Apply diminishing returns for similar tracks
-    for (let i = 1; i < boosted.length; i++) {
-        let cumulativePenalty = 1.0;
-        
-        for (let j = 0; j < i; j++) {
-            // Check multiple similarity dimensions
-            let dimSimilarity = 0;
-            let dimCount = 0;
-            
-            // Feature similarity
-            if (boosted[i].featureVector && boosted[j].featureVector) {
-                dimSimilarity += cosineSimilarity(boosted[i].featureVector, boosted[j].featureVector);
-                dimCount++;
-            }
-            
-            // Energy/mood similarity
-            if (boosted[i].energy && boosted[j].energy) {
-                dimSimilarity += 1 - Math.abs(boosted[i].energy - boosted[j].energy);
-                dimCount++;
-            }
-            
-            // Genre similarity
-            if (boosted[i].genre && boosted[j].genre) {
-                const genreSim = boosted[i].genre === boosted[j].genre ? 1.0 : 
-                                areGenresSimilar(boosted[i].genre, boosted[j].genre) ? 0.6 : 0.1;
-                dimSimilarity += genreSim;
-                dimCount++;
-            }
-            
-            if (dimCount > 0) {
-                const avgSimilarity = dimSimilarity / dimCount;
-                
-                // Strong penalty if very similar
-                if (avgSimilarity > 0.85) {
-                    cumulativePenalty *= (diversityFactor * 0.9);
-                } else if (avgSimilarity > 0.70) {
-                    cumulativePenalty *= diversityFactor;
-                } else if (avgSimilarity > 0.50) {
-                    cumulativePenalty *= (1 - (1 - diversityFactor) * 0.5);
-                }
+    const remaining = [...recommendedTracks];
+    const selected = [];
+    const artistCounts = new Map();
+    const genreCounts = new Map();
+
+    while (remaining.length > 0) {
+        let bestIndex = 0;
+        let bestScore = -Infinity;
+        for (let index = 0; index < remaining.length; index++) {
+            const track = remaining[index];
+            const artist = normalizeTasteTag(track.artist);
+            const genre = normalizeTasteTag(getReliableGenre(track));
+            const repetitionPenalty = Math.pow(diversityFactor, artistCounts.get(artist) || 0) *
+                Math.pow(Math.max(diversityFactor, 0.97), genreCounts.get(genre) || 0);
+            const score = track.similarityScore * repetitionPenalty;
+            if (score > bestScore) {
+                bestScore = score;
+                bestIndex = index;
             }
         }
-        
-        boosted[i].similarityScore *= cumulativePenalty;
+
+        const [chosen] = remaining.splice(bestIndex, 1);
+        chosen.similarityScore = bestScore;
+        selected.push(chosen);
+        const artist = normalizeTasteTag(chosen.artist);
+        const genre = normalizeTasteTag(getReliableGenre(chosen));
+        if (artist) artistCounts.set(artist, (artistCounts.get(artist) || 0) + 1);
+        if (genre) genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1);
     }
-    
-    return boosted;
+
+    return selected;
 }
 
 /**
@@ -723,8 +776,19 @@ function getPersonalizedReason(track, prefScore) {
  * Update user history with interaction tracking (PROFESSIONAL)
  */
 function updateUserHistory(userHistory, trackId, action, userDataPath) {
-    if (!userHistory[trackId]) {
-        userHistory[trackId] = {
+    const numericTrackId = Number(trackId);
+    const normalizedAction = typeof action === 'string' ? { type: action } : action;
+    const supportedActions = new Set(['play', 'like', 'unlike', 'skip', 'repeat', 'playlist_add', 'completion']);
+    if (!Number.isInteger(numericTrackId) || numericTrackId <= 0) {
+        throw new TypeError('A valid track ID is required to record listening history');
+    }
+    if (!normalizedAction || typeof normalizedAction !== 'object' || !supportedActions.has(normalizedAction.type)) {
+        throw new TypeError('A supported listening action is required');
+    }
+
+    const historyKey = String(numericTrackId);
+    if (!userHistory[historyKey]) {
+        userHistory[historyKey] = {
             playCount: 0,
             likeCount: 0,
             skipCount: 0,
@@ -739,10 +803,11 @@ function updateUserHistory(userHistory, trackId, action, userDataPath) {
         };
     }
     
-    const history = userHistory[trackId];
+    const history = userHistory[historyKey];
     const now = Date.now();
+    history.lastInteractionAt = now;
     
-    switch(action.type) {
+    switch(normalizedAction.type) {
         case 'play':
             history.playCount++;
             history.lastPlayed = now;
@@ -759,7 +824,7 @@ function updateUserHistory(userHistory, trackId, action, userDataPath) {
             
         case 'skip':
             history.skipCount++;
-            if (action.atSeconds < 10) {
+            if (Number(normalizedAction.atSeconds) < 10) {
                 history.skipQuickCount = (history.skipQuickCount || 0) + 1;
             }
             break;
@@ -774,8 +839,8 @@ function updateUserHistory(userHistory, trackId, action, userDataPath) {
             
         case 'completion':
             history.completionCount = (history.completionCount || 0) + 1;
-            if (action.duration) {
-                history.totalListeningTime += action.duration;
+            if (Number.isFinite(Number(normalizedAction.duration)) && Number(normalizedAction.duration) > 0) {
+                history.totalListeningTime += Number(normalizedAction.duration);
             }
             break;
     }
@@ -785,15 +850,16 @@ function updateUserHistory(userHistory, trackId, action, userDataPath) {
         const { isSafeKey } = require('./securityUtils');
         if (history.interactions && history.interactions.length < 100) {
             const safeEntry = {};
-            if (isSafeKey('type')) safeEntry.type = String(action.type || '');
+            if (isSafeKey('type')) safeEntry.type = normalizedAction.type;
             if (isSafeKey('timestamp')) safeEntry.timestamp = now;
-            if (isSafeKey('duration') && action.duration !== undefined) safeEntry.duration = action.duration;
+            if (isSafeKey('duration') && normalizedAction.duration !== undefined) safeEntry.duration = normalizedAction.duration;
+            if (isSafeKey('atSeconds') && normalizedAction.atSeconds !== undefined) safeEntry.atSeconds = normalizedAction.atSeconds;
             history.interactions.push(safeEntry);
         }
     } catch (e) {
-        // fallback to minimal push
+        console.error('Failed to sanitize a listening interaction:', e);
         if (history.interactions && history.interactions.length < 100) {
-            history.interactions.push({ type: String(action.type || ''), timestamp: now });
+            history.interactions.push({ type: normalizedAction.type, timestamp: now });
         }
     }
     
@@ -903,33 +969,29 @@ function getTimeOfDayLabel() {
 /**
  * Get "Discover" recommendations - tracks user hasn't heard much (ENHANCED)
  */
-function getDiscoveryRecommendations(allTracks, userHistory, limit = 10) {
-    const unheardTracks = allTracks.filter(t => {
-        const history = userHistory[t.id];
-        return !history || history.playCount === 0;
-    });
-    
-    if (unheardTracks.length === 0) return [];
-    
-    // Score by popularity potential and quality
-    const scored = unheardTracks.map(track => ({
-        ...track,
-        discoverScore: (track.popularityPotential || 50) + (track.qualityScore || 50) + (stableUnit(`${track.id}:discover`) * 20)
-    }));
-    
-    scored.sort((a, b) => b.discoverScore - a.discoverScore);
-    
-    // Stable variety ordering: the same input produces the same mix across refreshes.
-    const topCandidates = scored
-        .slice(0, Math.min(limit * 2, scored.length))
-        .sort((a, b) => stableUnit(`${a.id}:mix`) - stableUnit(`${b.id}:mix`));
-    
-    return topCandidates.slice(0, limit).map(t => ({
-        ...t,
-        similarity: 0,
-        reason: ' New discovery for you',
-        confidence: 65
-    }));
+function getDiscoveryRecommendations(allTracks, userHistory, limit = 10, settings = {}) {
+    const profile = generateListenerProfile(allTracks, userHistory, settings);
+    const genres = new Map(profile.topGenres.map((item, index) => [normalizeTasteTag(item.name), 1 / (index + 1)]));
+    const artists = new Map(profile.topArtists.map((item, index) => [normalizeTasteTag(item.name), 1 / (index + 1)]));
+    const unheardTracks = allTracks.filter(track => getTrackListeningSignals(track, userHistory, settings).playCount === 0);
+
+    return unheardTracks
+        .map(track => {
+            const genreAffinity = genres.get(normalizeTasteTag(getReliableGenre(track))) || 0;
+            const artistAffinity = artists.get(normalizeTasteTag(track.artist)) || 0;
+            const variety = stableUnit(`${track.id}:discovery`);
+            return {
+                ...track,
+                similarity: Math.round((genreAffinity * 0.65 + artistAffinity * 0.25 + variety * 0.1) * 100),
+                reason: genreAffinity > 0
+                    ? 'Unplayed track in a genre you listen to'
+                    : artistAffinity > 0
+                        ? 'Unplayed track by an artist you listen to'
+                        : 'Not played yet in your library'
+            };
+        })
+        .sort((a, b) => b.similarity - a.similarity || String(a.title || '').localeCompare(String(b.title || '')))
+        .slice(0, Math.max(0, Number(limit) || 0));
 }
 
 /**
@@ -950,7 +1012,6 @@ function generateSmartPlaylist(allTracks, options = {}) {
     
     const playlist = [];
     let currentDuration = 0;
-    let currentEnergy = seed ? (seed.energy || 0.5) : 0.5;
     
     // Start with seed track if provided
     if (seed && allTracks.some(t => t.id === seed.id)) {
@@ -986,15 +1047,20 @@ function generateSmartPlaylist(allTracks, options = {}) {
         // Score candidates by flow compatibility
         const scored = candidateTracks.map(track => {
             // Energy compatibility (most important for flow)
-            const energyDiff = Math.abs((track.energy || 0.5) - targetEnergy);
-            const energyScore = Math.max(0, 1 - energyDiff * 2);
+            const measuredEnergy = getMeasuredEnergy(track);
+            const hasMeasuredEnergy = measuredEnergy !== null;
+            const energyScore = hasMeasuredEnergy
+                ? Math.max(0, 1 - Math.abs(measuredEnergy - targetEnergy) * 2)
+                : null;
             
             // Genre continuity with previous track
             let genreScore = 0.5;
-            if (playlist.length > 0 && track.genre && playlist[playlist.length - 1].genre) {
-                if (track.genre === playlist[playlist.length - 1].genre) {
+            const trackGenre = getReliableGenre(track);
+            const previousGenre = playlist.length > 0 ? getReliableGenre(playlist[playlist.length - 1]) : '';
+            if (trackGenre && previousGenre) {
+                if (normalizeTasteTag(trackGenre) === normalizeTasteTag(previousGenre)) {
                     genreScore = 0.9;
-                } else if (areGenresSimilar(track.genre, playlist[playlist.length - 1].genre)) {
+                } else if (areGenresSimilar(trackGenre, previousGenre)) {
                     genreScore = 0.7;
                 } else {
                     genreScore = 0.3;
@@ -1019,13 +1085,16 @@ function generateSmartPlaylist(allTracks, options = {}) {
                 : 1.0;
             
             // Composite score
-            const flowScore = (
-                energyScore * 0.40 +
-                genreScore * 0.25 +
-                moodScore * 0.15 +
-                preferenceScore * 0.15 +
-                (stableUnit(`${track.id}:${i}:flow`) * 0.05)
-            ) * sameArtistPenalty * discoveryBoost;
+            const weightedParts = [
+                ...(energyScore === null ? [] : [{ score: energyScore, weight: 0.40 }]),
+                { score: genreScore, weight: 0.25 },
+                { score: moodScore, weight: 0.15 },
+                { score: preferenceScore, weight: 0.15 },
+                { score: stableUnit(`${track.id}:${i}:flow`), weight: 0.05 }
+            ];
+            const flowScore = weightedParts.reduce((total, part) => total + part.score * part.weight, 0) /
+                weightedParts.reduce((total, part) => total + part.weight, 0) *
+                sameArtistPenalty * discoveryBoost;
             
             return { ...track, flowScore };
         });
@@ -1036,19 +1105,23 @@ function generateSmartPlaylist(allTracks, options = {}) {
         
         playlist.push(selected);
         currentDuration += selected.duration || 240;
-        currentEnergy = selected.energy || 0.5;
         
         // Remove selected track from candidates
         const idx = candidateTracks.findIndex(t => t.id === selected.id);
         if (idx >= 0) candidateTracks.splice(idx, 1);
     }
     
+    const measuredEnergies = playlist
+        .map(getMeasuredEnergy)
+        .filter(value => value !== null);
     return {
         tracks: playlist,
         totalDuration: currentDuration,
-        avgEnergy: playlist.reduce((a, b) => a + (b.energy || 0.5), 0) / playlist.length,
+        avgEnergy: measuredEnergies.length
+            ? measuredEnergies.reduce((sum, value) => sum + value, 0) / measuredEnergies.length
+            : null,
         energyProgression,
-        genres: [...new Set(playlist.map(t => t.genre))],
+        genres: [...new Set(playlist.map(getReliableGenre).filter(Boolean))],
         quality: calculatePlaylistQuality(playlist)
     };
 }
@@ -1058,26 +1131,29 @@ function generateSmartPlaylist(allTracks, options = {}) {
  */
 function calculatePlaylistQuality(playlist) {
     if (playlist.length < 2) return 0;
-    
-    let quality = 0;
-    
-    // Track variety
-    const genres = [...new Set(playlist.map(t => t.genre))];
-    const artists = [...new Set(playlist.map(t => t.artist))];
-    quality += (genres.length / Math.max(playlist.length, 1)) * 25;
-    quality += (artists.length / Math.max(playlist.length, 1)) * 25;
-    
-    // Energy balance
-    const energies = playlist.map(t => t.energy || 0.5);
-    const avgEnergy = energies.reduce((a, b) => a + b) / energies.length;
-    const energyVariance = energies.reduce((a, b) => a + Math.pow(b - avgEnergy, 2), 0) / energies.length;
-    quality += Math.min(25, energyVariance * 50);
-    
-    // Quality of tracks
-    const avgQuality = playlist.reduce((a, b) => a + (b.qualityScore || 70), 0) / playlist.length;
-    quality += (avgQuality / 100) * 25;
-    
-    return Math.min(100, Math.round(quality));
+
+    let score = 0;
+    let availableWeight = 0;
+    const genres = [...new Set(playlist.map(getReliableGenre).filter(Boolean))];
+    const artists = [...new Set(playlist.map(track => normalizeTasteTag(track.artist)).filter(Boolean))];
+    if (genres.length > 0) {
+        score += (genres.length / playlist.length) * 25;
+        availableWeight += 25;
+    }
+    if (artists.length > 0) {
+        score += (artists.length / playlist.length) * 25;
+        availableWeight += 25;
+    }
+
+    const energies = playlist.map(getMeasuredEnergy).filter(value => value !== null);
+    if (energies.length > 1) {
+        const avgEnergy = energies.reduce((sum, value) => sum + value, 0) / energies.length;
+        const energyVariance = energies.reduce((sum, value) => sum + (value - avgEnergy) ** 2, 0) / energies.length;
+        score += Math.min(25, energyVariance * 50);
+        availableWeight += 25;
+    }
+
+    return availableWeight > 0 ? Math.round((score / availableWeight) * 100) : null;
 }
 
 /**
@@ -1129,14 +1205,16 @@ function intelligentSearch(searchQuery, allTracks, userHistory = {}) {
         if (targetEnergy) {
             const energyMap = { 'low': 0.3, 'medium': 0.5, 'high': 0.8 };
             const targetE = energyMap[targetEnergy];
-            if (targetE && Math.abs((track.energy || 0.5) - targetE) < 0.2) {
+            const measuredEnergy = getMeasuredEnergy(track);
+            if (targetE && measuredEnergy !== null && Math.abs(measuredEnergy - targetE) < 0.2) {
                 score += 25;
             }
         }
         
         // 4. Genre matching
         if (targetGenre) {
-            if (track.genre && track.genre.toLowerCase().includes(targetGenre)) {
+            const genre = getReliableGenre(track);
+            if (genre && genre.toLowerCase().includes(targetGenre)) {
                 score += 20;
             }
         }
@@ -1208,8 +1286,9 @@ function analyzeUserBehaviorPatterns(userHistory, allTracks, windowDays = 30) {
         validTracks++;
         
         // Genre analysis
-        if (track.genre) {
-            patterns.topGenres[track.genre] = (patterns.topGenres[track.genre] || 0) + item.playCount;
+        const genre = getReliableGenre(track);
+        if (genre) {
+            patterns.topGenres[genre] = (patterns.topGenres[genre] || 0) + item.playCount;
         }
         
         // Artist analysis
@@ -1218,7 +1297,8 @@ function analyzeUserBehaviorPatterns(userHistory, allTracks, windowDays = 30) {
         }
         
         // Collect energy and mood
-        if (track.energy) patterns.preferredEnergy.push(track.energy);
+        const measuredEnergy = getMeasuredEnergy(track);
+        if (measuredEnergy !== null) patterns.preferredEnergy.push(measuredEnergy);
         if (track.mood) patterns.preferredMood.push(track.mood);
     }
     
@@ -1230,8 +1310,12 @@ function analyzeUserBehaviorPatterns(userHistory, allTracks, windowDays = 30) {
         patterns.playbackPatterns.favoriteRate = recentBehavior.reduce((a, b) => a + (b.likeCount || 0), 0) / validTracks;
         
         // Calculate average energy preference
-        const avgEnergy = patterns.preferredEnergy.reduce((a, b) => a + b, 0) / patterns.preferredEnergy.length;
-        patterns.avgPreferredEnergy = Math.round(avgEnergy * 100) / 100;
+        if (patterns.preferredEnergy.length > 0) {
+            const avgEnergy = patterns.preferredEnergy.reduce((a, b) => a + b, 0) / patterns.preferredEnergy.length;
+            patterns.avgPreferredEnergy = Math.round(avgEnergy * 100) / 100;
+        } else {
+            patterns.avgPreferredEnergy = null;
+        }
         
         // Determine discovery rate
         const discoveredTracks = recentBehavior.filter(b => !b.firstPlayedAt || (b.lastPlayed - b.firstPlayedAt < 24 * 60 * 60 * 1000));
@@ -1256,22 +1340,24 @@ function getPatternBasedRecommendations(behaviorPatterns, allTracks, limit = 10)
         .slice(0, 3)
         .map(e => e[0]);
     
-    const targetEnergy = behaviorPatterns.avgPreferredEnergy || 0.5;
+    const targetEnergy = behaviorPatterns.avgPreferredEnergy;
     
     // Filter and score tracks
     const scored = allTracks.map(track => {
         let score = 0;
         
-        if (topGenres.includes(track.genre)) {
+        const genre = getReliableGenre(track);
+        if (topGenres.includes(genre)) {
             score += 0.4;
-        } else if (track.genre && topGenres.some(g => areGenresSimilar(g, track.genre))) {
+        } else if (genre && topGenres.some(g => areGenresSimilar(g, genre))) {
             score += 0.2;
         }
         
-        const energyDiff = Math.abs((track.energy || 0.5) - targetEnergy);
-        score += Math.max(0, 1 - energyDiff * 2) * 0.3;
-        
-        score += (track.qualityScore || 70) / 100 * 0.3;
+        const measuredEnergy = getMeasuredEnergy(track);
+        if (Number.isFinite(targetEnergy) && measuredEnergy !== null) {
+            const energyDiff = Math.abs(measuredEnergy - targetEnergy);
+            score += Math.max(0, 1 - energyDiff * 2) * 0.3;
+        }
         
         return { ...track, patternScore: score };
     });
@@ -1371,6 +1457,7 @@ module.exports = {
     // Listening patterns
     analyzeUserBehaviorPatterns,
     getPatternBasedRecommendations,
+    generateListenerProfile,
     
     // User history management
     updateUserHistory,

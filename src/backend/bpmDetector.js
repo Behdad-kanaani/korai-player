@@ -25,7 +25,7 @@ function getFfmpegPath() {
   return process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
 }
 
-function decodeAudioToMono(filePath, sampleRate = TARGET_SAMPLE_RATE, maxSeconds = MAX_ANALYSIS_SECONDS) {
+function decodeAudioToMono(filePath, sampleRate = TARGET_SAMPLE_RATE, maxSeconds = MAX_ANALYSIS_SECONDS, startSeconds = 0) {
   return new Promise((resolve, reject) => {
     if (!fs.existsSync(filePath)) return reject(new Error('Audio file does not exist'));
     const stat = fs.statSync(filePath);
@@ -34,6 +34,7 @@ function decodeAudioToMono(filePath, sampleRate = TARGET_SAMPLE_RATE, maxSeconds
     const ffmpegPath = getFfmpegPath();
     const args = [
       '-hide_banner', '-loglevel', 'error', '-nostdin',
+      ...(Number.isFinite(startSeconds) && startSeconds > 0 ? ['-ss', String(startSeconds)] : []),
       '-i', filePath,
       '-t', String(maxSeconds),
       '-vn', '-sn', '-dn',
@@ -142,31 +143,64 @@ function estimateBpmFromEnvelope(envelope, envelopeRate) {
 
   if (!best.lag || best.score <= 0) return { bpm: 120, confidence: 0 };
 
+  const refineLag = lag => {
+    if (lag <= 1 || lag >= envelope.length - 2) return lag;
+    const previousScore = correlationAtLag(envelope, lag - 1);
+    const centerScore = correlationAtLag(envelope, lag);
+    const nextScore = correlationAtLag(envelope, lag + 1);
+    const curvature = previousScore - 2 * centerScore + nextScore;
+    if (Math.abs(curvature) < 1e-9) return lag;
+    const offset = 0.5 * (previousScore - nextScore) / curvature;
+    return lag + Math.max(-0.5, Math.min(0.5, offset));
+  };
+
   // Account for half/double-time ambiguity. Prefer the candidate closest to the
   // strongest correlation while keeping the range musically useful.
-  const rawBpm = (60 * envelopeRate) / best.lag;
-  const halfLag = Math.max(1, Math.round(best.lag / 2));
-  const doubleTimeScore = correlationAtLag(envelope, halfLag);
+  const rawBpm = (60 * envelopeRate) / refineLag(best.lag);
   let selected = rawBpm;
+  let selectedScore = best.score;
+  let promotedSubharmonic = false;
 
-  // A common failure mode of simple autocorrelation is choosing the interval
-  // spanning every second beat (half the true BPM). When the half-lag remains
-  // strongly periodic, prefer the musically plausible double-time candidate.
-  const doubleTimeBpm = rawBpm * 2;
-  if (doubleTimeBpm >= MIN_BPM && doubleTimeBpm <= MAX_BPM && doubleTimeScore >= best.score * 0.55) {
-    selected = doubleTimeBpm;
+  // Autocorrelation can lock onto every second or third beat. Promote only
+  // when a shorter, plausible beat interval has its own strong correlation.
+  let fasterCandidate = null;
+  for (let subdivision = 2; subdivision <= 4; subdivision++) {
+    const centerLag = best.lag / subdivision;
+    for (const lag of new Set([
+      Math.floor(centerLag) - 1,
+      Math.floor(centerLag),
+      Math.ceil(centerLag),
+      Math.ceil(centerLag) + 1
+    ])) {
+      if (lag < 1) continue;
+      const bpm = (60 * envelopeRate) / lag;
+      if (bpm < MIN_BPM || bpm > MAX_BPM) continue;
+      const score = correlationAtLag(envelope, lag);
+      if (score < 0.5 || score < best.score * 0.5) continue;
+      const refinedBpm = (60 * envelopeRate) / refineLag(lag);
+      if (!fasterCandidate || score > fasterCandidate.score) fasterCandidate = { bpm: refinedBpm, score };
+    }
+  }
+  if (fasterCandidate) {
+    selected = fasterCandidate.bpm;
+    selectedScore = fasterCandidate.score;
+    promotedSubharmonic = true;
   }
 
-  if (selected < 75 || selected > 150) {
+  if (!promotedSubharmonic && (selected < 75 || selected > 150)) {
     const alternatives = [rawBpm / 2, rawBpm, rawBpm * 2].filter(b => b >= MIN_BPM && b <= MAX_BPM);
-    selected = alternatives
+    const alternative = alternatives
       .map(bpm => ({ bpm, score: correlationAtLag(envelope, Math.max(1, Math.round(60 * envelopeRate / bpm))) }))
-      .sort((a, b) => b.score - a.score)[0]?.bpm || selected;
+      .sort((a, b) => b.score - a.score)[0];
+    if (alternative) {
+      selected = alternative.bpm;
+      selectedScore = alternative.score;
+    }
   }
 
   return {
     bpm: Math.round(Math.min(MAX_BPM, Math.max(MIN_BPM, selected))),
-    confidence: best.score
+    confidence: selectedScore
   };
 }
 
@@ -175,7 +209,7 @@ function detectBPMFromSamples(samples, sampleRate) {
   return estimateBpmFromEnvelope(envelope, envelopeRate);
 }
 
-async function detectRealBPM(filePath) {
+async function analyzeBPM(filePath) {
   console.debug(`[BPM] Detecting tempo: ${path.basename(filePath)}`);
 
   // Metadata remains the fastest/highest-signal path when tags are explicitly set.
@@ -184,19 +218,32 @@ async function detectRealBPM(filePath) {
     const metadata = await mm.parseFile(filePath, { skipCovers: true });
     const taggedBpm = Number(metadata.common?.bpm);
     if (Number.isFinite(taggedBpm) && taggedBpm >= MIN_BPM && taggedBpm <= 240) {
-      return Math.round(taggedBpm);
+      return { bpm: Math.round(taggedBpm), confidence: null, source: 'metadata' };
     }
   } catch {
     // Continue with decoded waveform analysis.
   }
 
-  const { samples, sampleRate } = await decodeAudioToMono(filePath);
-  const result = detectBPMFromSamples(samples, sampleRate);
-  console.debug(`[BPM] result=${result.bpm} confidence=${result.confidence.toFixed(3)}`);
+  try {
+    const { samples, sampleRate } = await decodeAudioToMono(filePath);
+    const result = detectBPMFromSamples(samples, sampleRate);
+    console.debug(`[BPM] result=${result.bpm} confidence=${result.confidence.toFixed(3)}`);
+    return result.confidence >= 0.08
+      ? { ...result, source: 'waveform' }
+      : { bpm: null, confidence: result.confidence, source: 'unavailable' };
+  } catch (error) {
+    console.warn(`[BPM] Could not estimate tempo for ${path.basename(filePath)}: ${error.message}`);
+    return { bpm: null, confidence: 0, source: 'unavailable' };
+  }
+}
+
+async function detectRealBPM(filePath) {
+  const result = await analyzeBPM(filePath);
   return result.bpm;
 }
 
 module.exports = {
+  analyzeBPM,
   detectRealBPM,
   decodeAudioToMono,
   buildOnsetEnvelope,

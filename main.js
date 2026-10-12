@@ -1437,6 +1437,62 @@ registerIpcHandler('export-library', async () => {
     }
 });
 
+registerIpcHandler('backup-library', async () => {
+    const result = await dialog.showSaveDialog(mainWindow, {
+        title: 'Back Up KORAI Library',
+        defaultPath: `korai-backup-${new Date().toISOString().slice(0, 10)}.json`,
+        filters: [{ name: 'KORAI Library Backup', extensions: ['json'] }]
+    });
+    if (result.canceled || !result.filePath) return null;
+
+    try {
+        const response = await fetch(`http://127.0.0.1:${serverPort}/api/library/backup`);
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.error || `Backup request failed (HTTP ${response.status}).`);
+        }
+        const bytes = Buffer.from(await response.arrayBuffer());
+        await fs.promises.writeFile(result.filePath, bytes, { flag: 'w' });
+        return { success: true, path: result.filePath, bytes: bytes.length };
+    } catch (error) {
+        console.error('Library backup failed:', error);
+        throw new Error(`Could not save library backup: ${error.message}`, { cause: error });
+    }
+});
+
+registerIpcHandler('restore-library-backup', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Restore KORAI Library Backup',
+        properties: ['openFile'],
+        filters: [{ name: 'KORAI Library Backup', extensions: ['json'] }]
+    });
+    if (result.canceled || !result.filePaths?.[0]) return null;
+
+    try {
+        const backupPath = result.filePaths[0];
+        const stat = await fs.promises.stat(backupPath);
+        const maxBytes = 256 * 1024 * 1024;
+        if (!stat.isFile() || stat.size <= 0 || stat.size > maxBytes) {
+            throw new Error('Backup must be a non-empty file no larger than 256 MiB.');
+        }
+        const content = await fs.promises.readFile(backupPath);
+        const response = await fetch(`http://127.0.0.1:${serverPort}/api/library/restore`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: content
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || `Restore request failed (HTTP ${response.status}).`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('library-restored', payload);
+        }
+        return { ...payload, path: backupPath };
+    } catch (error) {
+        console.error('Library restore failed:', error);
+        throw new Error(`Could not restore library backup: ${error.message}`, { cause: error });
+    }
+});
+
 // CUE SHEET HANDLER
 
 registerIpcHandler('parse-cue', async (event, cuePath) => {

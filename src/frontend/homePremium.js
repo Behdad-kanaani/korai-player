@@ -29,16 +29,6 @@ function renderHomePremium() {
         .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
         .slice(0, 6);
 
-    // AI suggestions
-    let suggestions = [];
-    if (currentTrackId && (window.tracks || []).length > 0 && typeof getLocalRecommendations === 'function') {
-        const sourceTrack = (window.tracks || []).find(t => t.id === currentTrackId);
-        if (sourceTrack) suggestions = getLocalRecommendations(sourceTrack, window.tracks || [], 6);
-    }
-    if (!suggestions || suggestions.length === 0) {
-        suggestions = typeof getFallbackSuggestions === 'function' ? getFallbackSuggestions(window.tracks || [], 6) : [];
-    }
-
     // Keep the current track visible when the library is empty.
     if ((window.tracks || []).length === 0 && !currentTrackId) {
         mainSection.innerHTML = getEmptyLibraryHTML ? getEmptyLibraryHTML() : '<div class="empty-state-premium">No tracks</div>';
@@ -158,19 +148,16 @@ function renderHomePremium() {
             <div class="mood-section">
                 <div class="section-header-modern">
                     <div class="section-title-group">
-                        <h3><i class="fa-solid fa-face-smile"></i> ${typeof t === 'function' ? (t('moodTitle') || 'Mood & Energy') : 'Mood & Energy'}</h3>
-                        <span class="section-badge-premium">${tr('moodBadge', 'Mood')}</span>
+                        <h3><i class="fa-solid fa-sliders"></i> ${tr('audioFiltersTitle', 'Audio profile filters')}</h3>
+                        <span class="section-badge-premium">${tr('audioFiltersBadge', 'Measured')}</span>
                     </div>
                 </div>
                 <div class="mood-chips-scroll">
-                    <button type="button" class="mood-chip-premium" onclick="filterByMood('energetic')"><i class="fa-solid fa-bolt"></i> <span>${tr('moodEnergetic', 'Energetic')}</span></button>
-                    <button type="button" class="mood-chip-premium" onclick="filterByMood('chill')"><i class="fa-solid fa-cloud-moon"></i> <span>${tr('moodChill', 'Chill')}</span></button>
-                    <button type="button" class="mood-chip-premium" onclick="filterByMood('focus')"><i class="fa-solid fa-brain"></i> <span>${tr('moodFocus', 'Focus')}</span></button>
-                    <button type="button" class="mood-chip-premium" onclick="filterByMood('workout')"><i class="fa-solid fa-dumbbell"></i> <span>${tr('moodWorkout', 'Workout')}</span></button>
-                    <button type="button" class="mood-chip-premium" onclick="filterByMood('sad')"><i class="fa-solid fa-face-frown"></i> <span>${tr('moodMelancholic', 'Melancholic')}</span></button>
-                    <button type="button" class="mood-chip-premium" onclick="filterByMood('happy')"><i class="fa-solid fa-face-smile"></i> <span>${tr('moodHappy', 'Happy')}</span></button>
-                    <button type="button" class="mood-chip-premium" onclick="filterByMood('romantic')"><i class="fa-solid fa-heart"></i> <span>${tr('moodRomantic', 'Romantic')}</span></button>
-                    <button type="button" class="mood-chip-premium" onclick="filterByMood('study')"><i class="fa-solid fa-book"></i> <span>${tr('moodStudy', 'Study')}</span></button>
+                    <button type="button" class="mood-chip-premium" onclick="filterByAudioProfile('slowBpm')"><i class="fa-solid fa-gauge"></i> <span>${tr('filterSlowBpm', 'Slow BPM (<90)')}</span></button>
+                    <button type="button" class="mood-chip-premium" onclick="filterByAudioProfile('midBpm')"><i class="fa-solid fa-gauge-high"></i> <span>${tr('filterMidBpm', 'Mid BPM (90-130)')}</span></button>
+                    <button type="button" class="mood-chip-premium" onclick="filterByAudioProfile('fastBpm')"><i class="fa-solid fa-forward-fast"></i> <span>${tr('filterFastBpm', 'Fast BPM (>130)')}</span></button>
+                    <button type="button" class="mood-chip-premium" onclick="filterByAudioProfile('lowRms')"><i class="fa-solid fa-volume-low"></i> <span>${tr('filterLowRms', 'Low RMS (<0.15)')}</span></button>
+                    <button type="button" class="mood-chip-premium" onclick="filterByAudioProfile('highRms')"><i class="fa-solid fa-volume-high"></i> <span>${tr('filterHighRms', 'High RMS (>=0.40)')}</span></button>
                 </div>
             </div>
     `;
@@ -196,25 +183,24 @@ function renderHomePremium() {
         html += `</div></div>`;
     }
 
-    if (suggestions.length > 0) {
+    if (totalTracks > 0) {
         html += `
             <div class="ai-recommend-section">
                 <div class="section-header-modern">
                     <div class="section-title-group">
-                        <h3><i class="fa-solid fa-sparkles"></i> ${typeof t === 'function' ? (t('aiRecommendTitle') || 'AI Recommendations') : 'AI Recommendations'}</h3>
+                        <h3><i class="fa-solid fa-sparkles"></i> ${tr('aiRecommendTitle', 'Recommendations for your listening taste')}</h3>
                         <span class="section-badge-premium">${tr('personalized', 'Personalized')}</span>
                     </div>
-                    <span class="view-all-link-modern" onclick="handleAiRecommendationsEnhanced()">${tr('more', 'More')} <i class="fa-solid fa-arrow-right"></i></span>
+                    <div class="listener-profile-actions">
+                        <button type="button" class="listener-profile-action" onclick="compareCurrentVoice()">${tr('aiVoiceMatch', 'Compare voice')}</button>
+                        <span class="view-all-link-modern" onclick="handleAiRecommendationsEnhanced()">${tr('more', 'More')} <i class="fa-solid fa-arrow-right"></i></span>
+                    </div>
                 </div>
+                <div class="listener-profile-panel" id="aiListenerProfile">${tr('aiProfileLoading', 'Building your profile from listening history...')}</div>
                 <div class="ai-suggestion-grid" id="aiSuggestionsGrid">
+                    <p class="listener-profile-status">${tr('aiRecommendationsLoading', 'Finding tracks from your listening history...')}</p>
+                </div>
         `;
-
-        suggestions.forEach((track, idx) => {
-            const coverUrl = track.hasCover ? `http://127.0.0.1:${window.apiPort || 3000}/api/tracks/${track.id}/cover` : null;
-            const rawSimilarity = Number(track.similarity);
-            const matchPercent = Number.isFinite(rawSimilarity) && rawSimilarity >= 0 ? Math.min(100, Math.round(rawSimilarity)) : null;
-            html += getAISuggestionCardHTML(track, coverUrl, matchPercent, idx);
-        });
 
         html += `</div></div>`;
     }
@@ -245,12 +231,70 @@ function renderHomePremium() {
     html += `</div>`;
 
     mainSection.innerHTML = html;
+    if (totalTracks > 0) loadHomeAiRecommendations();
 
     // Start/refresh player connection checks if available
     try { if (window._playerConnInterval) clearInterval(window._playerConnInterval); } catch(e){}
     if (typeof window.checkPlayerConnection === 'function') {
         window.checkPlayerConnection();
         window._playerConnInterval = setInterval(window.checkPlayerConnection, 10000);
+    }
+}
+
+async function loadHomeAiRecommendations() {
+    const profileElement = document.getElementById('aiListenerProfile');
+    const recommendationsElement = document.getElementById('aiSuggestionsGrid');
+    if (!profileElement || !recommendationsElement) return;
+
+    const tr = (key, fallback) => typeof t === 'function' ? (t(key) || fallback) : fallback;
+    try {
+        const response = await fetch(`http://127.0.0.1:${window.apiPort || 3000}/api/ai/recommendations`);
+        if (!response.ok) throw new Error(`Listener profile request failed (${response.status})`);
+        const data = await response.json();
+        if (!document.getElementById('aiListenerProfile')) return;
+        if (!data.enabled) {
+            document.querySelector('.ai-recommend-section')?.remove();
+            return;
+        }
+
+        const profile = data.profile || {};
+        const renderTags = (items, emptyLabel) => Array.isArray(items) && items.length
+            ? items.slice(0, 3).map(item => `<span class="listener-profile-tag">${escapeHtml(item.name)}</span>`).join('')
+            : `<span class="listener-profile-muted">${emptyLabel}</span>`;
+        const strengthLabel = profile.dataStrength === 'established'
+            ? tr('aiProfileEstablished', 'Established')
+            : profile.dataStrength === 'building'
+                ? tr('aiProfileBuilding', 'Building')
+                : tr('aiProfileEarly', 'Early signals');
+        profileElement.innerHTML = `
+            <div class="listener-profile-heading">
+                <strong><i class="fa-solid fa-headphones-simple" aria-hidden="true"></i> ${tr('aiListenerProfile', 'Your listening profile')}</strong>
+                <span>${strengthLabel}</span>
+            </div>
+            <div class="listener-profile-stats">
+                <span>${Number(profile.evidenceTracks) || 0} ${tr('aiProfileTracks', 'tracks listened to')}</span>
+                <span>${Number(profile.totalPlays) || 0} ${tr('aiProfilePlays', 'plays')}</span>
+                <span>${Number(profile.likedTracks) || 0} ${tr('aiProfileFavorites', 'favorites')}</span>
+            </div>
+            <div class="listener-profile-tags">
+                <div><small>${tr('aiProfileGenres', 'Genres from file tags')}</small>${renderTags(profile.topGenres || [], tr('aiProfileNoGenres', 'No tagged genres yet'))}</div>
+                <div><small>${tr('aiProfileArtists', 'Artists you listen to')}</small>${renderTags(profile.topArtists || [], tr('aiProfileNoArtists', 'No artist data yet'))}</div>
+            </div>`;
+
+        const recommendations = Array.isArray(data.recommendations) ? data.recommendations : [];
+        if (recommendations.length === 0) {
+            recommendationsElement.innerHTML = `<p class="listener-profile-status">${tr('aiProfileNoRecommendations', 'Listen to or favorite a few tracks to get recommendations based on your taste.')}</p>`;
+            return;
+        }
+
+        recommendationsElement.innerHTML = recommendations.map((track, index) => {
+            const coverUrl = track.coverUrl ? `http://127.0.0.1:${window.apiPort || 3000}${track.coverUrl}` : null;
+            return getAISuggestionCardHTML(track, coverUrl, track.similarity, index);
+        }).join('');
+    } catch (error) {
+        console.error('Could not load listener profile and recommendations:', error);
+        profileElement.textContent = tr('aiProfileError', 'Your listening profile could not be loaded.');
+        recommendationsElement.textContent = tr('aiProfileError', 'Your recommendations could not be loaded.');
     }
 }
 
@@ -288,6 +332,7 @@ function getFeaturedCardHTML(track, coverUrl, index) {
 }
 
 function getAISuggestionCardHTML(track, coverUrl, matchPercent, index) {
+    const tr = (key, fallback) => typeof t === 'function' ? (t(key) || fallback) : fallback;
     return `
         <div class="ai-suggestion-card" data-track-id="${track.id}" onclick="playTrack(${track.id}, 'library')" oncontextmenu="event.preventDefault(); showPlaylistContextMenu(${track.id}, event.clientX, event.clientY)">
             <div class="ai-suggestion-cover">
@@ -297,7 +342,7 @@ function getAISuggestionCardHTML(track, coverUrl, matchPercent, index) {
             <p class="ai-suggestion-artist">${typeof escapeHtml === 'function' ? escapeHtml(track.artist || t('unknownArtist')) : (track.artist || t('unknownArtist'))}</p>
             <div class="ai-match-badge">
                 <i class="fa-solid fa-chart-line"></i>
-                <span>${matchPercent === null ? tr('personalized', 'Personalized') : `${matchPercent}% ${tr('match', 'match')}`}</span>
+                <span>${matchPercent === null ? tr('personalized', 'Personalized') : `${matchPercent}% ${tr('aiFit', 'taste fit')}`}</span>
             </div>
         </div>
     `;

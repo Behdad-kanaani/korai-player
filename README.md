@@ -1,36 +1,28 @@
 <div align="center">
 
-<img src="korai.png" width="112" alt="KORAI Player" />
+<img src="korai.png" width="112" alt="KORAI Player logo" />
 
 # KORAI Player
 
 ### v1.7.0 · Local-first desktop music player
 
-**A cleaner way to enjoy the music you already own.**
+**A better way to enjoy the music you already own.**
 
-KORAI is a modern desktop music player built around your local music library.
+KORAI is a desktop music player for building, organizing, and enjoying your own music library. It combines library management, playlists, audio analysis, sound customization, visualizations, recommendations, and plugin support in one application.
 
-It is designed to make managing and listening to your own files feel less like browsing folders and more like using a real music product — with a focused interface, fast playback, playlists, search, recommendations, visualization, plugin support, and full Persian/RTL support.
+Listen to your own collection without needing an account or a subscription for core playback.
 
 <p>
-  <a href="https://github.com/Behdad-kanaani/korai-player/releases">
-    <img src="https://img.shields.io/github/v/release/Behdad-kanaani/korai-player?style=for-the-badge&logo=github&label=Release" alt="Latest release">
-  </a>
-  <a href="https://github.com/Behdad-kanaani/korai-player/releases">
-    <img src="https://img.shields.io/github/downloads/Behdad-kanaani/korai-player/total?style=for-the-badge&logo=github&label=Downloads" alt="Downloads">
-  </a>
-  <a href="https://github.com/Behdad-kanaani/korai-player/stargazers">
-    <img src="https://img.shields.io/github/stars/Behdad-kanaani/korai-player?style=for-the-badge&logo=github&label=Stars" alt="GitHub stars">
-  </a>
-  <a href="LICENSE">
-    <img src="https://img.shields.io/badge/License-Apache%202.0%20%2B%20Commons%20Clause-3f3f46?style=for-the-badge&logo=apache" alt="License">
-  </a>
+  <a href="https://github.com/Behdad-kanaani/korai-player/releases/latest"><img src="https://img.shields.io/github/v/release/Behdad-kanaani/korai-player?style=for-the-badge&logo=github&label=Latest%20release" alt="Latest release"></a>
+  <a href="https://github.com/Behdad-kanaani/korai-player/releases"><img src="https://img.shields.io/github/downloads/Behdad-kanaani/korai-player/total?style=for-the-badge&logo=github&label=Downloads" alt="Downloads"></a>
+  <a href="https://github.com/Behdad-kanaani/korai-player/stargazers"><img src="https://img.shields.io/github/stars/Behdad-kanaani/korai-player?style=for-the-badge&logo=github&label=GitHub%20stars" alt="GitHub stars"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0%20%2B%20Commons%20Clause-3f3f46?style=for-the-badge&logo=apache" alt="Project license; see LICENSE"></a>
 </p>
 
 <p>
   <img src="https://img.shields.io/badge/Windows-x64-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows x64">
   <img src="https://img.shields.io/badge/Electron-desktop-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="Electron">
-  <img src="https://img.shields.io/badge/Free-No%20Subscription-1DB954?style=for-the-badge" alt="No subscription">
+  <img src="https://img.shields.io/badge/Local--first-by%20design-1f8f58?style=for-the-badge" alt="Local first">
 </p>
 
 <p>
@@ -45,232 +37,211 @@ It is designed to make managing and listening to your own files feel less like b
 
 ---
 
-# KORAI is changing
+## About KORAI
 
-KORAI started with a simple idea:
+Your music collection is more than a list of files. It includes albums you return to, playlists you have put together over time, and tracks you want to organize and listen to on your own terms.
 
-**your local music library should feel as good to use as any modern music app.**
+KORAI gives that collection a dedicated home. Browse music by track, album, or artist; manage metadata and playlists; explore audio information; and adjust playback to suit your headphones, speakers, and preferences. The aim is to bring these everyday tasks together in one coherent desktop experience without making a streaming catalogue the center of the product.
 
-That idea shaped the 1.6.x redesign.
+KORAI is **local-first**. Core playback does not require an account or subscription, and the application is designed around music you already have. Optional online features are available separately when you choose to use them.
 
-v1.7.0 is not just a visual refresh or a new color palette. The interface was reworked around clearer hierarchy, calmer surfaces, stronger typography, smoother states, better responsive behavior, and a more focused relationship between browsing and playback.
+Version **1.7.0** adds a shared master audio engine, customizable sound profiles, device-specific profile switching, live DSP feedback, and improvements to playback behavior, file opening, persistence, and packaged builds.
 
-The goal is not to fill the screen with effects.
+## What's new in v1.7.0
 
-The goal is to make the player feel **natural, polished, fast, and intentional**.
+### Audio engine and sound profiles
 
-> **KORAI is not trying to turn a local music folder into another streaming service.**
->
-> **It is trying to make owning a music library feel good.**
+- **Shared `KoraiAudioEngine`:** A master audio bus brings playback processing into a common signal chain, with controls for preamp, low-cut, bass, treble, warmth, stereo width, crossfeed, reverb, compression, balance, limiter, and output.
+- **11 built-in sound profiles:** Includes Reference, Bass Boost, Headphone Comfort, Room Speakers, Night Mode, Vocal Clarity, Concert Hall, Vinyl Warmth, Ultra Wide, Loud & Punchy, and Mono Focus.
+- **Custom profile management:** Create, save, rename, duplicate, revert, and delete profiles. Up to 50 custom profiles can be stored, with JSON import and export for individual profiles and profile packs.
+- **Profiles for output devices:** Assign a sound profile to an output device and switch automatically when the active device changes.
+- **Live DSP feedback:** View peak levels, gain reduction, and a response curve. A/B bypass makes it easier to compare processed sound with the bypassed signal.
+- **Graphic Studio presets:** Six EQ presets—Flat, Rock, Pop, Classical, Bass Boost, and Treble Boost—along with improved selection feedback and fewer unnecessary settings writes.
 
----
+### Playback and application reliability
 
-# What is KORAI?
+- More consistent queue handling for shuffle, next, previous, track movement, and empty queues.
+- Improved behavior for manual track changes and Repeat One.
+- Playback speed from **0.5× to 2×**, with tempo and pitch-preservation settings reapplied when tracks change.
+- Expanded file-opening argument support for WMA, Opus, CUE, M3U, M3U8, and PLS, with improved checks to distinguish files from folders.
+- Corrected plugin path resolution for packaged builds.
+- Improved database flushing, settings persistence, shutdown behavior, and update installation lifecycle handling.
+- Additional safeguards for HTML escaping, audio-recovery retries, paths, URLs, keys, and plugin-store routes.
 
-KORAI is a **local-first desktop music player** for people who keep their music as files.
-
-Your music stays at the center of the experience. You can build a library from folders on your computer, browse albums and artists, create playlists, search your collection, edit metadata, analyze tracks, and listen without creating an account or paying for a subscription.
-
-Optional online features are kept separate from the local playback experience.
-
-That means KORAI can remain a complete music player even when you do not use its online features.
-
----
-
-# A major redesign
-
-The biggest change in v1.7.0 is the way KORAI **feels**.
-
-Instead of treating every page as a separate interface, the redesign brings the application under one visual language.
-
-### A more coherent interface
-
-The redesigned UI focuses on:
-
-- stronger layout hierarchy
-- cleaner cards and surfaces
-- more deliberate spacing
-- calmer visual treatment
-- improved player controls
-- better home content
-- cleaner settings and secondary pages
-- smoother dialogs and transitions
-- stronger responsive behavior
-- improved keyboard focus
-- better Persian typography
-- lighter glass effects
-
-The result is intentionally restrained.
-
-**Less visual noise. More clarity. Better flow.**
+These changes focus on making sound customization more capable while keeping everyday playback and the installed application more predictable.
 
 ---
 
-# The KORAI experience
+## Features
 
-## Home
+### Music library
 
-The home experience is designed to help you get back to your music quickly.
+Keep your collection organized and easy to browse.
 
-Your library, recent listening, favorites, playlists, and discovery-oriented content come together in a focused space instead of forcing you through a file-browser workflow.
+- Import music from individual files or folders.
+- Browse tracks, albums, and artists.
+- Search your library and manage favorites.
+- Read and edit supported metadata, including multilingual text.
+- Work with album artwork and CUE sheets.
+- Open supported audio and playlist files directly with KORAI.
+- Export library information to CSV.
 
----
+### Playback and queue management
 
-## Library
+The player includes the controls needed for everyday listening, with queue behavior designed to remain consistent as tracks change.
 
-KORAI treats your music collection as a real library.
+- Play, pause, seek, and navigate between tracks.
+- Shuffle and repeat modes.
+- Queue reordering and removal.
+- Gapless playback and configurable crossfade.
+- Playback speed from 0.5× to 2×, with pitch preservation where supported.
+- Playback resume, fullscreen, media keys, and tray or background behavior where supported.
+- A compact mini-player for keeping playback accessible while using other parts of the application.
 
-You can:
+### Playlists
 
-- import folders and files
-- scan metadata
-- browse albums and artists
-- manage favorites
-- edit tags
-- manage album artwork
-- search your collection
-- import and export playlists
-- work with CUE sheets
-- export library data as CSV
+Create playlists for different moods, albums, activities, or listening sessions. KORAI supports importing and exporting common playlist formats so your organization is not limited to one view or workflow.
 
-Supported playlist formats include:
+Supported formats include **M3U, M3U8, PLS, XSPF, ASX, WPL, and JSON**. Support for individual files can depend on the format and the contents of the playlist.
 
-**M3U · M3U8 · PLS · XSPF · ASX · WPL · JSON**
+### Sound profiles and DSP
 
----
+KORAI v1.7.0 introduces `KoraiAudioEngine`, a shared master audio bus that routes playback through a consistent processing chain.
 
-## Playback
+The signal path is:
 
-Playback is built around the features expected from a full desktop player:
+`Input → Preamp → Low-cut → Bass / Treble → Warmth → Stereo Width → Crossfeed → Reverb → Compressor → Balance → Limiter → Output`
 
-- MP3, WAV, FLAC, OGG and M4A
-- gapless playback
-- configurable crossfade
-- 0.5×–2.0× tempo control
-- pitch preservation
-- repeat and smart shuffle
-- resume on startup
-- tray/background behavior
-- media-key support
-- fullscreen mode
-- compact mini-player
+Available controls include preamp, low-cut, bass, treble, warmth, stereo width, headphone crossfeed, reverb amount and character, compression, balance, mono mode, and limiting. The engine also includes a fallback connection path if the master bus cannot be reached.
 
----
+The 11 built-in profiles offer starting points for different listening preferences:
 
-# Audio analysis & visualization
+| Profile | Intended use |
+|---|---|
+| Reference | A neutral starting point |
+| Bass Boost | More low-frequency presence |
+| Headphone Comfort | A gentler headphone presentation with crossfeed |
+| Room Speakers | Speaker-oriented low-cut and stereo width |
+| Night Mode | More controlled dynamics and reduced bass |
+| Vocal Clarity | Greater vocal intelligibility |
+| Concert Hall | A wider, more reverberant presentation |
+| Vinyl Warmth | A warmer tonal character |
+| Ultra Wide | Expanded stereo width with short reverb |
+| Loud & Punchy | A more compressed, forward sound |
+| Mono Focus | Mono listening with compression |
 
-KORAI goes beyond basic playback.
+You can create and manage up to 50 custom profiles, import or export profiles as JSON, and associate profiles with output devices. Live peak and gain-reduction meters, a response curve, and A/B bypass help you understand and compare changes. The safety limiter remains active during bypass comparison.
 
-The player includes:
+Profiles are starting points rather than universal settings; the result depends on the track, playback equipment, and personal preference.
 
-- 5-band EQ
-- real-time spectrum visualization
-- live waveform timeline
-- BPM detection
-- track analysis
-- tempo control
-- crossfade
-- lightweight vocal extraction
+### Graphic Studio and visualization
 
-### Real BPM analysis
+Graphic Studio brings sound adjustment and visual feedback into a dedicated workspace.
 
-One important improvement in v1.7.0 is that BPM analysis is now based on the actual recording instead of a synthetic waveform path.
+- Five-band graphic equalizer.
+- Six presets: Flat, Rock, Pop, Classical, Bass Boost, and Treble Boost.
+- Real-time spectrum visualization.
+- Waveform timeline.
+- Response-curve feedback.
+- Integrated controls for exploring and adjusting the sound.
 
-KORAI can use an existing BPM tag when available. Otherwise it decodes a bounded mono preview through FFmpeg, builds an onset envelope, estimates tempo from the recording, and accounts for common half-time / double-time ambiguity.
+### Audio analysis
 
-This makes BPM a real audio-derived signal rather than a decorative value.
+KORAI can analyze available audio information to make the library more useful.
 
----
+- BPM detection when a suitable tempo tag is unavailable.
+- Audio-derived track features.
+- Lightweight vocal extraction using an FFmpeg-based center-channel approach.
 
-# Recommendations that stay local
+For BPM estimation, KORAI can decode a bounded mono preview through FFmpeg, build an onset envelope, and estimate tempo from the audio. It also accounts for common half-time and double-time ambiguity. Automatic tempo detection is not exact for every track, particularly recordings with unusual rhythms, live performances, or weak transients.
 
-KORAI can generate recommendations from signals already available inside your library and listening history.
+The vocal extraction feature uses stereo center-channel processing. It is **not an AI source-separation model**, and results vary with the mix and stereo arrangement of the recording.
 
-These include:
+### Recommendations
 
-- play history
-- likes and skips
-- measured BPM and provenance-validated waveform features
-- genre relationships
-- artist affinity
-- recent listening context
-- discovery preferences
+Recommendations can use signals available in the local library and listening activity, including listening history, likes and skips, genre and artist relationships, recency, BPM, content similarity, and playlist-flow heuristics.
 
-The recommendation system is intentionally lightweight and local rather than relying on a large online model. When compatible waveform analysis is available, recommendations can compare measured audio feature vectors; missing or legacy, unverified values are not treated as audio evidence.
+This approach is intended to provide useful suggestions without requiring a large remote AI service for core local-library recommendations. The quality of results depends on the metadata and listening information available.
 
-In v1.7.0, generated analyzer fields are deterministic, so analyzing the same file again produces stable feature values instead of changing recommendation signals randomly.
+### Music Explorer
 
----
+Music Explorer provides an optional route to online music discovery beyond the files already in your collection. Online discovery and remote catalog integrations may require network access; core local playback does not depend on them.
 
-# Plugins
+### Plugin system
 
-KORAI has a plugin architecture for extending the player without turning the core application into one giant feature set.
+KORAI includes a plugin architecture for extending the application without making every capability part of the core player.
 
-The current plugin system includes:
+The system includes plugin workers, manifest validation, permission handling, lifecycle management, performance monitoring, hot reload, command-line tooling, and a registry-based plugin catalog. The catalog supports validation, search, version comparison, caching, remote registry loading, and a local fallback.
 
-- isolated plugin workers
-- permissions
-- manifest validation
-- performance monitoring
-- lifecycle management
-- hot reload
-- CLI tooling
-- plugin catalog support
+In packaged builds, plugin paths are resolved through the appropriate packaged resources location rather than relying on paths inside the application archive. As with any extension system, plugins should be obtained from sources you trust.
 
-The plugin catalog is registry-based and supports validation, search, version comparison, caching, remote loading, and local fallback.
+### Settings and desktop integration
 
----
+Settings bring together playback, audio, library scanning, recommendations, plugins, language, appearance, and performance options.
 
-# Persian & RTL support
+Depending on the operating system and build configuration, desktop integration can include file associations or direct file opening, media keys, tray and background behavior, fullscreen playback, playback resume, and compact playback modes.
 
-Persian is part of the product design, not an afterthought.
+### Updates
 
-KORAI bundles **Vazirmatn** and supports:
-
-- Persian UI
-- automatic RTL/LTR switching
-- Persian metadata
-- Persian search
-- Settings
-- Explorer
-- player states
-- dialogs and interaction labels
-
-This makes KORAI comfortable to use in both Persian and English environments.
+Supported packaged builds include an in-app workflow for checking and installing available releases. Update availability depends on the published release assets and build configuration. Version 1.7.0 also improves shutdown and close-to-tray handling to reduce interference with quitting or update installation.
 
 ---
 
-# Local-first by design
+## Privacy and local-first design
 
-KORAI does not require:
+KORAI is built for people who want to manage their music without making a streaming account the center of the experience.
 
-- an account
-- a subscription
-- a premium tier
+- Core local playback does not require an account.
+- Core player use does not require a subscription.
+- Your own music files remain the foundation of the library.
+- Library data, playlists, favorites, listening history, settings, and recommendation signals are designed around local application data.
+- Online discovery and remote plugin-catalog features are separate from essential local playback.
 
-Your library, playlists, favorites, listening history, settings, and recommendation signals are designed around local application data. Optional online functionality remains separate from the local playback path.
+Some optional features use network access when enabled. Local-first does not mean every feature is offline, and users should review the behavior of any plugins or online integrations they choose to use.
 
-**Your files. Your library. Your player.**
-
----
-
-# Music Explorer
-
-KORAI also includes an optional online discovery experience.
-
-Music Explorer can connect to remote music services through the application integration layer and download supported results when the feature is used.
-
-This functionality is intentionally separated from the local library path, so KORAI does not depend on online services to remain useful as a music player.
+The goal is straightforward: give you control over your collection and listening experience without making cloud access a prerequisite for playing music you already own.
 
 ---
 
-# Screenshots
+## Interface and language
+
+KORAI's interface is designed to keep the library and playback controls easy to understand without crowding every screen with information. The design direction emphasizes clearer hierarchy, consistent controls and surfaces, deliberate spacing, restrained motion, and a more focused home experience.
+
+Persian and English are supported, with attention to right-to-left and left-to-right layouts.
+
+- Bundled **Vazirmatn** typography.
+- Persian UI and metadata support.
+- RTL/LTR direction handling.
+- Persian-aware search and presentation across supported views.
+
+Persian support is treated as part of the product, not simply as a reversed text direction.
+
+---
+
+## Reliability and security
+
+KORAI includes ongoing work on application boundaries and state handling, including:
+
+- Centralized validation helpers for paths, URLs, and keys.
+- Stronger HTML escaping for attribute contexts.
+- Rate limiting on plugin-store routes.
+- Validation for plugin and remote-resource boundaries.
+- More reliable database flushing during shutdown.
+- Improved handling of settings changes during active saves.
+- Bounded audio-recovery retries.
+- More consistent quit and install-update lifecycle handling.
+
+These safeguards improve the application's handling of common failure cases, but they do not guarantee that software is free from bugs or security issues. Reproducible reports remain valuable.
+
+---
+
+## Screenshots
 
 <table>
   <tr>
     <td align="center" width="50%">
       <strong>v1.7.0</strong><br><br>
-      <img src="screenshot/V1.7.0/overview.png" alt="KORAI Player v1.7.0 overview" width="100%">
+      <img src="screenshot/V1.6.5/overview.png" alt="KORAI Player v1.7.0 overview" width="100%">
     </td>
     <td align="center" width="50%">
       <strong>v1.5.0</strong><br><br>
@@ -291,146 +262,66 @@ This functionality is intentionally separated from the local library path, so KO
 
 ---
 
-# v1.5 → v1.7.0
+## How KORAI compares
 
-v1.7.0 represents a broader product cleanup rather than a single isolated feature release.
+Music players solve different problems. Streaming services prioritize access to hosted catalogues; simpler players often focus on opening and playing files. KORAI focuses on managing a personal collection and providing more control over how it sounds.
 
-| Area | v1.5.x | v1.7.0 |
-|---|---|---|
-| **Design** | Mature dark/glass interface | Refined, unified UI system |
-| **Typography** | Persian support | Bundled Vazirmatn + stronger RTL presentation |
-| **Motion** | Heavier visual paths | Simpler, smoother interactions |
-| **Glass effects** | More prominent | Lighter and more restrained |
-| **BPM** | Synthetic/mock waveform path | Real audio-based analysis |
-| **Recommendations** | Variable heuristic values | Deterministic feature generation |
-| **Plugins** | Legacy marketplace approach | Registry-based catalog |
-| **Updater** | Earlier update path | Safer staged update flow |
-| **Security** | Existing protections | Centralized validation and boundaries |
-| **Dependencies** | Included legacy packages | Removed unused dependencies |
-| **Release tooling** | Basic | Static audit + testing + security scanning |
+| Priority | KORAI Player | Streaming-first services | Basic folder players |
+|---|---|---|---|
+| Play music you already own | Core purpose | Often secondary to the hosted catalogue | Usually supported |
+| Account required for local playback | No | Depends on the service | Usually not |
+| Subscription required for core player use | No | Depends on the service and plan | Usually not |
+| Library organization | Tracks, albums, artists, metadata, favorites, and playlists | Primarily service catalogue and playlists | Varies by application |
+| Audio customization | Master DSP, sound profiles, EQ presets | Varies by service and device | Varies |
+| Profiles mapped to output devices | Supported | Not typically a core feature | Uncommon |
+| Local analysis and recommendations | Available | Often driven by the service | Varies |
+| Plugin architecture | Included | Usually controlled by the platform | Varies |
+| Persian and RTL support | Explicitly supported | Depends on the application | Depends on the application |
+| Playback without a streaming service | Yes | Usually not the primary model | Yes |
 
-The engineering direction is straightforward:
-
-**less legacy code · tighter boundaries · deterministic behavior · cleaner UI**
+KORAI is not intended to replace every reason to use a streaming service. Hosted catalogues are useful when you want access to music you do not own. KORAI serves a different purpose: giving your existing collection a capable home, with more control over organization and sound.
 
 ---
 
-# Security & reliability
+## Technology
 
-The 1.7.0 release also strengthens the boundaries around files, URLs, plugins, downloads, IPC, and updates.
+KORAI is built with established tools and libraries, including:
 
-Security handling is centralized in:
+- [Electron](https://www.electronjs.org/) — desktop application runtime
+- [FFmpeg](https://ffmpeg.org/) — media decoding and audio processing
+- [music-metadata](https://github.com/Borewit/music-metadata) — metadata parsing
+- [Express](https://expressjs.com/) — local application services
+- [Vazirmatn](https://github.com/rastikerdar/vazirmatn) — Persian typography
+- [Ajv](https://ajv.js.org/) — schema validation
+- [Chokidar](https://github.com/paulmillr/chokidar) — file-system watching
+- [Sharp](https://sharp.pixelplumbing.com/) — image processing
+- [semver](https://github.com/npm/node-semver) — version handling
 
-```text
-src/backend/securityUtils.js
-```
+## Download and installation
 
-The release adds protection around path traversal, unsafe URLs, plugin access, playlist and CUE paths, remote downloads, API rate limiting, and plugin lifecycle handling.
+Download the latest release from GitHub:
 
-The updater was also redesigned around validation, staging, backup, rollback, and safer handling of packaged installations.
+**[Download KORAI Player](https://github.com/Behdad-kanaani/korai-player/releases/latest)**
 
----
+Check the release notes for the available installer and platform-specific instructions.
 
-# Performance philosophy
+## Development
 
-KORAI does not chase performance by simply removing features.
+### Requirements
 
-Instead, v1.7.0 removes work that does not meaningfully improve the experience.
+- Node.js 20 LTS recommended
+- npm 9 or newer
 
-The renderer uses lighter visual treatment, simplified animation paths, optimization hooks, and debounced durable writes.
-
-The goal is not an artificial benchmark number.
-
-The goal is simple:
-
-**the application should feel smooth without wasting resources on decoration.**
-
----
-
-# Architecture
-
-KORAI keeps the application divided between the Electron application layer, backend services, and frontend UI.
-
-```text
-korai-player/
-├── main.js
-├── preload.js
-├── package.json
-│
-├── src/
-│   ├── backend/
-│   │   ├── analyzer.js
-│   │   ├── bpmDetector.js
-│   │   ├── cueParser.js
-│   │   ├── database.js
-│   │   ├── pluginHost.js
-│   │   ├── pluginManager.js
-│   │   ├── pluginRoutes.js
-│   │   ├── pluginStore.js
-│   │   ├── playlistExporter.js
-│   │   ├── recommender.js
-│   │   ├── securityUtils.js
-│   │   ├── updateManager.js
-│   │   └── updater.js
-│   │
-│   └── frontend/
-│       ├── index.html
-│       ├── explorer.html
-│       ├── plugins.html
-│       ├── settings.html
-│       ├── app.js
-│       ├── homePremium.js
-│       ├── updateUI.js
-│       ├── ui/
-│       ├── styles/
-│       └── assets/fonts/vazir/
-│
-├── plugins/
-│   ├── registry.json
-│   └── change-logs@1.0.0/
-│
-├── scripts/
-├── .github/
-├── korai.png
-├── korai.ico
-└── LICENSE
-```
-
----
-
-# Built with
-
-KORAI builds on established open-source technologies:
-
-- [Electron](https://www.electronjs.org/)
-- [FFmpeg](https://ffmpeg.org/)
-- [music-metadata](https://github.com/Borewit/music-metadata)
-- [Express](https://expressjs.com/)
-- [Vazirmatn](https://github.com/rastikerdar/vazirmatn)
-- [Ajv](https://ajv.js.org/)
-- [Chokidar](https://github.com/paulmillr/chokidar)
-- [Sharp](https://sharp.pixelplumbing.com/)
-- [semver](https://github.com/npm/node-semver)
-
----
-
-# Development
-
-Recommended environment:
-
-```text
-Node.js 20 LTS
-npm 9+
-```
-
-Start the application:
+### Run locally
 
 ```bash
+git clone https://github.com/Behdad-kanaani/korai-player.git
+cd korai-player
 npm install
 npm start
 ```
 
-Run the main checks:
+### Run project checks
 
 ```bash
 npm test
@@ -439,86 +330,69 @@ npm run check
 npm run plugin
 ```
 
-Create a Windows installer:
+### Build for Windows
 
 ```bash
 npm run dist:win
 ```
 
-Plugin development is also available through the included CLI:
+### Create a plugin
 
 ```bash
 npm run plugin -- create my-plugin
 ```
 
-The release includes static auditing and GitHub Actions-based security scanning as part of the project hygiene and release workflow.
+See `package.json` for the complete list of available scripts and build targets.
 
----
+## Project structure
 
-# Release
+```text
+korai-player/
+├── main.js
+├── preload.js
+├── package.json
+├── src/
+│   ├── backend/       # Analysis, library services, plugins, updates, persistence
+│   └── frontend/      # Player UI, audio engine, DSP, settings, explorer
+├── plugins/
+│   └── registry.json
+├── scripts/           # Auditing and developer tooling
+├── screenshot/
+├── korai.png
+├── korai.ico
+└── LICENSE
+```
 
-### v1.7.0
+## Project direction
 
+KORAI is an ongoing project. Its goal is not to add features simply to make a longer list. It is to keep improving the parts that matter when using a music player every day: a library that is easy to navigate, sound controls that are useful, playback that behaves predictably, and an interface that stays out of the way of the music.
 
-The important part is not the size of the diff.
+Version 1.7.0 is an important step in that work, with its shared audio engine, customizable sound profiles, improved queue handling, and continued attention to packaged-app reliability.
 
-It is the direction of the project:
+## Contributing and feedback
 
-> **Cleaner interface.**
->
-> **Simpler behavior.**
->
-> **Stronger foundations.**
->
-> **Less legacy.**
+Bug reports, feature ideas, reproducible issues, and technical feedback are welcome.
 
+- [Open an issue](https://github.com/Behdad-kanaani/korai-player/issues)
+- [Start a discussion](https://github.com/Behdad-kanaani/korai-player/discussions)
+- [Browse releases](https://github.com/Behdad-kanaani/korai-player/releases)
 
+When reporting a bug, include your KORAI version, operating system, steps to reproduce the issue, and relevant logs or screenshots when possible.
 
----
+## License
 
-# Contributing
-
-KORAI is an evolving open-source project.
-
-Issues, ideas, technical feedback, and improvements are welcome through GitHub.
-
-<a href="https://github.com/Behdad-kanaani/korai-player/issues">Issues</a>
-&nbsp;·&nbsp;
-<a href="https://github.com/Behdad-kanaani/korai-player/discussions">Discussions</a>
-
----
-
-# License
-
-**Apache License 2.0 + Commons Clause**
+KORAI Player is distributed under **Apache License 2.0 + Commons Clause**. Read the repository's [`LICENSE`](LICENSE) file for the exact terms and restrictions.
 
 Copyright © 2026 Behdad Kanaani.
-
-See [`LICENSE`](LICENSE) for the exact terms.
 
 ---
 
 <div align="center">
 
-### KORAI Player v1.7.0
+### KORAI Player · v1.7.0
 
-**Free. Local-first. Built for people who own their music.**
+**Your collection, organized. Your sound, your choice.**
 
-<a href="https://github.com/Behdad-kanaani/korai-player/releases/latest">Download KORAI</a>
+[Download the latest release](https://github.com/Behdad-kanaani/korai-player/releases/latest)
 
 </div>
-
----
-
-# Sound Profiles & effects
-
-Open **DSP Studio** to find the **Sound Profiles** panel at the top.
-
-- **11 built-in profiles** — Reference, Bass Boost, Headphone Comfort, Room Speakers, Night Mode, Vocal Clarity, Concert Hall, Vinyl Warmth, Ultra Wide, Loud & Punchy, Mono Focus.
-- **Your own profiles** — tweak anything, then *Save as new profile*; rename, duplicate, delete, import and export them as `.json` files.
-- **Effects** — preamp, low-cut, bass/treble shelves, analog warmth, stereo width (mid/side), headphone crossfeed, balance, mono, reverb (size / damping / amount), compressor and a safety limiter.
-- **Output devices** — pick the output device and bind a profile to it; KORAI switches profile automatically when that device becomes active.
-- **A/B compare** — the ear button temporarily bypasses all effects; a live response curve and level / gain-reduction meters show what is happening.
-
-Effects live on one shared master bus, so gapless playback and crossfades keep working without rebuilding the chain.
-

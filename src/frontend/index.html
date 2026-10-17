@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="styles/home.css">
     <link rel="stylesheet" href="styles/update.css">
     <link rel="stylesheet" href="styles/ui.css">
+    <link rel="stylesheet" href="styles/audio-profiles.css">
     </head>
 <body class="theme-default ltr">
 
@@ -545,6 +546,14 @@
                     </div>
                     <button class="dsp-reset-btn" id="resetEqBtn" type="button"><i class="fa-solid fa-rotate-left"></i><span data-translate="reset">Reset</span></button>
                 </div>
+                <div class="dsp-eq-presets" role="group" aria-label="Equalizer presets" data-translate-aria="audioEqPresets">
+                    <button class="dsp-eq-preset active" type="button" data-preset="flat" data-translate="audioEqFlat">Flat</button>
+                    <button class="dsp-eq-preset" type="button" data-preset="rock" data-translate="audioEqRock">Rock</button>
+                    <button class="dsp-eq-preset" type="button" data-preset="pop" data-translate="audioEqPop">Pop</button>
+                    <button class="dsp-eq-preset" type="button" data-preset="classical" data-translate="audioEqClassical">Classical</button>
+                    <button class="dsp-eq-preset" type="button" data-preset="bass" data-translate="audioEqBass">Bass Boost</button>
+                    <button class="dsp-eq-preset" type="button" data-preset="treble" data-translate="audioEqTreble">Treble Boost</button>
+                </div>
                 <div class="eq-grid" role="group" data-translate-aria="graphicStudio" aria-label="Graphic equalizer">
                     <div class="eq-slider-col"><span class="eq-val" id="eqVal0">0dB</span><input type="range" class="eq-slider" id="eqSlider0" min="-12" max="12" step="1" value="0" aria-label="60Hz"><span class="eq-label">60Hz</span></div>
                     <div class="eq-slider-col"><span class="eq-val" id="eqVal1">0dB</span><input type="range" class="eq-slider" id="eqSlider1" min="-12" max="12" step="1" value="0" aria-label="230Hz"><span class="eq-label">230Hz</span></div>
@@ -594,8 +603,11 @@
     <script src="playbackQueueState.js"></script>
     <script src="playbackTransition.js"></script>
     <script src="audioNormalization.js"></script>
+    <script src="audioEngine.js"></script>
     <script src="cuePlayback.js"></script>
     <script src="app.js"></script>
+    <script src="audioProfiles.js"></script>
+    <script src="audioProfilesUI.js"></script>
     <script src="homePremium.js"></script>
 <script src="settingsStore.js"></script>
     <script src="settingsSync.js"></script>

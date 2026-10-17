@@ -337,6 +337,22 @@ let currentLanguage = 'en';
 
 // FILE ASSOCIATION HANDLING
 
+const OPENABLE_EXTENSIONS = /\.(mp3|wav|ogg|m4a|flac|aac|wma|opus|cue|m3u|m3u8|pls)$/i;
+
+function extractOpenableFiles(argv) {
+    // Only real file arguments are accepted: never filter on substrings of the
+    // path, because folders such as "My Player Songs" or "korai" are legitimate.
+    const files = [];
+    for (const arg of argv) {
+        if (typeof arg !== 'string' || !arg || arg.startsWith('-')) continue;
+        if (!OPENABLE_EXTENSIONS.test(arg)) continue;
+        try {
+            if (path.isAbsolute(arg) && fs.statSync(arg).isFile()) files.push(arg);
+        } catch (_) { /* not an existing file */ }
+    }
+    return files;
+}
+
 async function processPendingFiles() {
     if (pendingFiles.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
         const files = [...pendingFiles];
@@ -354,16 +370,7 @@ async function processPendingFiles() {
 }
 
 function handleFileOpen() {
-    const files = process.argv.slice(1).filter(arg => {
-        return arg.match(/\.(mp3|wav|ogg|m4a|flac)$/i) && 
-               !arg.includes('.exe') && 
-               !arg.includes('electron') &&
-               !arg.includes('KORAI') &&
-               !arg.includes('korai') &&
-               !arg.includes('Player') &&
-               !arg.includes('player');
-    });
-    
+    const files = extractOpenableFiles(process.argv.slice(1));
     if (files.length > 0) {
         console.debug('Files opened via command line:', files);
         pendingFiles = files;
@@ -387,16 +394,7 @@ app.on('second-instance', (event, commandLine, workingDirectory) => {
         mainWindow.show();
         mainWindow.focus();
         
-        const files = commandLine.slice(1).filter(arg => {
-            if (arg.startsWith('--')) return false;
-            if (arg.includes('electron')) return false;
-            if (arg.includes('KORAI')) return false;
-            try {
-                return arg.match(/\.(mp3|wav|ogg|m4a|flac)$/i) && fs.existsSync(arg);
-            } catch (e) {
-                return false;
-            }
-        });
+        const files = extractOpenableFiles(commandLine.slice(1));
         
         if (files.length > 0) {
             console.debug('Files from second instance:', files);
@@ -679,7 +677,7 @@ async function createSystemTray() {
                 <circle cx="8" cy="8" r="3" fill="#ffffff"/>
             </svg>
         `);
-        trayIcon = nativeImage.createFromBuffer(svg);
+        trayIcon = nativeImage.createEmpty();
     }
     
     try {
@@ -795,6 +793,15 @@ async function sendUpdateStatusToRenderer() {
     }
 }
 
+function getBundledPluginsRoot() {
+    // electron-builder ships plugins/ through extraResources, so in a packaged
+    // build they live in process.resourcesPath, not inside app.asar.
+    if (app.isPackaged && process.resourcesPath && fs.existsSync(path.join(process.resourcesPath, 'plugins'))) {
+        return process.resourcesPath;
+    }
+    return app.getAppPath();
+}
+
 async function seedBundledPlugins(appPath, userDataPath) {
     try {
         const src = path.join(appPath, 'plugins');
@@ -858,7 +865,7 @@ async function createWindow() {
         if (startupTimer && typeof startupTimer.mark === 'function') startupTimer.mark('creating-window');
         
         const userDataPath = app.getPath('userData');
-        await seedBundledPlugins(app.getAppPath(), userDataPath);
+        await seedBundledPlugins(getBundledPluginsRoot(), userDataPath);
         await initializeHttpServer(userDataPath);
         console.debug('HTTP Server started');
         
@@ -1688,10 +1695,19 @@ app.whenReady().then(async () => {
 app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
         await ensureWindowCreation();
+    } else if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+        mainWindow.show();
     }
 });
 
+app.on('before-quit', () => {
+    // Without this the window 'close' handler keeps hiding the window to the
+    // tray, which blocks Cmd+Q, OS shutdown and autoUpdater.quitAndInstall().
+    isQuitting = true;
+});
+
 app.on('will-quit', () => {
+    try { require('./src/backend/database').flushDatabase?.(); } catch (e) {}
     stopHealthCheck();
     try { if (powerCleanup) powerCleanup(); } catch (e) {}
 });

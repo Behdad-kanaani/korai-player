@@ -4,7 +4,7 @@
 
 # KORAI Player
 
-### v1.6.6 · Local-first desktop music player
+### v1.7.0 · Local-first desktop music player
 
 **A cleaner way to enjoy the music you already own.**
 
@@ -53,7 +53,7 @@ KORAI started with a simple idea:
 
 That idea shaped the 1.6.x redesign.
 
-v1.6.6 is not just a visual refresh or a new color palette. The interface was reworked around clearer hierarchy, calmer surfaces, stronger typography, smoother states, better responsive behavior, and a more focused relationship between browsing and playback.
+v1.7.0 is not just a visual refresh or a new color palette. The interface was reworked around clearer hierarchy, calmer surfaces, stronger typography, smoother states, better responsive behavior, and a more focused relationship between browsing and playback.
 
 The goal is not to fill the screen with effects.
 
@@ -79,7 +79,7 @@ That means KORAI can remain a complete music player even when you do not use its
 
 # A major redesign
 
-The biggest change in v1.6.6 is the way KORAI **feels**.
+The biggest change in v1.7.0 is the way KORAI **feels**.
 
 Instead of treating every page as a separate interface, the redesign brings the application under one visual language.
 
@@ -174,7 +174,7 @@ The player includes:
 
 ### Real BPM analysis
 
-One important improvement in v1.6.6 is that BPM analysis is now based on the actual recording instead of a synthetic waveform path.
+One important improvement in v1.7.0 is that BPM analysis is now based on the actual recording instead of a synthetic waveform path.
 
 KORAI can use an existing BPM tag when available. Otherwise it decodes a bounded mono preview through FFmpeg, builds an onset envelope, estimates tempo from the recording, and accounts for common half-time / double-time ambiguity.
 
@@ -198,7 +198,7 @@ These include:
 
 The recommendation system is intentionally lightweight and local rather than relying on a large online model. When compatible waveform analysis is available, recommendations can compare measured audio feature vectors; missing or legacy, unverified values are not treated as audio evidence.
 
-In v1.6.6, generated analyzer fields are deterministic, so analyzing the same file again produces stable feature values instead of changing recommendation signals randomly.
+In v1.7.0, generated analyzer fields are deterministic, so analyzing the same file again produces stable feature values instead of changing recommendation signals randomly.
 
 ---
 
@@ -269,8 +269,8 @@ This functionality is intentionally separated from the local library path, so KO
 <table>
   <tr>
     <td align="center" width="50%">
-      <strong>v1.6.6</strong><br><br>
-      <img src="screenshot/V1.6.6/overview.png" alt="KORAI Player v1.6.6 overview" width="100%">
+      <strong>v1.7.0</strong><br><br>
+      <img src="screenshot/V1.7.0/overview.png" alt="KORAI Player v1.7.0 overview" width="100%">
     </td>
     <td align="center" width="50%">
       <strong>v1.5.0</strong><br><br>
@@ -291,11 +291,11 @@ This functionality is intentionally separated from the local library path, so KO
 
 ---
 
-# v1.5 → v1.6.6
+# v1.5 → v1.7.0
 
-v1.6.6 represents a broader product cleanup rather than a single isolated feature release.
+v1.7.0 represents a broader product cleanup rather than a single isolated feature release.
 
-| Area | v1.5.x | v1.6.6 |
+| Area | v1.5.x | v1.7.0 |
 |---|---|---|
 | **Design** | Mature dark/glass interface | Refined, unified UI system |
 | **Typography** | Persian support | Bundled Vazirmatn + stronger RTL presentation |
@@ -317,7 +317,7 @@ The engineering direction is straightforward:
 
 # Security & reliability
 
-The 1.6.6 release also strengthens the boundaries around files, URLs, plugins, downloads, IPC, and updates.
+The 1.7.0 release also strengthens the boundaries around files, URLs, plugins, downloads, IPC, and updates.
 
 Security handling is centralized in:
 
@@ -335,7 +335,7 @@ The updater was also redesigned around validation, staging, backup, rollback, an
 
 KORAI does not chase performance by simply removing features.
 
-Instead, v1.6.6 removes work that does not meaningfully improve the experience.
+Instead, v1.7.0 removes work that does not meaningfully improve the experience.
 
 The renderer uses lighter visual treatment, simplified animation paths, optimization hooks, and debounced durable writes.
 
@@ -457,7 +457,7 @@ The release includes static auditing and GitHub Actions-based security scanning 
 
 # Release
 
-### v1.6.6
+### v1.7.0
 
 
 The important part is not the size of the diff.
@@ -500,10 +500,25 @@ See [`LICENSE`](LICENSE) for the exact terms.
 
 <div align="center">
 
-### KORAI Player v1.6.6
+### KORAI Player v1.7.0
 
 **Free. Local-first. Built for people who own their music.**
 
 <a href="https://github.com/Behdad-kanaani/korai-player/releases/latest">Download KORAI</a>
 
 </div>
+
+---
+
+# Sound Profiles & effects
+
+Open **DSP Studio** to find the **Sound Profiles** panel at the top.
+
+- **11 built-in profiles** — Reference, Bass Boost, Headphone Comfort, Room Speakers, Night Mode, Vocal Clarity, Concert Hall, Vinyl Warmth, Ultra Wide, Loud & Punchy, Mono Focus.
+- **Your own profiles** — tweak anything, then *Save as new profile*; rename, duplicate, delete, import and export them as `.json` files.
+- **Effects** — preamp, low-cut, bass/treble shelves, analog warmth, stereo width (mid/side), headphone crossfeed, balance, mono, reverb (size / damping / amount), compressor and a safety limiter.
+- **Output devices** — pick the output device and bind a profile to it; KORAI switches profile automatically when that device becomes active.
+- **A/B compare** — the ear button temporarily bypasses all effects; a live response curve and level / gain-reduction meters show what is happening.
+
+Effects live on one shared master bus, so gapless playback and crossfades keep working without rebuilding the chain.
+

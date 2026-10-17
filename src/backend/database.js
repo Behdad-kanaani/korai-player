@@ -754,4 +754,11 @@ function getDb() {
   };
 }
 
-module.exports = { initDatabase, getDb };
+function flushDatabase() {
+  // Persist any debounced write before the process exits.
+  if (!dbPath || !dbData) return;
+  clearTimeout(saveDebounceTimer);
+  saveDatabaseSync();
+}
+
+module.exports = { initDatabase, getDb, flushDatabase };

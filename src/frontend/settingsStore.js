@@ -391,8 +391,13 @@ class SettingsStore {
     }
 
     async _saveToServer() {
-        if (this._pendingSave) return;
+        if (this._pendingSave) {
+            // A save is in flight: remember that newer changes need another pass.
+            this._saveAgain = true;
+            return;
+        }
         this._pendingSave = true;
+        this._saveAgain = false;
 
         try {
             const res = await this._apiFetch('/api/settings', {
@@ -407,6 +412,10 @@ class SettingsStore {
 
             console.debug('Settings saved to server');
             this._pendingSave = false;
+            if (this._saveAgain) {
+                this._saveAgain = false;
+                this._scheduleSave();
+            }
         } catch (err) {
             console.error('Failed to save settings:', err.message);
             this._pendingSave = false;

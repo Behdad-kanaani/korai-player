@@ -2391,6 +2391,16 @@ function setupRoutes() {
 
 let runningServer = null;
 
+function resolveBundledAppRoot() {
+    // Packaged builds ship plugins/ via extraResources (outside app.asar).
+    try {
+        if (process.resourcesPath && fs.existsSync(path.join(process.resourcesPath, 'plugins', 'registry.json'))) {
+            return process.resourcesPath;
+        }
+    } catch (_) { /* fall through */ }
+    return path.resolve(__dirname, '../..');
+}
+
 async function startServer(port, userDataPath) {
     if (runningServer && !runningServer.listening) runningServer = null;
     if (runningServer && runningServer.listening) return runningServer;
@@ -2412,7 +2422,7 @@ async function startServer(port, userDataPath) {
         performanceMonitor: pluginPerf,
         appRoot: path.resolve(__dirname, '../..'),
         pluginsDir: path.join(userDataPath, 'plugins'),
-        bundledPluginsDir: path.join(path.resolve(__dirname, '../..'), 'plugins'),
+        bundledPluginsDir: path.join(resolveBundledAppRoot(), 'plugins'),
         hotReload: false
     });
     console.debug(` Plugin system initialized: ${pluginManager.listInstalled().length} plugins available`);
@@ -2434,7 +2444,7 @@ async function startServer(port, userDataPath) {
     AudioSeparator.setTempDirectory(extractTempDir);
     setupRoutes();
     const PluginStore = require('./pluginStore');
-    const pluginStore = new PluginStore({ appRoot: path.resolve(__dirname, '../..') });
+    const pluginStore = new PluginStore({ appRoot: resolveBundledAppRoot() });
     setupPluginRoutes(app, pluginManager, pluginHost, pluginStore);
 
     // Fallback for API routes to return JSON instead of HTML 404 pages

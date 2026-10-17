@@ -75,5 +75,79 @@
         };
     }
 
-    return { capture, restore };
+    function shuffle(tracks, currentTrackId, random = Math.random, currentTrack = null) {
+        const remaining = Array.isArray(tracks) ? [...tracks] : [];
+        const currentIndex = currentTrackId == null
+            ? -1
+            : remaining.findIndex(track => String(track?.id) === String(currentTrackId));
+        const activeTrack = currentIndex >= 0
+            ? remaining.splice(currentIndex, 1)[0]
+            : currentTrack && currentTrackId != null && String(currentTrack.id) === String(currentTrackId)
+                ? currentTrack
+                : null;
+
+        for (let index = remaining.length - 1; index > 0; index -= 1) {
+            const sample = Number(random());
+            const boundedSample = Number.isFinite(sample) ? Math.min(1 - Number.EPSILON, Math.max(0, sample)) : 0;
+            const target = Math.floor(boundedSample * (index + 1));
+            [remaining[index], remaining[target]] = [remaining[target], remaining[index]];
+        }
+
+        return {
+            queue: activeTrack ? [activeTrack, ...remaining] : remaining,
+            queueIndex: activeTrack ? 0 : -1
+        };
+    }
+
+    function getNextIndex(length, index, repeat = false) {
+        if (!Number.isInteger(length) || length <= 0) return -1;
+        if (!Number.isInteger(index) || index < 0) return 0;
+        if (index >= length - 1) return repeat ? 0 : -1;
+        return index + 1;
+    }
+
+    function getPreviousIndex(length, index, repeat = false) {
+        if (!Number.isInteger(length) || length <= 0) return -1;
+        if (!Number.isInteger(index) || index <= 0) return repeat ? length - 1 : -1;
+        if (index >= length) return length - 1;
+        return index - 1;
+    }
+
+    function move(tracks, fromIndex, toIndex, activeIndex) {
+        if (!Array.isArray(tracks) || !Number.isInteger(fromIndex) || !Number.isInteger(toIndex) ||
+            fromIndex < 0 || fromIndex >= tracks.length || toIndex < 0 || toIndex >= tracks.length) {
+            return { queue: Array.isArray(tracks) ? [...tracks] : [], queueIndex: activeIndex };
+        }
+
+        const queue = [...tracks];
+        const activeTrack = Number.isInteger(activeIndex) && activeIndex >= 0 && activeIndex < queue.length
+            ? queue[activeIndex]
+            : null;
+        const [movedTrack] = queue.splice(fromIndex, 1);
+        queue.splice(toIndex, 0, movedTrack);
+
+        return {
+            queue,
+            queueIndex: activeTrack ? queue.indexOf(activeTrack) : -1
+        };
+    }
+
+    function moveBefore(tracks, movedTrackId, targetTrackId) {
+        if (!Array.isArray(tracks)) return [];
+        const queue = [...tracks];
+        const fromIndex = queue.findIndex(track => String(track?.id) === String(movedTrackId));
+        if (fromIndex < 0 || movedTrackId == null || targetTrackId == null ||
+            String(movedTrackId) === String(targetTrackId)) return queue;
+
+        const [movedTrack] = queue.splice(fromIndex, 1);
+        const targetIndex = queue.findIndex(track => String(track?.id) === String(targetTrackId));
+        if (targetIndex < 0) {
+            queue.splice(fromIndex, 0, movedTrack);
+            return queue;
+        }
+        queue.splice(targetIndex, 0, movedTrack);
+        return queue;
+    }
+
+    return { capture, restore, shuffle, getNextIndex, getPreviousIndex, move, moveBefore };
 });

@@ -14,6 +14,8 @@ function stableUnit(seed) {
 
 
 // Relative influence of listening actions.
+const { persistUserHistory, flushUserHistoryWrites } = require('./userHistoryStore');
+
 const BEHAVIOR_WEIGHTS = {
     // Positive signals
     like: 0.50,
@@ -863,14 +865,10 @@ function updateUserHistory(userHistory, trackId, action, userDataPath) {
         }
     }
     
-    // Async save to disk (non-blocking)
-    if (userDataPath) {
-        const fs = require('fs');
-        const path = require('path');
-        const historyPath = path.join(userDataPath, 'user_history.json');
-        fs.promises.writeFile(historyPath, JSON.stringify(userHistory, null, 2))
-            .catch(e => console.error('Failed to save user history:', e));
-    }
+    // Serialize and atomically replace snapshots. Concurrent interaction events
+    // must never race multiple writeFile calls against the same JSON file.
+    persistUserHistory(userHistory, userDataPath)
+        .catch(error => console.error('Failed to save user history:', error));
     
     return history;
 }
@@ -1462,6 +1460,7 @@ module.exports = {
     // User history management
     updateUserHistory,
     loadUserHistory,
+    flushUserHistoryWrites,
     
     // Core scoring functions
     calculatePreferenceScore,

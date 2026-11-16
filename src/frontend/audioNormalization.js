@@ -4,6 +4,9 @@
     if (root) root.KoraiAudioNormalization = api;
 })(typeof window !== 'undefined' ? window : globalThis, function createAudioNormalization() {
     function finiteNumber(value) {
+        // Missing metadata must remain missing: Number(null) and Number('') are 0.
+        if (value === null || value === undefined ||
+            (typeof value === 'string' && value.trim() === '')) return null;
         const number = Number(value);
         return Number.isFinite(number) ? number : null;
     }

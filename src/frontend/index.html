@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" dir="ltr" data-korai-ui="1.6.4-final">
+<html lang="en" dir="ltr" data-korai-ui="1.8.0">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="styles/update.css">
     <link rel="stylesheet" href="styles/ui.css">
     <link rel="stylesheet" href="styles/audio-profiles.css">
+    <link rel="stylesheet" href="styles/pages.css">
     </head>
 <body class="theme-default ltr">
 
@@ -166,6 +167,10 @@
                 <div class="nav-item" id="navStats" onclick="switchSection('stats')">
                     <i class="fa-solid fa-chart-simple"></i>
                     <span id="navStatsText" data-translate="navStatsText">Live Telemetry</span>
+                </div>
+                <div class="nav-item" id="navIntelligence" onclick="switchSection('intelligence')">
+                    <i class="fa-solid fa-brain"></i>
+                    <span>Intelligence</span>
                 </div>
                 <div class="nav-item" id="navSettings" onclick="window.location.href='settings.html'">
                     <i class="fa-solid fa-gear"></i>
@@ -602,13 +607,19 @@
     <script src="pluginManagerUI.js"></script>
     <script src="playbackQueueState.js"></script>
     <script src="playbackTransition.js"></script>
+    <script src="mediaElementSource.js"></script>
+    <script src="playbackTrackResolution.js"></script>
     <script src="audioNormalization.js"></script>
     <script src="audioEngine.js"></script>
+    <script src="equalizerBypass.js"></script>
     <script src="cuePlayback.js"></script>
+    <script src="playbackRequestControl.js"></script>
+    <script src="htmlSecurity.js"></script>
     <script src="app.js"></script>
     <script src="audioProfiles.js"></script>
     <script src="audioProfilesUI.js"></script>
     <script src="homePremium.js"></script>
+<script src="intelligenceUI.js"></script>
 <script src="settingsStore.js"></script>
     <script src="settingsSync.js"></script>
     <script src="updateUI.js"></script>

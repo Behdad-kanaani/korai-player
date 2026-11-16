@@ -38,18 +38,23 @@ const { createRateLimiter, assertSafeUrl, fetchSafeUrl, resolveSafePath, resolve
 const { filterAvailableTracks } = require('./trackAvailability');
 const { planAudioImport } = require('./libraryImport');
 const { normalizeTagUpdates, normalizeTrackIds } = require('./tagUpdates');
+const { rangeFromHeader } = require('./byteRange');
+const { MOODS, buildListeningOverview, buildBehaviorOverview, getLibraryHealth, discoverTracks, filterPlaylist, parseLrc, measurePcmDiagnostics, measureStandardLoudness } = require('./intelligence');
 
 const MAX_REMOTE_AUDIO_BYTES = 250 * 1024 * 1024;
 const MAX_PROXY_HTML_BYTES = 5 * 1024 * 1024;
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 30_000) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-        return await fetch(url, { ...options, signal: controller.signal });
-    } finally {
-        clearTimeout(timer);
-    }
+    // Never use the ambient Fetch implementation for user-influenced URLs:
+    // fetchSafeUrl validates every redirect and pins the DNS result to the
+    // socket, preventing DNS rebinding between validation and connection.
+    return fetchSafeUrl(String(url), {
+        allowHttp: true,
+        headers: options.headers || {},
+        allowHosts: options.allowHosts,
+        timeoutMs,
+        maxRedirects: 5
+    });
 }
 
 async function streamRemoteAudio(response, res) {
@@ -140,27 +145,6 @@ async function writeResponseToFile(response, destPath, maxBytes = MAX_REMOTE_AUD
     }
 }
 
-function rangeFromHeader(value, fileSize) {
-    if (!value || !value.startsWith('bytes=')) return null;
-    if (value.includes(',')) throw new Error('Multiple byte ranges are not supported');
-    const [rawStart, rawEnd] = value.slice(6).split('-', 2);
-    let start;
-    let end;
-    if (rawStart === '') {
-        const suffixLength = Number.parseInt(rawEnd, 10);
-        if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) throw new Error('Invalid byte range');
-        start = Math.max(0, fileSize - suffixLength);
-        end = fileSize - 1;
-    } else {
-        start = Number.parseInt(rawStart, 10);
-        end = rawEnd === '' ? fileSize - 1 : Number.parseInt(rawEnd, 10);
-        if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start) throw new Error('Invalid byte range');
-        if (start >= fileSize) throw new Error('Range not satisfiable');
-        end = Math.min(end, fileSize - 1);
-    }
-    return { start, end };
-}
-
 function extensionFromContentType(contentType, fallback = '.mp3') {
     const value = String(contentType || '').toLowerCase().split(';')[0].trim();
     const map = {
@@ -171,28 +155,8 @@ function extensionFromContentType(contentType, fallback = '.mp3') {
     return map[value] || fallback;
 }
 
-function resolveYtDlpExecutable() {
-    const configured = process.env.KORAI_YTDLP_PATH;
-    if (configured && fs.existsSync(configured)) return configured;
-    return process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
-}
-
-function downloadWithYtDlp(url, outputPath) {
-    return new Promise((resolve, reject) => {
-        const executable = resolveYtDlpExecutable();
-        const args = ['--no-playlist', '--no-progress', '--extract-audio', '--audio-format', 'mp3', '--audio-quality', '0', '--output', outputPath, url];
-        const child = spawn(executable, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-        let stderr = '';
-        let timer = setTimeout(() => { try { child.kill('SIGTERM'); } catch {} reject(new Error('yt-dlp timeout')); }, 120_000);
-        child.stderr.on('data', chunk => { stderr += chunk.toString(); if (stderr.length > 4000) stderr = stderr.slice(-4000); });
-        child.on('error', err => { clearTimeout(timer); reject(err); });
-        child.on('close', code => {
-            clearTimeout(timer);
-            if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) return resolve(outputPath);
-            reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
-        });
-    });
-}
+// Arbitrary media URLs are fetched only through fetchSafeUrl. Delegating
+// untrusted URLs to yt-dlp would bypass DNS pinning and redirect validation.
 
 const app = express();
 let serverUserDataPath = null;
@@ -223,9 +187,24 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Range', 'Authorization', 'Cache-Control']
 }));
+// Apply coarse and endpoint-specific API limits before body parsing so request
+// bursts are rejected before JSON/form parsing consumes CPU or memory.
+const diagnosticsLimiter = createRateLimiter(20, 60_000);
+app.use('/api', createRateLimiter(200, 60_000));
+app.use('/api/diagnostics/perf', diagnosticsLimiter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use('/api', createRateLimiter(200, 60_000));
+
+// Independent budgets for network, analysis, state-changing, diagnostics, and
+// lightweight health endpoints. These complement the API-wide ceiling.
+// They complement the coarse API-wide limiter and prevent expensive endpoints
+// from monopolizing the local service.
+const expensiveOperationLimiter = createRateLimiter(6, 60_000);
+const mediaAnalysisLimiter = createRateLimiter(3, 60_000);
+const networkOperationLimiter = createRateLimiter(8, 60_000);
+const mutationLimiter = createRateLimiter(30, 60_000);
+const mediaStreamLimiter = createRateLimiter(120, 60_000);
+const healthLimiter = createRateLimiter(120, 60_000);
 
 // =============================================================================
 // MUSICDEL PROXY ENDPOINTS
@@ -238,7 +217,7 @@ app.use('/api', createRateLimiter(200, 60_000));
  * Request body: { url: "https://musicdel.ir/..." }
  * Response: HTML content of the requested page
  */
-app.post('/api/proxy/musicdel', async (req, res) => {
+app.post('/api/proxy/musicdel', networkOperationLimiter, async (req, res) => {
     try {
         const { url } = req.body;
         
@@ -310,7 +289,7 @@ app.post('/api/proxy/musicdel', async (req, res) => {
  * Query param: url - Direct download URL from musicdel.ir
  * Response: Audio file with proper headers
  */
-app.get('/api/proxy/musicdel/download', async (req, res) => {
+app.get('/api/proxy/musicdel/download', networkOperationLimiter, async (req, res) => {
     try {
         const { url } = req.query;
         
@@ -354,7 +333,7 @@ app.get('/api/proxy/musicdel/download', async (req, res) => {
  * Request body: { query: "song name" }
  * Response: { results: [ { title, subtitle, thumbnail, url } ] }
  */
-app.post('/api/search/musicdel', async (req, res) => {
+app.post('/api/search/musicdel', networkOperationLimiter, async (req, res) => {
     try {
         const { query } = req.body;
 
@@ -450,7 +429,7 @@ app.post('/api/search/musicdel', async (req, res) => {
  * endpoint directly to the renderer. If the upstream is unavailable we return
  * a clear 503 instead of demo/fake results.
  */
-app.get('/api/search/global', async (req, res) => {
+app.get('/api/search/global', networkOperationLimiter, async (req, res) => {
     const query = String(req.query.query || '').trim();
     const filter = String(req.query.filter || 'songs').trim().toLowerCase();
     const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit || '24', 10) || 24));
@@ -478,7 +457,8 @@ app.get('/api/search/global', async (req, res) => {
             headers: {
                 'User-Agent': 'KORAI-Player/1.6.2',
                 'Accept': 'application/json'
-            }
+            },
+            allowHosts: ['music.korai.ir']
         }, 15_000);
 
         if (!response.ok) {
@@ -612,7 +592,7 @@ function setupRoutes() {
     const duplicateScans = new Map();
     let activeDuplicateScanId = null;
 
-    app.post('/api/duplicates/scan', (req, res) => {
+    app.post('/api/duplicates/scan', expensiveOperationLimiter, (req, res) => {
         try {
             if (activeDuplicateScanId) {
                 const activeScan = duplicateScans.get(activeDuplicateScanId);
@@ -702,7 +682,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/settings', (req, res) => {
+    app.post('/api/settings', mutationLimiter, (req, res) => {
         try {
             const db = getDb();
             const updated = db.updateSettings(req.body);
@@ -729,7 +709,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/settings/import', (req, res) => {
+    app.post('/api/settings/import', mutationLimiter, (req, res) => {
         try {
             const { settings, eqPresets, playlists, likedTracks } = req.body;
             const db = getDb();
@@ -743,7 +723,7 @@ function setupRoutes() {
 
 
     // Reset all settings to defaults
-    app.post('/api/settings/reset', (req, res) => {
+    app.post('/api/settings/reset', mutationLimiter, (req, res) => {
         try {
             const db = getDb();
             const defaultSettings = {
@@ -789,7 +769,7 @@ function setupRoutes() {
     });
 
     // Clear cache
-    app.post('/api/settings/clear-cache', (req, res) => {
+    app.post('/api/settings/clear-cache', mutationLimiter, (req, res) => {
         try {
             const userDataPath = serverUserDataPath;
             if (!userDataPath) throw new Error('User data path not set');
@@ -813,7 +793,7 @@ function setupRoutes() {
         }
     });
 
-    app.get('/api/health', (req, res) => {
+    app.get('/api/health', healthLimiter, (req, res) => {
         res.json({ status: 'ok', timestamp: Date.now() });
     });
 
@@ -873,7 +853,7 @@ function setupRoutes() {
         }
     });
 
-    app.get('/api/tracks/:id/cover', (req, res) => {
+    app.get('/api/tracks/:id/cover', mediaStreamLimiter, (req, res) => {
         try {
             const db = getDb();
             const track = getAvailableTracks(db).find(item => item.id === parseInt(req.params.id));
@@ -889,7 +869,7 @@ function setupRoutes() {
         }
     });
 
-    app.get('/api/tracks/:id/stream', (req, res) => {
+    app.get('/api/tracks/:id/stream', mediaStreamLimiter, (req, res) => {
         try {
             const db = getDb();
             const trackId = parseInt(req.params.id);
@@ -943,9 +923,16 @@ function setupRoutes() {
                 const chunksize = (end - start) + 1;
 
                 const file = fs.createReadStream(normalizedPath, { start, end });
+                const stopFileOnDisconnect = () => {
+                    if (!res.writableFinished && !file.destroyed) file.destroy();
+                };
+                res.once('close', stopFileOnDisconnect);
+                file.once('close', () => res.removeListener('close', stopFileOnDisconnect));
                 file.on('error', (streamErr) => {
                     console.error('[stream] Read error:', streamErr.message);
-                    if (!res.headersSent) res.status(500).end();
+                    if (res.destroyed) return;
+                    if (res.headersSent) res.destroy(streamErr);
+                    else res.status(500).json({ error: 'Audio stream failed' });
                 });
 
                 const head = {
@@ -966,9 +953,16 @@ function setupRoutes() {
                 };
                 res.writeHead(200, head);
                 const file = fs.createReadStream(normalizedPath);
+                const stopFileOnDisconnect = () => {
+                    if (!res.writableFinished && !file.destroyed) file.destroy();
+                };
+                res.once('close', stopFileOnDisconnect);
+                file.once('close', () => res.removeListener('close', stopFileOnDisconnect));
                 file.on('error', (streamErr) => {
                     console.error('[stream] Read error:', streamErr.message);
-                    if (!res.headersSent) res.status(500).end();
+                    if (res.destroyed) return;
+                    if (res.headersSent) res.destroy(streamErr);
+                    else res.status(500).json({ error: 'Audio stream failed' });
                 });
                 file.pipe(res);
             }
@@ -978,7 +972,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/tracks/import', fileOperationLimiter, async (req, res) => {
+    app.post('/api/tracks/import', fileOperationLimiter, expensiveOperationLimiter, async (req, res) => {
         try {
             const { filePaths } = req.body;
             console.debug(' /api/tracks/import received', Array.isArray(filePaths) ? filePaths.length : typeof filePaths, 'items');
@@ -1143,7 +1137,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/tracks/download', fileOperationLimiter, async (req, res) => {
+    app.post('/api/tracks/download', fileOperationLimiter, networkOperationLimiter, async (req, res) => {
         try {
             const { url } = req.body;
             if (!url) return res.status(400).json({ error: 'URL is required' });
@@ -1211,7 +1205,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/tracks/import-from-url', fileOperationLimiter, async (req, res) => {
+    app.post('/api/tracks/import-from-url', fileOperationLimiter, networkOperationLimiter, async (req, res) => {
         try {
             const { url, title } = req.body;
             if (!url) return res.status(400).json({ error: 'URL is required' });
@@ -1240,40 +1234,19 @@ function setupRoutes() {
                 await downloadFile(safeUrl.href, finalPath);
                 downloadedFile = fileName;
             } else {
-                const fileStem = path.join(downloadsDir, `import_${timestamp}`);
-                const ytPath = `${fileStem}.mp3`;
-                try {
-                    console.debug(`Trying yt-dlp for media URL: ${safeUrl.href}`);
-                    await downloadWithYtDlp(safeUrl.href, ytPath);
-                    finalPath = ytPath;
-                    downloadedFile = path.basename(ytPath);
-                } catch (ytError) {
-                    // A non-media URL may still redirect to a direct audio response.
-                    const fallbackBase = `${fileStem}.audio`;
-                    try {
-                        console.debug(`Falling back to direct media response: ${safeUrl.href}`);
-                        const response = await fetchWithTimeout(safeUrl, { redirect: 'manual' }, 30_000);
-                        if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
-                            const redirected = await assertSafeUrl(new URL(response.headers.get('location'), safeUrl).href, { allowHttp: true });
-                            const redirectedResponse = await fetchWithTimeout(redirected, { redirect: 'manual' }, 30_000);
-                            if (!redirectedResponse.ok) throw new Error(`Server responded with status: ${redirectedResponse.status}`);
-                            const ext = extensionFromContentType(redirectedResponse.headers.get('content-type'), '.mp3');
-                            finalPath = `${fileStem}${ext}`;
-                            await writeResponseToFile(redirectedResponse, finalPath);
-                        } else {
-                            if (!response.ok) throw new Error(`Server responded with status: ${response.status}`);
-                            const contentType = response.headers.get('content-type') || '';
-                            if (!contentType.toLowerCase().startsWith('audio/')) {
-                                throw new Error('URL is not a direct audio resource and yt-dlp is unavailable');
-                            }
-                            finalPath = `${fileStem}${extensionFromContentType(contentType, '.mp3')}`;
-                            await writeResponseToFile(response, finalPath);
-                        }
-                        downloadedFile = path.basename(finalPath);
-                    } catch (fallbackErr) {
-                        throw new Error(`Media import failed. yt-dlp: ${ytError.message}; direct fallback: ${fallbackErr.message}`);
-                    }
+                // Do not invoke external downloaders on arbitrary URLs: their
+                // own DNS/redirect handling cannot inherit this process's SSRF
+                // protections. A non-extension URL is accepted only when the
+                // safely fetched final response is itself an audio resource.
+                const response = await fetchWithTimeout(safeUrl, {}, 30_000);
+                const contentType = response.headers.get('content-type') || '';
+                if (!response.ok) throw new Error(`Server responded with status: ${response.status}`);
+                if (!contentType.toLowerCase().startsWith('audio/')) {
+                    throw new Error('This URL does not resolve directly to an audio file. Use a direct audio download URL.');
                 }
+                finalPath = path.join(downloadsDir, `import_${timestamp}${extensionFromContentType(contentType, '.mp3')}`);
+                await writeResponseToFile(response, finalPath, MAX_REMOTE_AUDIO_BYTES);
+                downloadedFile = path.basename(finalPath);
             }
 
             // Verify file was downloaded
@@ -1489,15 +1462,15 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/tracks/:id/extract-vocal', async (req, res) => {
+    app.post('/api/tracks/:id/extract-vocal', mediaAnalysisLimiter, async (req, res) => {
         try {
             const db = getDb();
             const track = getAvailableTracks(db).find(item => item.id === parseInt(req.params.id));
-            if (!track || !track.filePath) {
-                return res.status(404).json({ error: 'Track not found or file missing' });
-            }
-            if (!fs.existsSync(track.filePath)) {
-                return res.status(404).json({ error: 'Audio file does not exist on disk' });
+            const sourceAudioPath = track?.filePath ? resolveExistingFile(track.filePath, {
+                allowedExtensions: ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma', '.opus']
+            }) : null;
+            if (!track || !sourceAudioPath) {
+                return res.status(404).json({ error: 'Track not found or audio file is unavailable' });
             }
             const { mode = 'vocal' } = req.body;
             if (mode !== 'vocal') {
@@ -1505,12 +1478,12 @@ function setupRoutes() {
             }
             const extractedDir = path.join(serverUserDataPath, 'extracted_vocals');
             if (!fs.existsSync(extractedDir)) fs.mkdirSync(extractedDir, { recursive: true });
-            const ext = path.extname(track.filePath);
+            const ext = path.extname(sourceAudioPath);
             const baseName = path.basename(track.filePath, ext);
             const outputFileName = `${baseName}_vocals_${Date.now()}.wav`;
             const outputFilePath = path.join(extractedDir, outputFileName);
             console.debug(` Extracting vocals from: ${track.filePath}`);
-            await AudioSeparator.extractVocal(track.filePath, outputFilePath);
+            await AudioSeparator.extractVocal(sourceAudioPath, outputFilePath);
             let analysis;
             try {
                 analysis = await analyzeAudioFile(outputFilePath);
@@ -1593,7 +1566,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/ai/interaction', (req, res) => {
+    app.post('/api/ai/interaction', mutationLimiter, (req, res) => {
         try {
             const { trackId, action } = req.body;
             const updated = updateUserHistory(userHistory, trackId, action, serverUserDataPath);
@@ -1614,7 +1587,7 @@ function setupRoutes() {
         }
     });
 
-    app.get('/api/ai/voice-match/:trackId', async (req, res) => {
+    app.get('/api/ai/voice-match/:trackId', expensiveOperationLimiter, async (req, res) => {
         try {
             const db = getDb();
             const allTracks = getAvailableTracks(db);
@@ -1728,7 +1701,7 @@ function setupRoutes() {
         }
     });
 
-    app.get('/api/ai/recommendations', (req, res) => {
+    app.get('/api/ai/recommendations', expensiveOperationLimiter, (req, res) => {
         try {
             const db = getDb();
             const allTracks = getAvailableTracks(db);
@@ -1761,7 +1734,7 @@ function setupRoutes() {
         }
     });
 
-    app.get('/api/ai/recommend/personal/:trackId', (req, res) => {
+    app.get('/api/ai/recommend/personal/:trackId', expensiveOperationLimiter, (req, res) => {
         try {
             const db = getDb();
             const allTracks = getAvailableTracks(db);
@@ -1795,7 +1768,7 @@ function setupRoutes() {
         }
     });
 
-    app.get('/api/ai/discover', (req, res) => {
+    app.get('/api/ai/discover', expensiveOperationLimiter, (req, res) => {
         try {
             const db = getDb();
             const allTracks = getAvailableTracks(db);
@@ -1818,7 +1791,7 @@ function setupRoutes() {
         }
     });
 
-    app.get('/api/recommend/:trackId', (req, res) => {
+    app.get('/api/recommend/:trackId', expensiveOperationLimiter, (req, res) => {
         try {
             const db = getDb();
             const allTracks = getAvailableTracks(db);
@@ -1846,7 +1819,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/playlists/similar', (req, res) => {
+    app.post('/api/playlists/similar', expensiveOperationLimiter, (req, res) => {
         try {
             const db = getDb();
             const { trackId } = req.body;
@@ -1889,6 +1862,120 @@ function setupRoutes() {
         }
     });
 
+    // KORAI 1.8 local-first intelligence endpoints.
+    app.get('/api/intelligence/overview', expensiveOperationLimiter, (req, res) => {
+        try {
+            const db = getDb();
+            const tracks = getAvailableTracks(db);
+            const raw = buildListeningOverview(tracks, db.getPlayHistory?.() || []);
+            res.json({ ...raw, behavior: buildBehaviorOverview(userHistory), moods: Object.entries(MOODS).map(([id, value]) => ({ id, label: value.label })) });
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+
+    app.get('/api/intelligence/discover', expensiveOperationLimiter, (req, res) => {
+        try {
+            const db = getDb();
+            const tracks = getAvailableTracks(db);
+            const items = discoverTracks(tracks, db.getPlayHistory(), {
+                mood: String(req.query.mood || ''), limit: 100
+            });
+            const tasteRank = new Map(getDiscoveryRecommendations(tracks, userHistory, 100, db.getSettings())
+                .map(item => [Number(item.id), Number(item.similarity) || 0]));
+            const ranked = items.map(item => ({
+                ...item,
+                score: item.score + (tasteRank.get(Number(item.track.id)) || 0) / 20,
+                reason: tasteRank.has(Number(item.track.id)) ? item.reason + ' · Taste profile match' : item.reason
+            })).sort((a,b)=>b.score-a.score)
+              .slice(0, Math.min(100, Math.max(1, Number(req.query.limit) || 20)));
+            res.json({ success: true, items: ranked });
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+
+    app.get('/api/library/health', expensiveOperationLimiter, async (req, res) => {
+        try { res.json(await getLibraryHealth(getDb().getAllTracks())); }
+        catch (error) { res.status(500).json({ error: error.message }); }
+    });
+
+    app.post('/api/playlists/preview', expensiveOperationLimiter, (req, res) => {
+        try {
+            const db = getDb();
+            const history = db.getPlayHistory();
+            const lastPlayed = new Map();
+            for (const item of history) lastPlayed.set(Number(item.trackId), Math.max(lastPlayed.get(Number(item.trackId)) || 0, Number(item.playedAt) || 0));
+            const tracks = getAvailableTracks(db).map(track => ({ ...track, lastPlayedAt: lastPlayed.get(Number(track.id)) || 0 }));
+            const result = filterPlaylist(tracks, req.body || {});
+            res.json({ success: true, count: result.length, tracks: result.slice(0, 200) });
+        } catch (error) { res.status(400).json({ error: error.message }); }
+    });
+
+    app.get('/api/tracks/:id/diagnostics', expensiveOperationLimiter, async (req, res) => {
+        try {
+            const track = getDb().getTrackById(req.params.id);
+            if (!track) return res.status(404).json({ error: 'Track not found.' });
+            if (!track.filePath || !fs.existsSync(track.filePath)) return res.status(404).json({ error: 'Audio file is unavailable.' });
+            const stat = await fs.promises.stat(track.filePath);
+            const metadata = await mm.parseFile(track.filePath, { duration: true, skipCovers: true });
+            const format = metadata.format || {};
+            res.json({
+                success: true, fileSize: stat.size, modifiedAt: stat.mtimeMs,
+                codec: format.codec || track.codec || 'Unknown',
+                container: format.container || 'Unknown',
+                bitrate: Number(format.bitrate || track.bitrate) || null,
+                sampleRate: Number(format.sampleRate || track.sampleRate) || null,
+                bitsPerSample: Number(format.bitsPerSample) || null,
+                numberOfChannels: Number(format.numberOfChannels) || null,
+                channelLayout: format.numberOfChannels ? `${format.numberOfChannels} channel(s)` : 'Unknown',
+                duration: Number(format.duration || track.duration) || null,
+                replayGainTrackDb: track.replayGainTrackDb ?? null,
+                replayGainTrackPeak: track.replayGainTrackPeak ?? null,
+                loudness: track.loudness ?? null,
+                pcm: await measurePcmDiagnostics(track.filePath, 30),
+                loudnessMeasurement: await measureStandardLoudness(track.filePath),
+                loudnessStandard: 'EBU R128 / ITU-R BS.1770 when measurement status is measured',
+                truePeak: 'Oversampled true-peak measurement via FFmpeg ebur128 when available'
+            });
+        } catch (error) { res.status(422).json({ error: `Audio diagnostics failed: ${error.message}` }); }
+    });
+
+    app.get('/api/tracks/:id/lyrics', expensiveOperationLimiter, async (req, res) => {
+        try {
+            const track = getDb().getTrackById(req.params.id);
+            if (!track) return res.status(404).json({ error: 'Track not found.' });
+            // Embedded lyrics are preferred after an explicit in-app save; otherwise
+            // the adjacent LRC sidecar is the best local source for timed lyrics.
+            const embeddedLyrics = String(track.lyrics || '');
+            if (embeddedLyrics.trim()) {
+                return res.json({ success: true, source: embeddedLyrics, sourceKind: 'embedded' });
+            }
+            const safeAudioPath = track.filePath ? resolveExistingFile(track.filePath, {
+                allowedExtensions: ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma', '.opus']
+            }) : null;
+            const sidecarCandidate = safeAudioPath
+                ? path.join(path.dirname(safeAudioPath), `${path.parse(safeAudioPath).name}.lrc`)
+                : '';
+            const sidecar = sidecarCandidate ? resolveExistingFile(sidecarCandidate, { allowedExtensions: ['.lrc'] }) : null;
+            if (sidecar) {
+                try {
+                    const stat = await fs.promises.stat(sidecar);
+                    if (!stat.isFile()) return res.json({ success: true, source: '', sourceKind: 'empty' });
+                    if (stat.size > 100 * 1024) return res.status(413).json({ error: 'LRC sidecar exceeds 100 KB.' });
+                    return res.json({ success: true, source: await fs.promises.readFile(sidecar, 'utf8'), sourceKind: 'sidecar', path: sidecar });
+                } catch (error) {
+                    if (error.code !== 'ENOENT') throw error;
+                }
+            }
+            return res.json({ success: true, source: '', sourceKind: 'empty' });
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+
+    app.post('/api/lyrics/parse', expensiveOperationLimiter, (req, res) => {
+        try {
+            const source = typeof req.body?.lyrics === 'string' ? req.body.lyrics : '';
+            if (source.length > 1024 * 1024) return res.status(413).json({ error: 'Lyrics file is too large.' });
+            res.json({ success: true, lines: parseLrc(source) });
+        } catch (error) { res.status(400).json({ error: error.message }); }
+    });
+
     app.get('/api/stats', (req, res) => {
         try {
             const db = getDb();
@@ -1910,7 +1997,7 @@ function setupRoutes() {
         }
     });
 
-    app.put('/api/tracks/:id/tags', async (req, res) => {
+    app.put('/api/tracks/:id/tags', mutationLimiter, async (req, res) => {
         try {
             const db = getDb();
             const trackId = Number(req.params.id);
@@ -1928,7 +2015,7 @@ function setupRoutes() {
         }
     });
 
-    app.put('/api/tracks/tags/batch', (req, res) => {
+    app.put('/api/tracks/tags/batch', mutationLimiter, (req, res) => {
         try {
             if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
                 return res.status(400).json({ error: 'Batch tag update body is invalid.' });
@@ -1980,7 +2067,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/playlists/import', fileOperationLimiter, async (req, res) => {
+    app.post('/api/playlists/import', fileOperationLimiter, expensiveOperationLimiter, async (req, res) => {
         try {
             const db = getDb();
             const { filePath, format } = req.body;
@@ -1998,11 +2085,15 @@ function setupRoutes() {
             const newPlaylist = db.createPlaylist(playlistName);
             let importedCount = 0;
             for (const imported of importedTracks) {
-                let existing = db.getAllTracks().find(t => t.filePath === imported.filePath);
+                const importedAudioPath = resolveExistingFile(imported.filePath, {
+                    allowedExtensions: ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma', '.opus']
+                });
+                if (!importedAudioPath) continue;
+                let existing = db.getAllTracks().find(t => t.filePath === importedAudioPath);
                 if (!existing) {
                     let analysis;
                     try {
-                        analysis = await analyzeAudioFile(imported.filePath);
+                        analysis = await analyzeAudioFile(importedAudioPath);
                     } catch (analysisErr) {
                         console.warn('Audio analysis failed for imported file, using fallback:', imported.filePath, analysisErr.message);
                         analysis = {
@@ -2016,9 +2107,9 @@ function setupRoutes() {
                             loudness: null,
                             sampleRate: 44100,
                             bitrate: 0,
-                            codec: path.extname(imported.filePath).replace('.', '') || 'unknown',
+                            codec: path.extname(importedAudioPath).replace('.', '') || 'unknown',
                             genre: imported.genre || 'Imported',
-                            title: imported.title || path.basename(imported.filePath),
+                            title: imported.title || path.basename(importedAudioPath),
                             artist: null,
                             album: null,
                             featureVector: null,
@@ -2029,7 +2120,7 @@ function setupRoutes() {
                     existing = db.addTrack({
                         title: imported.title || analysis.title,
                         artist: imported.artist || analysis.artist,
-                        filePath: imported.filePath,
+                        filePath: importedAudioPath,
                         duration: analysis.duration,
                         bpm: analysis.bpm,
                         bpmConfidence: analysis.bpmConfidence,
@@ -2067,7 +2158,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/playlists/import-auto', fileOperationLimiter, async (req, res) => {
+    app.post('/api/playlists/import-auto', fileOperationLimiter, expensiveOperationLimiter, async (req, res) => {
         try {
             const db = getDb();
             const { filePath } = req.body;
@@ -2112,11 +2203,15 @@ function setupRoutes() {
             const newPlaylist = db.createPlaylist(playlistName);
             let importedCount = 0;
             for (const imported of importedTracks) {
-                let existing = db.getAllTracks().find(t => t.filePath === imported.filePath);
+                const importedAudioPath = resolveExistingFile(imported.filePath, {
+                    allowedExtensions: ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma', '.opus']
+                });
+                if (!importedAudioPath) continue;
+                let existing = db.getAllTracks().find(t => t.filePath === importedAudioPath);
                 if (!existing) {
                     let analysis;
                     try {
-                        analysis = await analyzeAudioFile(imported.filePath);
+                        analysis = await analyzeAudioFile(importedAudioPath);
                     } catch (analysisErr) {
                         console.warn('Audio analysis failed for imported file, using fallback:', imported.filePath, analysisErr.message);
                         analysis = {
@@ -2130,9 +2225,9 @@ function setupRoutes() {
                             loudness: null,
                             sampleRate: 44100,
                             bitrate: 0,
-                            codec: path.extname(imported.filePath).replace('.', '') || 'unknown',
+                            codec: path.extname(importedAudioPath).replace('.', '') || 'unknown',
                             genre: imported.genre || 'Imported',
-                            title: imported.title || path.basename(imported.filePath),
+                            title: imported.title || path.basename(importedAudioPath),
                             artist: null,
                             album: null,
                             featureVector: null,
@@ -2143,7 +2238,7 @@ function setupRoutes() {
                     existing = db.addTrack({
                         title: imported.title || analysis.title,
                         artist: analysis.artist,
-                        filePath: imported.filePath,
+                        filePath: importedAudioPath,
                         duration: analysis.duration,
                         bpm: analysis.bpm,
                         bpmConfidence: analysis.bpmConfidence,
@@ -2228,7 +2323,7 @@ function setupRoutes() {
             }
         });
 
-    app.post('/api/cue/parse', fileOperationLimiter, async (req, res) => {
+    app.post('/api/cue/parse', fileOperationLimiter, expensiveOperationLimiter, async (req, res) => {
         try {
             const { cuePath, audioBaseDir } = req.body;
             const safeCuePath = resolveSafePath(cuePath, serverUserDataPath || os.homedir());
@@ -2241,7 +2336,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/cue/import', fileOperationLimiter, async (req, res) => {
+    app.post('/api/cue/import', fileOperationLimiter, expensiveOperationLimiter, async (req, res) => {
         try {
             const { cuePath, audioBaseDir } = req.body;
             const safeCuePath = resolveSafePath(cuePath, serverUserDataPath || os.homedir());
@@ -2339,7 +2434,7 @@ function setupRoutes() {
         res.json({ gaplessEnabled, crossfadeDuration });
     });
 
-    app.post('/api/tracks/:id/detect-bpm', async (req, res) => {
+    app.post('/api/tracks/:id/detect-bpm', mediaAnalysisLimiter, async (req, res) => {
         try {
             const db = getDb();
             const track = db.getMutableTrackById(parseInt(req.params.id));
@@ -2362,7 +2457,7 @@ function setupRoutes() {
         }
     });
 
-    app.post('/api/tracks/:id/detect-key', async (req, res) => {
+    app.post('/api/tracks/:id/detect-key', mediaAnalysisLimiter, async (req, res) => {
         try {
             const trackId = Number(req.params.id);
             if (!Number.isSafeInteger(trackId) || trackId <= 0) {

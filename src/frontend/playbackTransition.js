@@ -18,6 +18,12 @@
         return track ? { track, index } : null;
     }
 
+    function claimFadeStart(transition, outgoingElement) {
+        if (!transition || transition.stage !== 'ready' || transition.outgoing !== outgoingElement) return false;
+        transition.stage = 'starting-fade';
+        return true;
+    }
+
     function getFadeDuration(requestedDuration, remainingDuration, nextDuration) {
         const requested = Number(requestedDuration);
         const remaining = Number(remainingDuration);
@@ -28,5 +34,5 @@
         return Math.min(...limits);
     }
 
-    return { getCandidate, getFadeDuration };
+    return { getCandidate, getFadeDuration, claimFadeStart };
 });

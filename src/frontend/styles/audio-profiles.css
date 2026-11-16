@@ -119,3 +119,19 @@ body.rtl .sp-badge { letter-spacing: 0; }
 @media (prefers-reduced-motion: reduce) {
   .sp-chip, .sp-chevron, .sp-meter-fill, .sp-bypass { transition: none; }
 }
+
+.sp-limiter-status {
+    margin: 8px 0 2px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    color: var(--text-secondary, #a9b0ba);
+    background: rgba(255,255,255,.045);
+    font-size: 11px;
+    line-height: 1.5;
+}
+.sp-limiter-status.is-active {
+    color: var(--k-accent, #28d96d);
+}
+.sp-limiter-status.is-fallback {
+    color: var(--warning, #d8a34a);
+}

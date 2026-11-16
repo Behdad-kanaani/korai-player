@@ -2,7 +2,7 @@ const { Worker } = require('worker_threads');
 const path = require('path');
 const fs = require('fs');
 const EventEmitter = require('events');
-const { isPathInside } = require('./securityUtils');
+const { isPathInside, isSafeKey, isSafeObjectKey, resolveSafePath } = require('./securityUtils');
 
 // optional: prefer chokidar for reliable file watching
 let chokidar = null;
@@ -62,7 +62,8 @@ class PluginHost extends EventEmitter {
    * Activate plugin: load & initialize in worker thread
    */
   async activatePlugin(id, context) {
-    const entry = this.registry[id];
+    if (!isSafeObjectKey(id)) throw new Error('Invalid plugin id');
+    const entry = this.registry && Object.hasOwn(this.registry, id) ? this.registry[id] : null;
     if (!entry || !entry.enabled) throw new Error(`Plugin not found or not enabled: ${id}`);
     if (this.runningPlugins.has(id)) throw new Error(`Plugin already running: ${id}`);
 
@@ -96,7 +97,7 @@ class PluginHost extends EventEmitter {
           if (msg && msg.type === 'request-permission') {
             const perm = msg.permission;
             const msgId = msg.msgId;
-            const entry = this.registry[id] || {};
+            const entry = this.registry && Object.hasOwn(this.registry, id) ? this.registry[id] : {};
             const granted = (entry.grantedPermissions || []).includes(perm);
             if (granted) {
               worker.postMessage({ type: 'request-permission-reply', msgId, decision: 'granted' });
@@ -121,12 +122,18 @@ class PluginHost extends EventEmitter {
             clearTimeout(timeout);
             if (!resolved) {
               resolved = true;
-              const hooks = msg.hooks || {};
+              const hooks = Object.create(null);
+              if (msg.hooks && typeof msg.hooks === 'object' && !Array.isArray(msg.hooks)) {
+                for (const hookName of Object.keys(msg.hooks)) {
+                  if (isSafeKey(hookName) && msg.hooks[hookName]) hooks[hookName] = true;
+                }
+              }
               const entryObj = { worker, hooks, enabled: true };
               // Setup hot-reload watcher if enabled (prefer chokidar)
               if (this.opts && this.opts.hotReload) {
                 try {
-                  const pluginDir = this.registry[id].path;
+                  const registryEntry = this.registry && Object.hasOwn(this.registry, id) ? this.registry[id] : null;
+                  const pluginDir = registryEntry && registryEntry.path;
                   if (chokidar) {
                     const watcher = chokidar.watch(pluginDir, { ignoreInitial: true, depth: 5 });
                     watcher.on('all', (evt, file) => {
@@ -193,7 +200,11 @@ class PluginHost extends EventEmitter {
                 if (this.healthMonitor.recordHookError) this.healthMonitor.recordHookError(id, msg.data.hook, msg.data.error || null);
                 if (this.healthMonitor.shouldDisable && this.healthMonitor.shouldDisable(id)) {
                   this.logger.warn(`[Plugin] Health monitor disabled plugin ${id}`);
-                  try { if (this.registry && this.registry[id]) this.registry[id].enabled = false; } catch (e) {}
+                  try {
+                    if (this.registry && Object.hasOwn(this.registry, id) && this.registry[id]) {
+                      this.registry[id].enabled = false;
+                    }
+                  } catch (e) {}
                   try { const entryObj = this.runningPlugins.get(id); if (entryObj && entryObj.worker) { entryObj.worker.postMessage({ type: 'unload' }); entryObj.worker.terminate(); } } catch (e) {}
                 }
               }
@@ -203,15 +214,16 @@ class PluginHost extends EventEmitter {
             try {
               const entryObj = this.runningPlugins.get(id);
               const hookName = msg.hook;
-              if (entryObj && typeof hookName === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(hookName)) {
+              if (entryObj && isSafeKey(hookName) && hookName.length <= 64) {
                 entryObj.hooks[hookName] = true;
               }
             } catch (e) {}
           } else if (msg.type === 'storage-get') {
             // Worker requested a stored value
             if (this.pluginSettings) {
-              const settings = this.pluginSettings.getPluginSettings(id) || {};
-              const val = settings[msg.key];
+              const settings = this.pluginSettings.getPluginSettings(id) || Object.create(null);
+              const key = isSafeKey(msg.key) ? msg.key : null;
+              const val = key && Object.hasOwn(settings, key) ? settings[key] : null;
               worker.postMessage({ type: 'storage-get-reply', key: msg.key, value: val });
             } else {
               worker.postMessage({ type: 'storage-get-reply', key: msg.key, value: null });
@@ -232,15 +244,16 @@ class PluginHost extends EventEmitter {
             } catch (e) {}
           } else if (msg.type === 'fs-read') {
             // allow plugin to read project files if permission granted
-            const entry = this.registry[id] || {};
+            const entry = this.registry && Object.hasOwn(this.registry, id) ? this.registry[id] : {};
             const perms = entry.permissions || [];
             if (!perms.includes('project:read') && !perms.includes('project:rw')) {
               worker.postMessage({ type: 'fs-read-reply', path: msg.path, error: 'missing_permission' });
             } else {
               try {
                 const base = this.opts && this.opts.appRoot ? this.opts.appRoot : path.resolve(__dirname, '..', '..');
-                const full = path.resolve(base, msg.path);
-                if (!isPathInside(base, full)) throw new Error('access outside project not allowed');
+                const canonicalBase = fs.realpathSync.native(base);
+                const full = resolveSafePath(msg.path, canonicalBase, { allowHome: false });
+                if (!full || !isPathInside(canonicalBase, full)) throw new Error('access outside project not allowed');
                 const data = fs.readFileSync(full, 'utf8');
                 worker.postMessage({ type: 'fs-read-reply', path: msg.path, content: data });
               } catch (e) {
@@ -249,17 +262,24 @@ class PluginHost extends EventEmitter {
             }
           } else if (msg.type === 'fs-write') {
             // allow plugin to write project files if permission granted
-            const entry = this.registry[id] || {};
+            const entry = this.registry && Object.hasOwn(this.registry, id) ? this.registry[id] : {};
             const perms = entry.permissions || [];
             if (!perms.includes('project:write') && !perms.includes('project:rw')) {
               worker.postMessage({ type: 'fs-write-reply', path: msg.path, error: 'missing_permission' });
             } else {
               try {
                 const base = this.opts && this.opts.appRoot ? this.opts.appRoot : path.resolve(__dirname, '..', '..');
-                const full = path.resolve(base, msg.path);
-                if (!isPathInside(base, full)) throw new Error('access outside project not allowed');
+                const canonicalBase = fs.realpathSync.native(base);
+                let full = resolveSafePath(msg.path, canonicalBase, { allowHome: false });
+                if (!full || !isPathInside(canonicalBase, full)) throw new Error('access outside project not allowed');
                 fs.mkdirSync(path.dirname(full), { recursive: true });
-                fs.writeFileSync(full, msg.content, 'utf8');
+                // Re-resolve after creating parents so an unexpected symlink in
+                // the newly materialized path cannot redirect the write.
+                full = resolveSafePath(msg.path, canonicalBase, { allowHome: false });
+                if (!full || !isPathInside(canonicalBase, full)) throw new Error('access outside project not allowed');
+                const noFollow = fs.constants.O_NOFOLLOW || 0;
+                const fd = fs.openSync(full, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | noFollow, 0o600);
+                try { fs.writeFileSync(fd, String(msg.content ?? ''), 'utf8'); } finally { fs.closeSync(fd); }
                 worker.postMessage({ type: 'fs-write-reply', path: msg.path, success: true });
               } catch (e) {
                 worker.postMessage({ type: 'fs-write-reply', path: msg.path, error: e.message || String(e) });

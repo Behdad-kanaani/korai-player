@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const { resolveExistingFile } = require('./securityUtils');
 
 const TARGET_SAMPLE_RATE = 11025;
 const MAX_ANALYSIS_SECONDS = 120;
@@ -27,19 +28,25 @@ function getFfmpegPath() {
 
 function decodeAudioToMono(filePath, sampleRate = TARGET_SAMPLE_RATE, maxSeconds = MAX_ANALYSIS_SECONDS, startSeconds = 0) {
   return new Promise((resolve, reject) => {
-    if (!fs.existsSync(filePath)) return reject(new Error('Audio file does not exist'));
-    const stat = fs.statSync(filePath);
+    const safeFilePath = resolveExistingFile(filePath, {
+      allowedExtensions: ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma', '.opus']
+    });
+    if (!safeFilePath) return reject(new Error('Audio file does not exist or has an unsupported type'));
+    const safeSampleRate = Number.isInteger(sampleRate) ? Math.max(8000, Math.min(48000, sampleRate)) : TARGET_SAMPLE_RATE;
+    const safeMaxSeconds = Number.isFinite(maxSeconds) ? Math.max(1, Math.min(MAX_ANALYSIS_SECONDS, maxSeconds)) : MAX_ANALYSIS_SECONDS;
+    const safeStartSeconds = Number.isFinite(startSeconds) ? Math.max(0, Math.min(24 * 60 * 60, startSeconds)) : 0;
+    const stat = fs.statSync(safeFilePath);
     if (!stat.isFile() || stat.size === 0) return reject(new Error('Audio file is empty or invalid'));
 
     const ffmpegPath = getFfmpegPath();
     const args = [
       '-hide_banner', '-loglevel', 'error', '-nostdin',
-      ...(Number.isFinite(startSeconds) && startSeconds > 0 ? ['-ss', String(startSeconds)] : []),
-      '-i', filePath,
-      '-t', String(maxSeconds),
+      ...(safeStartSeconds > 0 ? ['-ss', String(safeStartSeconds)] : []),
+      '-i', safeFilePath,
+      '-t', String(safeMaxSeconds),
       '-vn', '-sn', '-dn',
       '-ac', '1',
-      '-ar', String(sampleRate),
+      '-ar', String(safeSampleRate),
       '-f', 's16le',
       'pipe:1'
     ];
@@ -69,7 +76,7 @@ function decodeAudioToMono(filePath, sampleRate = TARGET_SAMPLE_RATE, maxSeconds
         samples[i] = pcm.readInt16LE(i * 2) / 32768;
       }
 
-      resolve({ samples, sampleRate });
+      resolve({ samples, sampleRate: safeSampleRate });
     });
   });
 }
@@ -210,12 +217,16 @@ function detectBPMFromSamples(samples, sampleRate) {
 }
 
 async function analyzeBPM(filePath) {
-  console.debug(`[BPM] Detecting tempo: ${path.basename(filePath)}`);
+  const safeFilePath = resolveExistingFile(filePath, {
+    allowedExtensions: ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma', '.opus']
+  });
+  if (!safeFilePath) return { bpm: null, confidence: 0, source: 'unavailable' };
+  console.debug(`[BPM] Detecting tempo: ${path.basename(safeFilePath)}`);
 
   // Metadata remains the fastest/highest-signal path when tags are explicitly set.
   try {
     const mm = require('music-metadata');
-    const metadata = await mm.parseFile(filePath, { skipCovers: true });
+    const metadata = await mm.parseFile(safeFilePath, { skipCovers: true });
     const taggedBpm = Number(metadata.common?.bpm);
     if (Number.isFinite(taggedBpm) && taggedBpm >= MIN_BPM && taggedBpm <= 240) {
       return { bpm: Math.round(taggedBpm), confidence: null, source: 'metadata' };
@@ -225,14 +236,14 @@ async function analyzeBPM(filePath) {
   }
 
   try {
-    const { samples, sampleRate } = await decodeAudioToMono(filePath);
+    const { samples, sampleRate } = await decodeAudioToMono(safeFilePath);
     const result = detectBPMFromSamples(samples, sampleRate);
     console.debug(`[BPM] result=${result.bpm} confidence=${result.confidence.toFixed(3)}`);
     return result.confidence >= 0.08
       ? { ...result, source: 'waveform' }
       : { bpm: null, confidence: result.confidence, source: 'unavailable' };
   } catch (error) {
-    console.warn(`[BPM] Could not estimate tempo for ${path.basename(filePath)}: ${error.message}`);
+    console.warn(`[BPM] Could not estimate tempo for ${path.basename(safeFilePath)}: ${error.message}`);
     return { bpm: null, confidence: 0, source: 'unavailable' };
   }
 }

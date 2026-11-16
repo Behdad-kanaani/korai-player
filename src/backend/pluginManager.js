@@ -4,7 +4,7 @@ const AdmZip = require('adm-zip');
 const semver = require('semver');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
-const { isPathInside } = require('./securityUtils');
+const { isPathInside, resolveSafePath, resolveExistingFile, isSafeObjectKey } = require('./securityUtils');
 
 const MAX_ZIP_ENTRIES = 500;
 const MAX_PLUGIN_UNCOMPRESSED_BYTES = 100 * 1024 * 1024;
@@ -18,6 +18,7 @@ class PluginManager {
     this.registryFile = path.join(this.pluginsDir, 'plugins.json');
     this.schemaPath = path.join(__dirname, 'manifest.schema.json');
     this.ensurePluginsDir();
+    this.registry = Object.create(null);
     this.loadRegistry();
   }
 
@@ -26,8 +27,10 @@ class PluginManager {
   }
 
   normalizeEntry(id, raw = {}) {
-    const pluginPath = raw.path ? path.resolve(raw.path) : null;
-    const safePath = pluginPath && (isPathInside(this.pluginsDir, pluginPath) || isPathInside(this.bundledPluginsDir, pluginPath)) ? pluginPath : null;
+    const safePath = raw.path
+      ? (resolveSafePath(raw.path, this.pluginsDir, { allowHome: false }) ||
+         resolveSafePath(raw.path, this.bundledPluginsDir, { allowHome: false }))
+      : null;
     return {
       id,
       name: String(raw.name || id),
@@ -48,9 +51,9 @@ class PluginManager {
       if (data && typeof data === 'object' && !Array.isArray(data)) registry = data;
     } catch {}
 
-    this.registry = {};
+    this.registry = Object.create(null);
     for (const [id, raw] of Object.entries(registry)) {
-      if (!PLUGIN_ID_RE.test(id)) continue;
+      if (!isSafeObjectKey(id) || !PLUGIN_ID_RE.test(id)) continue;
       const normalized = this.normalizeEntry(id, raw);
       if (normalized.path && fs.existsSync(normalized.path)) this.registry[id] = normalized;
     }
@@ -107,7 +110,9 @@ class PluginManager {
     if (!manifest.id || !manifest.name || !manifest.version || !manifest.entry) {
       throw new Error('manifest missing required fields');
     }
-    if (!PLUGIN_ID_RE.test(manifest.id)) throw new Error('manifest.id contains invalid characters');
+    if (typeof manifest.id !== 'string' || !isSafeObjectKey(manifest.id) || !PLUGIN_ID_RE.test(manifest.id)) {
+      throw new Error('manifest.id contains invalid or unsafe characters');
+    }
     if (!semver.valid(manifest.version)) throw new Error('manifest.version must be a valid semver string');
 
     const normalizedEntry = manifest.entry.replace(/\\/g, '/');
@@ -134,13 +139,19 @@ class PluginManager {
     let totalSize = 0;
     for (const entry of entries) {
       const entryName = String(entry.entryName || '').replace(/\\/g, '/');
-      const parts = entryName.split('/');
-      if (entryName.startsWith('/') || parts.some(part => part === '..')) {
+      const parts = entryName.split('/').filter((part, index, all) => !(part === '' && index === all.length - 1));
+      const mode = Number(entry.header?.attr) >>> 16;
+      const isSymlink = (mode & 0o170000) === 0o120000;
+      if (!entryName || entryName.includes('\0') || entryName.startsWith('/') ||
+          /^[a-zA-Z]:/.test(entryName) || entryName.startsWith('//') ||
+          parts.some(part => !part || part === '.' || part === '..') || isSymlink) {
         throw new Error(`Unsafe ZIP entry: ${entryName}`);
       }
 
-      const target = path.resolve(destination, entryName);
-      if (!isPathInside(destination, target)) throw new Error(`ZIP entry escapes destination: ${entryName}`);
+      const target = resolveSafePath(entryName, destination, { allowHome: false });
+      if (!target || !isPathInside(destination, target)) {
+        throw new Error(`ZIP entry escapes destination: ${entryName}`);
+      }
 
       const size = Number(entry.header?.size) || 0;
       totalSize += size;
@@ -150,9 +161,10 @@ class PluginManager {
     }
   }
 
-  installFromZip(zipPath) {
-    if (!zipPath || !fs.existsSync(zipPath)) throw new Error('ZIP not found');
-    const zip = new AdmZip(zipPath);
+  installFromZip(zipPath, options = {}) {
+    const safeZipPath = resolveExistingFile(zipPath, { allowedRoots: options.allowedRoots });
+    if (!safeZipPath) throw new Error('ZIP not found or is not a regular file');
+    const zip = new AdmZip(safeZipPath);
     const manifestEntry = zip.getEntry('manifest.json') || zip.getEntry('/manifest.json');
     if (!manifestEntry) throw new Error('manifest.json not found in ZIP root');
 
@@ -178,8 +190,9 @@ class PluginManager {
       throw new Error(`Plugin extraction failed: ${error.message}`);
     }
 
-    const extractedManifest = path.resolve(dest, manifest.entry);
-    if (!isPathInside(dest, extractedManifest) || !fs.existsSync(extractedManifest)) {
+    const extractedManifest = resolveSafePath(manifest.entry, dest, { allowHome: false });
+    if (!extractedManifest || !isPathInside(dest, extractedManifest) ||
+        !fs.existsSync(extractedManifest) || !fs.statSync(extractedManifest).isFile()) {
       fs.rmSync(dest, { recursive: true, force: true });
       throw new Error('Plugin entry file is missing or escapes plugin directory');
     }
@@ -194,14 +207,19 @@ class PluginManager {
     return { ...entry };
   }
 
+  getEntry(id) {
+    if (typeof id !== 'string' || !isSafeObjectKey(id) || !PLUGIN_ID_RE.test(id)) return null;
+    return Object.hasOwn(this.registry, id) ? this.registry[id] : null;
+  }
+
   getPermissions(id) {
-    const plugin = this.registry[id];
+    const plugin = this.getEntry(id);
     if (!plugin) throw new Error('Plugin not found');
     return { required: [...plugin.permissions], granted: [...plugin.grantedPermissions] };
   }
 
   approvePermissions(id, permissions = []) {
-    const plugin = this.registry[id];
+    const plugin = this.getEntry(id);
     if (!plugin) throw new Error('Plugin not found');
     if (!Array.isArray(permissions)) throw new Error('Permissions must be an array');
     const allowed = new Set(plugin.permissions);
@@ -217,7 +235,7 @@ class PluginManager {
   }
 
   getPlugin(id) {
-    const plugin = this.registry[id];
+    const plugin = this.getEntry(id);
     return plugin ? { ...plugin } : null;
   }
 
@@ -226,7 +244,7 @@ class PluginManager {
   }
 
   enablePlugin(id) {
-    const plugin = this.registry[id];
+    const plugin = this.getEntry(id);
     if (!plugin) throw new Error('Plugin not found');
     const missing = plugin.permissions.filter(permission => !plugin.grantedPermissions.includes(permission));
     if (missing.length > 0) throw new Error(`missing_permissions:${missing.join(',')}`);
@@ -236,23 +254,35 @@ class PluginManager {
   }
 
   disablePlugin(id) {
-    const plugin = this.registry[id];
+    const plugin = this.getEntry(id);
     if (!plugin) throw new Error('Plugin not found');
     plugin.enabled = false;
     this.saveRegistry();
   }
 
   getPluginPath(id) {
-    const plugin = this.registry[id];
+    const plugin = this.getEntry(id);
     return plugin?.path || null;
   }
 
   uninstallPlugin(id) {
-    const plugin = this.registry[id];
+    const plugin = this.getEntry(id);
     if (!plugin) throw new Error('Plugin not found');
     if (plugin.builtin) throw new Error('Built-in plugins cannot be uninstalled');
-    if (plugin.path && isPathInside(this.pluginsDir, plugin.path) && !isPathInside(this.bundledPluginsDir, plugin.path)) {
-      fs.rmSync(plugin.path, { recursive: true, force: true });
+    if (plugin.path) {
+      try {
+        const canonicalPluginsRoot = fs.realpathSync.native(this.pluginsDir);
+        const canonicalPluginPath = resolveSafePath(plugin.path, canonicalPluginsRoot, { allowHome: false });
+        let canonicalBundledRoot = null;
+        try { canonicalBundledRoot = fs.realpathSync.native(this.bundledPluginsDir); } catch {}
+        const isBundled = canonicalBundledRoot && canonicalPluginPath &&
+          isPathInside(canonicalBundledRoot, canonicalPluginPath);
+        if (canonicalPluginPath && isPathInside(canonicalPluginsRoot, canonicalPluginPath) && !isBundled) {
+          fs.rmSync(canonicalPluginPath, { recursive: true, force: true });
+        }
+      } catch {
+        throw new Error('Plugin path is not safely contained in the install directory');
+      }
     }
     delete this.registry[id];
     this.saveRegistry();

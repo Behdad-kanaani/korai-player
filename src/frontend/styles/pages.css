@@ -126,3 +126,57 @@ button { -webkit-tap-highlight-color: transparent; }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }
+
+
+/* KORAI 1.8 Intelligence workspace */
+.ki-page{display:flex;flex-direction:column;gap:22px;padding:28px 30px 60px;color:var(--text-primary,#f5f5f7)}
+.ki-heading,.ki-panel-head{display:flex;align-items:center;justify-content:space-between;gap:18px}
+.ki-heading h1{font-size:clamp(28px,3vw,40px);margin:5px 0 7px;letter-spacing:-1.2px}
+.ki-heading p,.ki-muted{color:var(--text-secondary,#999);font-size:13px}
+.ki-kicker{font-size:10px;font-weight:800;letter-spacing:1.7px;color:var(--accent-color,#8b7cff)}
+.ki-stats-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.ki-stat,.ki-panel{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.085);border-radius:17px;padding:18px}
+.ki-stat{display:flex;flex-direction:column;gap:7px}.ki-stat span,.ki-stat small{font-size:12px;color:var(--text-secondary,#999)}.ki-stat strong{font-size:27px;letter-spacing:-.5px}
+.ki-columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}.ki-panel h2{font-size:19px;margin:6px 0 16px}.ki-panel h3{font-size:13px;margin:18px 0 8px}
+.ki-button,.ki-mood,.ki-play{border:1px solid rgba(255,255,255,.13);border-radius:10px;background:rgba(255,255,255,.07);color:inherit;padding:10px 14px;cursor:pointer;font:inherit;font-size:12px;transition:.18s}
+.ki-button:hover,.ki-mood:hover,.ki-play:hover{background:rgba(139,124,255,.2);border-color:rgba(139,124,255,.55)}.ki-button.secondary{background:transparent}
+.ki-moods{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px}.ki-mood.active{background:rgba(139,124,255,.24);border-color:#8b7cff}
+.ki-track-list{display:flex;flex-direction:column;gap:7px}.ki-track{display:flex;align-items:center;gap:12px;padding:10px 11px;border-radius:11px;background:rgba(0,0,0,.12)}
+.ki-track-copy{min-width:0;display:flex;flex-direction:column;gap:4px;flex:1}.ki-track-copy b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ki-track-copy small,.ki-track-reason{font-size:11px;color:var(--text-secondary,#999)}.ki-track-reason{max-width:150px;text-align:right}.ki-play{width:34px;height:34px;padding:0}
+.ki-health-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ki-health-grid .ki-stat{padding:12px}.ki-health-grid .ki-stat strong{font-size:21px}
+.ki-ranking{display:flex;justify-content:space-between;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.035);font-size:12px;margin:4px 0}.ki-ranking b{color:var(--accent-color,#8b7cff)}
+.ki-diagnostic-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:12px}.ki-diagnostic-grid>div{display:flex;flex-direction:column;gap:4px;padding:10px;background:rgba(255,255,255,.04);border-radius:8px}.ki-diagnostic-grid small{color:var(--text-secondary,#999);font-size:10px}.ki-diagnostic-grid b{font-size:12px}
+.ki-select,.ki-filter-grid input,.ki-lrc-input{background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.13);border-radius:9px;color:inherit;padding:10px;min-width:0;width:100%;font:inherit}
+.ki-select option{background:#202027}.ki-filter-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr)) auto;gap:9px;align-items:end}.ki-filter-grid label{display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--text-secondary,#aaa)}
+.ki-lrc-input{min-height:120px;resize:vertical}.ki-inline-actions{display:flex;align-items:center;gap:12px;margin-top:10px}.ki-lrc-preview{margin-top:12px;display:flex;flex-direction:column;gap:5px}.ki-lrc-preview>div{padding:7px 10px;background:rgba(255,255,255,.035);border-radius:7px;font-size:12px}.ki-lrc-preview time{color:var(--accent-color,#8b7cff);font-variant-numeric:tabular-nums;margin-right:12px}
+.ki-details{margin-top:14px;font-size:12px}.ki-details summary{cursor:pointer;color:var(--accent-color,#8b7cff)}.ki-error{color:#ff8585}
+@media(max-width:1000px){.ki-columns{grid-template-columns:1fr}.ki-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:650px){.ki-page{padding:18px 14px}.ki-stats-grid{grid-template-columns:1fr 1fr}.ki-filter-grid{grid-template-columns:1fr 1fr}.ki-heading{align-items:flex-start}.ki-track-reason{display:none}}
+
+.ki-checkbox{display:flex;align-items:center;gap:8px;min-height:38px}.ki-checkbox input{width:auto;accent-color:#8b7cff}
+
+.ki-heading-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.ki-widget-controls{display:none;justify-content:flex-end;gap:5px;margin:-5px -5px 10px}.ki-customizing .ki-widget-controls{display:flex}.ki-widget-controls button,.ki-restore-widget{border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:inherit;border-radius:7px;padding:5px 9px;cursor:pointer;font-size:11px}.ki-hidden-widgets{display:flex;gap:6px;flex-wrap:wrap}.ki-restore-widget{border-color:rgba(139,124,255,.4);color:#c7c0ff}
+
+.ki-spectrum{display:block;width:100%;height:92px;margin:10px 0 14px;border-radius:10px;background:rgba(0,0,0,.16)}
+
+/* KORAI 1.8 synchronized lyric line state */
+.ki-lrc-preview .ki-lyric-line {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: var(--text-secondary, #a7a7b0);
+  transition: background-color .16s ease, color .16s ease;
+}
+.ki-lrc-preview .ki-lyric-line time {
+  flex: 0 0 52px;
+  font-variant-numeric: tabular-nums;
+  opacity: .65;
+  font-size: .82em;
+}
+.ki-lrc-preview .ki-lyric-line.active {
+  color: var(--text-primary, #fff);
+  background: rgba(130, 105, 255, .16);
+  font-weight: 650;
+}

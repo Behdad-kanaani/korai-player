@@ -163,14 +163,14 @@ async function findDuplicateGroups(tracks, onProgress = () => {}, audioSignature
 
     const sets = makeDisjointSet(validTracks.length);
     const evidence = new Map();
-    const addEvidence = (a, b, reason) => {
+    const addEvidence = (a, b, reason, unionNow = true) => {
         const left = Math.min(a, b);
         const right = Math.max(a, b);
         const key = `${left}:${right}`;
         const reasons = evidence.get(key) || new Set();
         reasons.add(reason);
         evidence.set(key, reasons);
-        sets.union(left, right);
+        if (unionNow) sets.union(left, right);
     };
 
     const exactHashGroups = new Map();
@@ -203,7 +203,9 @@ async function findDuplicateGroups(tracks, onProgress = () => {}, audioSignature
                 const b = indexes[right];
                 if (hashes.has(a) && hashes.has(b) && hashes.get(a) === hashes.get(b)) continue;
                 if (!durationsMatch(validTracks[a], validTracks[b])) continue;
-                addEvidence(a, b, normalizeLabel(validTracks[a].artist) ? 'metadata-match' : 'title-and-duration');
+                // Metadata only creates a candidate pair. Do not union tracks until
+                // acoustic evidence confirms they contain the same recording.
+                addEvidence(a, b, normalizeLabel(validTracks[a].artist) ? 'metadata-match' : 'title-and-duration', false);
             }
         }
     }

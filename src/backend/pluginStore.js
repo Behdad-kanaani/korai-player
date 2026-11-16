@@ -3,9 +3,38 @@
 
 const fs = require('fs');
 const path = require('path');
-const { assertSafeUrl } = require('./securityUtils');
+const { fetchSafeUrl } = require('./securityUtils');
 
 const DEFAULT_REMOTE_REGISTRY = 'https://raw.githubusercontent.com/Behdad-kanaani/korai-player/main/plugins/registry.json';
+
+const MAX_REMOTE_REGISTRY_BYTES = 2 * 1024 * 1024;
+
+async function readBoundedJson(response) {
+  if (!response.body) throw new Error('Remote registry response has no body');
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_REMOTE_REGISTRY_BYTES) {
+    throw new Error('Remote registry exceeds size limit');
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_REMOTE_REGISTRY_BYTES) {
+        await reader.cancel();
+        throw new Error('Remote registry exceeds size limit');
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    try { reader.releaseLock(); } catch {}
+  }
+  return JSON.parse(Buffer.concat(chunks, total).toString('utf8'));
+}
+
 
 class PluginStore {
   constructor(opts = {}) {
@@ -51,12 +80,14 @@ class PluginStore {
     let rawPlugins = this.readLocalRegistry();
     if (this.remoteEnabled) {
       try {
-        const safeUrl = await assertSafeUrl(this.remoteRegistryUrl, {
-          allowHosts: ['raw.githubusercontent.com']
+        const response = await fetchSafeUrl(this.remoteRegistryUrl, {
+          allowHosts: ['raw.githubusercontent.com'],
+          timeoutMs: 8_000,
+          maxRedirects: 2,
+          headers: { 'User-Agent': 'KORAI-Player-Plugin-Catalog' }
         });
-        const response = await fetch(safeUrl, { signal: AbortSignal.timeout(8000) });
         if (response.ok) {
-          const remote = await response.json();
+          const remote = await readBoundedJson(response);
           const remotePlugins = Array.isArray(remote) ? remote : Array.isArray(remote?.plugins) ? remote.plugins : [];
           rawPlugins = remotePlugins.length ? remotePlugins : rawPlugins;
         }

@@ -4,36 +4,50 @@ const net = require('net');
 const os = require('os');
 const path = require('path');
 const https = require('https');
+const http = require('http');
 const { Readable } = require('stream');
 
 function getClientIp(req) {
-  // The server is bound to loopback, so forwarding headers are not trusted.
-  return req.ip || req.socket?.remoteAddress || 'unknown';
+  // Use the direct peer address. Forwarding headers are untrusted because the
+  // local desktop API does not run behind a trusted reverse proxy.
+  const address = req?.socket?.remoteAddress || req?.connection?.remoteAddress || req?.ip || 'unknown';
+  return String(address).toLowerCase().replace(/^::ffff:/, '');
 }
 
 function createRateLimiter(maxRequests = 60, windowMs = 60_000) {
+  const requestBudget = Number.isFinite(maxRequests) ? Math.max(1, Math.floor(maxRequests)) : 60;
+  const intervalMs = Number.isFinite(windowMs) ? Math.max(1000, Math.min(3_600_000, Math.floor(windowMs))) : 60_000;
   const buckets = new Map();
-  let cleanupAt = Date.now() + windowMs;
+  const MAX_BUCKETS = 10_000;
+  let cleanupAt = Date.now() + intervalMs;
+
+  function cleanupExpired(now) {
+    for (const [bucketKey, bucket] of buckets) {
+      if (bucket.resetAt <= now) buckets.delete(bucketKey);
+    }
+    cleanupAt = now + intervalMs;
+  }
 
   return (req, res, next) => {
     const key = getClientIp(req);
     const now = Date.now();
 
-    if (now >= cleanupAt) {
-      for (const [bucketKey, bucket] of buckets) {
-        if (bucket.resetAt <= now) buckets.delete(bucketKey);
-      }
-      cleanupAt = now + windowMs;
-    }
+    if (now >= cleanupAt || buckets.size >= MAX_BUCKETS) cleanupExpired(now);
 
     const bucket = buckets.get(key);
     if (!bucket || now >= bucket.resetAt) {
-      buckets.set(key, { count: 1, resetAt: now + windowMs });
+      if (!buckets.has(key) && buckets.size >= MAX_BUCKETS) {
+        res.set?.('Retry-After', String(Math.max(1, Math.ceil(intervalMs / 1000))));
+        res.status(429).json({ error: 'Too many requests' });
+        return;
+      }
+      buckets.set(key, { count: 1, resetAt: now + intervalMs });
       return next();
     }
 
     bucket.count += 1;
-    if (bucket.count > maxRequests) {
+    if (bucket.count > requestBudget) {
+      res.set?.('Retry-After', String(Math.max(1, Math.ceil((bucket.resetAt - now) / 1000))));
       res.status(429).json({ error: 'Too many requests' });
       return;
     }
@@ -129,9 +143,15 @@ async function resolveSafeUrl(inputUrl, options = {}) {
     throw new Error('URL credentials are not allowed');
   }
 
-  const hostname = parsed.hostname.toLowerCase();
+  const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
   if (!hostname || hostname === 'localhost' || hostname.endsWith('.localhost')) {
     throw new Error('Localhost URLs are not allowed');
+  }
+  // Handle IP literals directly. URL.hostname may include brackets for IPv6;
+  // never send bracketed literals through DNS resolution.
+  const literalFamily = net.isIP(hostname);
+  if (literalFamily && isLocalAddress(hostname)) {
+    throw new Error('Local or reserved IP addresses are not allowed');
   }
 
   const allowedHosts = (options.allowHosts || []).map(host => String(host).toLowerCase().trim()).filter(Boolean);
@@ -142,7 +162,9 @@ async function resolveSafeUrl(inputUrl, options = {}) {
 
   let addresses;
   try {
-    addresses = await dns.promises.lookup(hostname, { all: true, verbatim: true });
+    addresses = literalFamily
+      ? [{ address: hostname, family: literalFamily }]
+      : await dns.promises.lookup(hostname, { all: true, verbatim: true });
   } catch {
     throw new Error('Unable to resolve hostname');
   }
@@ -151,7 +173,7 @@ async function resolveSafeUrl(inputUrl, options = {}) {
     throw new Error('Refusing to access local network address');
   }
 
-  return { url: parsed, addresses };
+  return { url: parsed, addresses, hostname };
 }
 
 async function assertSafeUrl(inputUrl, options = {}) {
@@ -181,29 +203,46 @@ function createPinnedLookup(hostname, addresses) {
 }
 
 async function fetchSafeUrl(inputUrl, options = {}) {
-  const maxRedirects = Number.isInteger(options.maxRedirects) ? options.maxRedirects : 5;
-  const timeoutMs = Number.isFinite(options.timeoutMs) ? options.timeoutMs : 30_000;
+  const maxRedirects = Number.isInteger(options.maxRedirects)
+    ? Math.max(0, Math.min(10, options.maxRedirects))
+    : 5;
+  const timeoutMs = Number.isFinite(options.timeoutMs)
+    ? Math.max(1000, Math.min(120_000, options.timeoutMs))
+    : 30_000;
   const requestHeaders = options.headers || {};
   let currentUrl = inputUrl;
 
   for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount += 1) {
-    const { url, addresses } = await resolveSafeUrl(currentUrl, options);
+    const { url, addresses, hostname } = await resolveSafeUrl(currentUrl, options);
+    const transport = url.protocol === 'https:' ? https : http;
     const response = await new Promise((resolve, reject) => {
-      const request = https.request(url, {
+      const request = transport.request(url, {
         method: 'GET',
         headers: requestHeaders,
-        lookup: createPinnedLookup(url.hostname, addresses)
+        lookup: createPinnedLookup(hostname, addresses),
+        agent: false
       }, resolve);
 
-      request.setTimeout(timeoutMs, () => request.destroy(new Error('Request timeout')));
+      request.setTimeout(timeoutMs, () => request.destroy(new Error('Request idle timeout')));
       request.once('error', reject);
       request.end();
     });
+    // Bound the response-body phase as well as connection establishment. The
+    // timer remains active until the body is consumed or the stream closes.
+    const responseDeadline = setTimeout(
+      () => response.destroy(new Error('Response deadline exceeded')),
+      timeoutMs
+    );
+    response.once('end', () => clearTimeout(responseDeadline));
+    response.once('close', () => clearTimeout(responseDeadline));
+    response.once('error', () => clearTimeout(responseDeadline));
 
     const location = response.headers.location;
     if (response.statusCode >= 300 && response.statusCode < 400 && location) {
       response.resume();
       if (redirectCount === maxRedirects) throw new Error('Too many redirects');
+      // Every redirect is parsed, DNS-resolved, checked against the host policy,
+      // and pinned independently on the next iteration.
       currentUrl = new URL(location, url).href;
       continue;
     }
@@ -235,37 +274,73 @@ function isPathInside(baseDir, candidatePath) {
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
-function resolveSafePath(candidatePath, baseDir = null, options = {}) {
-  if (!candidatePath || typeof candidatePath !== 'string') return null;
+function realpathWithMissingTail(candidatePath) {
+  const absolute = path.resolve(candidatePath);
+  const missing = [];
+  let cursor = absolute;
 
+  while (true) {
+    let stat;
+    try {
+      // lstat is deliberate: existsSync follows links and reports false for a
+      // dangling symlink, which could otherwise be followed by a later write.
+      stat = fs.lstatSync(cursor);
+    } catch (error) {
+      if (error && error.code !== 'ENOENT' && error.code !== 'ENOTDIR') return null;
+      const parent = path.dirname(cursor);
+      if (parent === cursor) return null;
+      missing.unshift(path.basename(cursor));
+      cursor = parent;
+      continue;
+    }
+
+    if (missing.length > 0 && !stat.isDirectory()) return null;
+    // If lstat succeeded but realpath fails, this is commonly a dangling
+    // symlink. Reject it instead of treating it as a new path component.
+    try {
+      const real = fs.realpathSync.native(cursor);
+      return path.resolve(real, ...missing);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function resolveSafePath(candidatePath, baseDir = null, options = {}) {
+  if (typeof candidatePath !== 'string') return null;
   const trimmedPath = candidatePath.trim();
   if (!trimmedPath || trimmedPath.includes('\0')) return null;
 
-  const safeBase = path.resolve(baseDir || os.homedir());
+  const rawBase = path.resolve(baseDir || os.homedir());
+  const safeBase = realpathWithMissingTail(rawBase);
+  const homeDir = path.resolve(os.homedir());
+  const realHome = realpathWithMissingTail(homeDir);
+  if (!safeBase || !realHome) return null;
+
   const absolutePath = path.isAbsolute(trimmedPath)
     ? path.resolve(trimmedPath)
-    : path.resolve(safeBase, trimmedPath);
+    : path.resolve(rawBase, trimmedPath);
+  const realCandidate = realpathWithMissingTail(absolutePath);
+  if (!realCandidate) return null;
 
-  const homeDir = path.resolve(os.homedir());
   const allowHome = options.allowHome !== false;
-  const isUnderBase = isPathInside(safeBase, absolutePath);
-  const isUnderHome = allowHome && isPathInside(homeDir, absolutePath);
+  const inBase = isPathInside(safeBase, realCandidate);
+  const inHome = allowHome && isPathInside(realHome, realCandidate);
+  if (!inBase && !inHome) return null;
 
-  if (!isUnderBase && !isUnderHome) return null;
-
-  try {
-    const realBase = fs.existsSync(safeBase) ? fs.realpathSync.native(safeBase) : safeBase;
-    const realPath = fs.existsSync(absolutePath) ? fs.realpathSync.native(absolutePath) : absolutePath;
-    const realHome = fs.existsSync(homeDir) ? fs.realpathSync.native(homeDir) : homeDir;
-
-    if (isPathInside(realBase, realPath) || (allowHome && isPathInside(realHome, realPath))) {
-      return realPath;
+  // Re-resolve the declared root and the candidate after canonicalization. A
+  // symlink may be used only when its final target remains inside an allowed
+  // root; dangling links and links escaping all roots are rejected.
+  if (fs.existsSync(rawBase)) {
+    try {
+      const canonicalBase = fs.realpathSync.native(rawBase);
+      if (!isPathInside(canonicalBase, realCandidate) &&
+          !(allowHome && isPathInside(realHome, realCandidate))) return null;
+    } catch {
+      return null;
     }
-  } catch {
-    return absolutePath;
   }
-
-  return null;
+  return realCandidate;
 }
 
 /**
@@ -279,20 +354,39 @@ function resolveExistingFile(candidatePath, options = {}) {
   const trimmed = candidatePath.trim();
   if (!trimmed || trimmed.includes('\0')) return null;
 
-  const absolute = path.resolve(trimmed);
   try {
-    const real = fs.realpathSync.native(absolute);
+    const real = fs.realpathSync.native(path.resolve(trimmed));
     const stat = fs.statSync(real);
     if (!stat.isFile()) return null;
 
     if (options.allowedExtensions && options.allowedExtensions.length > 0) {
+      const allowed = new Set(options.allowedExtensions.map(value => String(value).toLowerCase()));
       const ext = path.extname(real).toLowerCase();
-      if (!options.allowedExtensions.includes(ext)) return null;
+      if (!allowed.has(ext)) return null;
+    }
+
+    if (Array.isArray(options.allowedRoots) && options.allowedRoots.length > 0) {
+      const insideAllowedRoot = options.allowedRoots.some(root => {
+        if (!root || typeof root !== 'string') return false;
+        try {
+          const canonicalRoot = fs.realpathSync.native(path.resolve(root));
+          return fs.statSync(canonicalRoot).isDirectory() && isPathInside(canonicalRoot, real);
+        } catch {
+          return false;
+        }
+      });
+      if (!insideAllowedRoot) return null;
     }
 
     if (Array.isArray(options.blockedRoots)) {
       for (const root of options.blockedRoots) {
-        if (root && isPathInside(root, real)) return null;
+        if (!root) continue;
+        try {
+          const canonicalRoot = fs.realpathSync.native(path.resolve(root));
+          if (isPathInside(canonicalRoot, real)) return null;
+        } catch {
+          // A missing blocked root cannot contain the already-resolved file.
+        }
       }
     }
 
@@ -302,19 +396,28 @@ function resolveExistingFile(candidatePath, options = {}) {
   }
 }
 
+function isSafeObjectKey(key) {
+  return typeof key === 'string' && key.length > 0 && key.length <= 128 &&
+    key !== '__proto__' && key !== 'constructor' && key !== 'prototype';
+}
+
 function isSafeKey(key) {
-  if (typeof key !== 'string' || key.length === 0) return false;
-  if (key === '__proto__' || key === 'constructor' || key === 'prototype') return false;
+  if (!isSafeObjectKey(key)) return false;
   if (/[^a-zA-Z0-9_-]/.test(key)) return false;
-  return key.length <= 128;
+  return true;
 }
 
 function safeAssign(target, source) {
-  if (!source || typeof source !== 'object' || Array.isArray(source)) return target;
+  if (!target || typeof target !== 'object' || !source || typeof source !== 'object' || Array.isArray(source)) return target;
   for (const key of Object.keys(source)) {
     if (!isSafeKey(key)) continue;
     try {
-      target[key] = source[key];
+      Object.defineProperty(target, key, {
+        value: source[key],
+        enumerable: true,
+        configurable: true,
+        writable: true
+      });
     } catch {
       // Ignore individual malformed keys.
     }
@@ -334,5 +437,6 @@ module.exports = {
   resolveSafePath,
   resolveExistingFile,
   isSafeKey,
+  isSafeObjectKey,
   safeAssign
 };

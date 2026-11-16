@@ -2,14 +2,18 @@
 
 const fs = require('fs');
 const path = require('path');
-const { resolveSafePath } = require('./securityUtils');
+const { resolveSafePath, resolveExistingFile } = require('./securityUtils');
 
 const MAX_CUE_FILE_BYTES = 10 * 1024 * 1024;
 
 function parseCueSheet(cuePath) {
-    const safeCuePath = resolveSafePath(cuePath, process.cwd());
-    if (!safeCuePath || !fs.existsSync(safeCuePath)) {
-        throw new Error('CUE file not found');
+    const safeCuePath = resolveExistingFile(cuePath, { allowedExtensions: ['.cue'] });
+    if (!safeCuePath) {
+        throw new Error('CUE file not found or is not a regular CUE file');
+    }
+    const cueStat = fs.statSync(safeCuePath);
+    if (!cueStat.isFile() || cueStat.size > MAX_CUE_FILE_BYTES) {
+        throw new Error('CUE file exceeds the 10 MiB size limit');
     }
     const cueBuffer = fs.readFileSync(safeCuePath);
     if (cueBuffer.length > MAX_CUE_FILE_BYTES) {
@@ -196,8 +200,11 @@ function getTracksFromCue(cuePath, audioBaseDir = null) {
                 throw new Error(`Invalid audio file URL in CUE: ${file.path}`);
             }
         }
-        const safePath = resolveSafePath(audioPath, audioBaseDir || path.dirname(cuePath));
-        if (!safePath || !fs.existsSync(safePath)) {
+        const safePath = resolveExistingFile(
+            path.isAbsolute(audioPath) ? audioPath : path.resolve(audioBaseDir || path.dirname(cuePath), audioPath),
+            { allowedExtensions: ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma', '.opus'] }
+        );
+        if (!safePath) {
             throw new Error(`Audio file not found or unsafe: ${audioPath}`);
         }
 

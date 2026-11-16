@@ -11,10 +11,10 @@
  *         -> balance -> limiter -> output (-> destination)
  */
 (function exposeKoraiAudioEngine(root, factory) {
-    const api = factory();
+    const api = factory(root);
     if (typeof module === 'object' && module.exports) module.exports = api;
     if (root) root.KoraiAudioEngine = api;
-})(typeof window !== 'undefined' ? window : globalThis, function createKoraiAudioEngine() {
+})(typeof window !== 'undefined' ? window : globalThis, function createKoraiAudioEngine(root) {
     'use strict';
 
     const EQ_BANDS = [60, 230, 910, 4000, 14000];
@@ -33,6 +33,9 @@
         reverbDecay:   { min: 0.3, max: 6,   step: 0.1,  def: 1.6, unit: 's' },
         reverbDamping: { min: 0,   max: 1,   step: 0.05, def: 0.5, unit: '%' },
         compAmount:    { min: 0,   max: 1,   step: 0.05, def: 0,   unit: '%' },
+        limiterCeilingDb: { min: -6, max: -0.1, step: 0.1, def: -1, unit: 'dB' },
+        limiterAttackMs:  { min: 0.05, max: 0.5, step: 0.05, def: 0.5, unit: 'ms' },
+        limiterReleaseMs: { min: 10, max: 500, step: 5, def: 80, unit: 'ms' },
         balance:       { min: -1,  max: 1,   step: 0.05, def: 0,   unit: 'bal' }
     };
     const BOOLEANS = { mono: false, limiter: true };
@@ -53,7 +56,8 @@
         const source = input && typeof input === 'object' ? input : {};
         const result = defaultSettings();
         for (const [key, def] of Object.entries(PARAMS)) {
-            const number = Number(source[key]);
+            const raw = source[key];
+            const number = raw === null || raw === undefined || raw === '' ? NaN : Number(raw);
             result[key] = Number.isFinite(number) ? clamp(number, def.min, def.max) : def.def;
         }
         for (const [key, def] of Object.entries(BOOLEANS)) {
@@ -61,7 +65,8 @@
         }
         if (Array.isArray(source.eq)) {
             result.eq = EQ_BANDS.map((_, index) => {
-                const number = Number(source.eq[index]);
+                const raw = source.eq[index];
+                const number = raw === null || raw === undefined || raw === '' ? NaN : Number(raw);
                 return Number.isFinite(number) ? clamp(number, -EQ_RANGE, EQ_RANGE) : 0;
             });
         }
@@ -145,6 +150,10 @@
             this._reverbActive = false;
             this._irKey = '';
             this._irTimer = null;
+            this._sinkRequestId = 0;
+            this._sinkChange = Promise.resolve(false);
+            this._limiterInitPromise = Promise.resolve(null);
+            this.limiterStatus = { state: 'idle', mode: 'peak-reduction-fallback', reason: 'Audio graph has not been created.', latencyMs: 0, oversampling: 0, enabled: true, gainReductionDb: 0, truePeakDbtp: null, safetyClipCount: 0 };
         }
 
         get supported() {
@@ -221,7 +230,8 @@
             n.compressor = ctx.createDynamicsCompressor();
             n.makeup = gain();
             n.panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
-            n.limiter = ctx.createDynamicsCompressor();
+            n.limiter = ctx.createDynamicsCompressor(); // Native peak-reduction fallback only.
+            n.limiterFallbackGain = gain(1);
             n.output = gain();
             n.meter = ctx.createAnalyser();
             n.meter.fftSize = 1024;
@@ -269,8 +279,10 @@
             n.compressor.connect(n.makeup);
             let tail = n.makeup;
             if (n.panner) { tail.connect(n.panner); tail = n.panner; }
+            n.limiterInput = tail;
             tail.connect(n.limiter);
-            n.limiter.connect(n.output);
+            n.limiter.connect(n.limiterFallbackGain);
+            n.limiterFallbackGain.connect(n.output);
             n.output.connect(n.meter);
             n.output.connect(ctx.destination);
 
@@ -278,7 +290,9 @@
             this.nodes = n;
             this._reverbActive = false;
             this._irKey = '';
+            this.limiterStatus = { state: 'loading', mode: 'peak-reduction-fallback', reason: null, latencyMs: 0, oversampling: 0, enabled: this.settings.limiter, gainReductionDb: 0, truePeakDbtp: null, safetyClipCount: 0 };
             this._applyAll(true);
+            this._limiterInitPromise = this._initializeTruePeakLimiter(ctx, n);
             if (this.sinkId && this.sinkId !== 'default') void this.setOutputDevice(this.sinkId);
         }
 
@@ -288,13 +302,15 @@
             for (const node of Object.values(this.nodes)) {
                 try { node && node.disconnect(); } catch (_) { /* already disconnected */ }
             }
+            try { this.nodes.limiterWorklet?.port?.close?.(); } catch (_) { /* worklet already closed */ }
             this.nodes = null;
         }
 
         getEffectiveSettings() {
             if (!this.bypass) return this.settings;
             const flat = defaultSettings();
-            flat.limiter = this.settings.limiter; // keep ear-safety even while comparing
+            // Keep the output safety stage and its tuning active while profile DSP is bypassed.
+            for (const key of ['limiter', 'limiterCeilingDb', 'limiterAttackMs', 'limiterReleaseMs']) flat[key] = this.settings[key];
             return flat;
         }
 
@@ -308,11 +324,13 @@
             if (key === 'eq') return false;
             const next = { ...this.settings };
             if (key in PARAMS) {
+                if (value === null || value === undefined || value === '') return false;
                 const number = Number(value);
                 if (!Number.isFinite(number)) return false;
                 next[key] = clamp(number, PARAMS[key].min, PARAMS[key].max);
             } else if (key in BOOLEANS) {
-                next[key] = Boolean(value);
+                if (typeof value !== 'boolean') return false;
+                next[key] = value;
             } else {
                 return false;
             }
@@ -323,9 +341,11 @@
         }
 
         setBypass(value) {
-            this.bypass = Boolean(value);
+            if (typeof value !== 'boolean') return false;
+            this.bypass = value;
             this._applyAll(false);
             this._emit('bypass');
+            return true;
         }
 
         _applyAll(immediate) {
@@ -364,20 +384,175 @@
             this._updateReverb(s);
 
             const a = s.compAmount;
-            n.compressor.threshold.value = a > 0 ? -12 - 30 * a : 0;
-            n.compressor.ratio.value = 1 + 11 * a;
-            n.compressor.knee.value = a > 0 ? 18 : 0;
-            n.compressor.attack.value = 0.008;
-            n.compressor.release.value = 0.22;
+            // Smooth every live dynamics change to avoid zipper noise/clicks.
+            set(n.compressor.threshold, a > 0 ? -12 - 30 * a : 0);
+            set(n.compressor.ratio, 1 + 11 * a);
+            set(n.compressor.knee, a > 0 ? 18 : 0);
+            set(n.compressor.attack, 0.008);
+            set(n.compressor.release, 0.22);
             set(n.makeup.gain, dbToGain(a * 9));
 
             if (n.panner) set(n.panner.pan, s.balance);
 
-            n.limiter.threshold.value = s.limiter ? -2 : 0;
-            n.limiter.ratio.value = s.limiter ? 20 : 1;
-            n.limiter.knee.value = 0;
-            n.limiter.attack.value = 0.001;
-            n.limiter.release.value = 0.08;
+            // DynamicsCompressorNode provides peak reduction, not a standards-compliant
+            // true-peak/brick-wall limiter. Keep its controls smoothed and label it honestly.
+            set(n.limiter.threshold, s.limiter ? -2 : 0);
+            set(n.limiter.ratio, s.limiter ? 20 : 1);
+            set(n.limiter.knee, 0);
+            set(n.limiter.attack, 0.001);
+            set(n.limiter.release, 0.08);
+            this._postLimiterSettings(s);
+        }
+
+        _workletUrl() {
+            try {
+                if (root.document?.baseURI) return new URL('truePeakLimiter.worklet.js', root.document.baseURI).href;
+            } catch (_) { /* use relative path in tests or non-DOM hosts */ }
+            return 'truePeakLimiter.worklet.js';
+        }
+
+        _setLimiterFallback(reason, error) {
+            this.limiterStatus = {
+                ...this.limiterStatus,
+                state: 'unavailable',
+                mode: 'peak-reduction-fallback',
+                reason: String(error?.message || reason || 'AudioWorklet is unavailable.'),
+                latencyMs: 0,
+                oversampling: 0,
+                gainReductionDb: 0,
+                truePeakDbtp: null,
+                safetyClipCount: 0,
+                enabled: this.settings.limiter === true
+            };
+            this._emit('limiter-fallback');
+            return this.limiterStatus;
+        }
+
+        async _initializeTruePeakLimiter(ctx, nodes) {
+            const WorkletNode = root.AudioWorkletNode || (typeof AudioWorkletNode !== 'undefined' ? AudioWorkletNode : null);
+            if (!ctx.audioWorklet || typeof ctx.audioWorklet.addModule !== 'function' || !WorkletNode) {
+                return this._setLimiterFallback('AudioWorklet is not supported in this runtime.');
+            }
+            try {
+                await ctx.audioWorklet.addModule(this._workletUrl());
+                if (this.ctx !== ctx || this.nodes !== nodes) return this.getLimiterStatus();
+                const worklet = new WorkletNode(ctx, 'korai-true-peak-limiter', {
+                    numberOfInputs: 1,
+                    numberOfOutputs: 1,
+                    outputChannelCount: [2],
+                    channelCount: 2,
+                    channelCountMode: 'explicit',
+                    processorOptions: {
+                        ceilingDb: this.settings.limiterCeilingDb,
+                        lookaheadMs: 5,
+                        attackMs: this.settings.limiterAttackMs,
+                        releaseMs: this.settings.limiterReleaseMs,
+                        enabled: this.settings.limiter
+                    }
+                });
+                nodes.limiterWorklet = worklet;
+                worklet.port.onmessage = event => this._handleLimiterMessage(ctx, nodes, event.data || {});
+                worklet.onprocessorerror = event => this._restorePeakReductionFallback(ctx, nodes,
+                    new Error(event?.message || 'AudioWorklet processor stopped unexpectedly.'));
+
+                // Rewire before playback begins (playTrack waits for this promise). This avoids
+                // parallel dry/wet branches and the comb filtering a crossfade would create.
+                nodes.limiterInput.disconnect();
+                nodes.limiterFallbackGain.gain.setValueAtTime(0, ctx.currentTime);
+                nodes.limiterInput.connect(worklet);
+                worklet.connect(nodes.output);
+                this.limiterStatus = {
+                    state: 'ready', mode: 'true-peak', reason: null,
+                    sampleRate: ctx.sampleRate,
+                    latencyMs: (Math.ceil(ctx.sampleRate * 0.005) + 6) / ctx.sampleRate * 1000,
+                    oversampling: 4, enabled: this.settings.limiter === true,
+                    gainReductionDb: 0, truePeakDbtp: null, safetyClipCount: 0
+                };
+                this._postLimiterSettings(this.getEffectiveSettings());
+                this._emit('limiter-ready');
+                return this.getLimiterStatus();
+            } catch (error) {
+                if (this.ctx !== ctx || this.nodes !== nodes) return this.getLimiterStatus();
+                if (nodes.limiterWorklet) {
+                    this._restorePeakReductionFallback(ctx, nodes, error);
+                    return this.getLimiterStatus();
+                }
+                return this._setLimiterFallback('True Peak Limiter initialization failed.', error);
+            }
+        }
+
+        _handleLimiterMessage(ctx, nodes, message) {
+            if (this.ctx !== ctx || this.nodes !== nodes || nodes.limiterWorklet == null) return;
+            if (message.type === 'error') {
+                this._restorePeakReductionFallback(ctx, nodes, new Error(message.message || 'True Peak Limiter processor error.'));
+                return;
+            }
+            if (message.type === 'meter' || message.type === 'ready' || message.type === 'configured') {
+                this.limiterStatus = {
+                    ...this.limiterStatus,
+                    sampleRate: Number(message.sampleRate) || ctx.sampleRate,
+                    latencyMs: Number.isFinite(message.latencyMs) ? message.latencyMs : this.limiterStatus.latencyMs,
+                    oversampling: Number(message.oversampling) || 4,
+                    enabled: typeof message.enabled === 'boolean' ? message.enabled : this.limiterStatus.enabled,
+                    gainReductionDb: Number.isFinite(message.gainReductionDb) ? message.gainReductionDb : 0,
+                    truePeakDbtp: Number.isFinite(message.truePeakDbtp) ? message.truePeakDbtp : null,
+                    safetyClipCount: Number.isFinite(message.safetyClipCount) ? message.safetyClipCount : 0
+                };
+            }
+        }
+
+        _restorePeakReductionFallback(ctx, nodes, error) {
+            if (this.ctx !== ctx || this.nodes !== nodes || !nodes.limiterWorklet) return false;
+            try { nodes.limiterWorklet.disconnect(); } catch (_) { /* processor may already be disconnected */ }
+            try { nodes.limiterInput.disconnect(); } catch (_) { /* best effort */ }
+            try {
+                nodes.limiterInput.connect(nodes.limiter);
+                nodes.limiterFallbackGain.gain.cancelScheduledValues(ctx.currentTime);
+                nodes.limiterFallbackGain.gain.setValueAtTime(0, ctx.currentTime);
+                nodes.limiterFallbackGain.gain.setTargetAtTime(1, ctx.currentTime, 0.01);
+            } catch (reconnectError) {
+                console.error('Could not restore native peak-reduction fallback:', reconnectError);
+            }
+            try { nodes.limiterWorklet.port.close(); } catch (_) { /* already closed */ }
+            nodes.limiterWorklet = null;
+            this._setLimiterFallback('True Peak Limiter processor failed; native peak reduction was restored.', error);
+            return true;
+        }
+
+        _postLimiterSettings(settings) {
+            this.limiterStatus.enabled = settings.limiter === true;
+            const worklet = this.nodes?.limiterWorklet;
+            if (!worklet?.port) return false;
+            try {
+                worklet.port.postMessage({
+                    type: 'configure',
+                    settings: {
+                        enabled: settings.limiter === true,
+                        ceilingDb: settings.limiterCeilingDb,
+                        attackMs: settings.limiterAttackMs,
+                        releaseMs: settings.limiterReleaseMs
+                    }
+                });
+                return true;
+            } catch (error) {
+                console.warn('Could not update True Peak Limiter settings:', error);
+                return false;
+            }
+        }
+
+        waitForLimiterReady() {
+            return Promise.resolve(this._limiterInitPromise).catch(() => this.getLimiterStatus()).then(() => this.getLimiterStatus());
+        }
+
+        getLimiterStatus() {
+            return { ...this.limiterStatus };
+        }
+
+        resetLimiter() {
+            const worklet = this.nodes?.limiterWorklet;
+            if (!worklet?.port) return false;
+            try { worklet.port.postMessage({ type: 'reset' }); return true; }
+            catch (_) { return false; }
         }
 
         _updateReverb(s) {
@@ -416,16 +591,37 @@
 
         async setOutputDevice(deviceId) {
             const id = deviceId || 'default';
-            this.sinkId = id;
-            if (!this.ctx || typeof this.ctx.setSinkId !== 'function') return !this.ctx;
-            try {
-                await this.ctx.setSinkId(id === 'default' ? '' : id);
-                this._emit('device');
+            const requestId = ++this._sinkRequestId;
+            const context = this.ctx;
+
+            // Before the first AudioContext exists, remember the user's choice; _build()
+            // applies it as soon as a context becomes available.
+            if (!context) {
+                this.sinkId = id;
                 return true;
-            } catch (error) {
-                console.warn('Could not switch output device:', error);
-                return false;
             }
+            if (typeof context.setSinkId !== 'function') {
+                return id === this.sinkId;
+            }
+
+            // Serialize native sink changes. A slow earlier request must never finish
+            // after a newer selection and silently leave the output on the wrong device.
+            const apply = async () => {
+                if (requestId !== this._sinkRequestId || context !== this.ctx) return false;
+                try {
+                    await context.setSinkId(id === 'default' ? '' : id);
+                    if (requestId !== this._sinkRequestId || context !== this.ctx) return false;
+                    this.sinkId = id;
+                    this._emit('device');
+                    return true;
+                } catch (error) {
+                    console.warn('Could not switch output device:', error);
+                    return false;
+                }
+            };
+            const operation = this._sinkChange.then(apply, apply);
+            this._sinkChange = operation.catch(() => false);
+            return operation;
         }
 
         // Peak level (dBFS) and total gain reduction (dB, positive) for the live meter.
@@ -436,7 +632,10 @@
             n.meter.getFloatTimeDomainData(buffer);
             let peak = 0;
             for (let i = 0; i < buffer.length; i++) peak = Math.max(peak, Math.abs(buffer[i]));
-            const reduction = Math.abs(Math.min(0, n.limiter.reduction || 0)) + Math.abs(Math.min(0, n.compressor.reduction || 0));
+            const limiterReduction = this.limiterStatus.state === 'ready'
+                ? Math.max(0, Number(this.limiterStatus.gainReductionDb) || 0)
+                : Math.abs(Math.min(0, n.limiter.reduction || 0));
+            const reduction = limiterReduction + Math.abs(Math.min(0, n.compressor.reduction || 0));
             return { peakDb: peak > 0 ? 20 * Math.log10(peak) : -Infinity, reductionDb: reduction };
         }
     }

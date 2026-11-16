@@ -1706,8 +1706,26 @@ app.on('before-quit', () => {
     isQuitting = true;
 });
 
-app.on('will-quit', () => {
-    try { require('./src/backend/database').flushDatabase?.(); } catch (e) {}
+let historyFlushInProgress = false;
+let historyFlushComplete = false;
+
+app.on('will-quit', (event) => {
+    if (!historyFlushComplete) {
+        event.preventDefault();
+        if (!historyFlushInProgress) {
+            historyFlushInProgress = true;
+            try { require('./src/backend/database').flushDatabase?.(); }
+            catch (error) { console.error('[shutdown] Database flush failed:', error); }
+            const userDataPath = app.getPath('userData');
+            require('./src/backend/userHistoryStore').flushUserHistoryWrites(userDataPath)
+                .catch(error => console.error('[shutdown] Listening history flush failed:', error))
+                .finally(() => {
+                    historyFlushComplete = true;
+                    app.quit();
+                });
+        }
+        return;
+    }
     stopHealthCheck();
     try { if (powerCleanup) powerCleanup(); } catch (e) {}
 });

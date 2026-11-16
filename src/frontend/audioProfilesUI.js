@@ -27,8 +27,13 @@
             preampDb: 'Preamp', lowCutHz: 'Low cut', bassDb: 'Bass', trebleDb: 'Treble', warmth: 'Analog warmth',
             width: 'Stereo width', crossfeed: 'Headphone crossfeed', balance: 'Balance',
             reverbMix: 'Reverb amount', reverbDecay: 'Room size', reverbDamping: 'Damping',
-            compAmount: 'Compressor', mono: 'Mono output', limiter: 'Safety limiter',
-            monoDesc: 'Sums both channels into one', limiterDesc: 'Prevents clipping when boosting',
+            compAmount: 'Compressor', mono: 'Mono output', limiter: 'True Peak Limiter',
+            limiterCeilingDb: 'True-peak ceiling', limiterAttackMs: 'Attack', limiterReleaseMs: 'Release',
+            limiterLoading: 'Loading AudioWorklet limiter…', limiterIdle: 'Limiter initializes with the audio engine.',
+            limiterActive: 'Active · {oversampling}× oversampling · {latency} ms lookahead latency',
+            limiterBypassed: 'Bypassed · fixed {latency} ms lookahead latency remains',
+            limiterFallback: 'True Peak Limiter unavailable; native peak-reduction fallback is active. {reason}',
+            monoDesc: 'Sums both channels into one', limiterDesc: '4× oversampled inter-sample detection with a 5 ms lookahead buffer',
             off: 'Off', saved: 'Profile saved', created: 'Profile created', deleted: 'Profile deleted',
             imported: 'Imported {n} profile(s)', importFailed: 'That file is not a valid KORAI profile',
             limitReached: 'Profile limit reached', autoApplied: 'Profile switched: {name}',
@@ -49,8 +54,13 @@
             preampDb: 'پری‌امپ', lowCutHz: 'حذف فرکانس‌های پایین', bassDb: 'باس', trebleDb: 'ترِبل', warmth: 'گرمای آنالوگ',
             width: 'عرض استریو', crossfeed: 'کراس‌فید هدفون', balance: 'بالانس',
             reverbMix: 'میزان ریورب', reverbDecay: 'اندازه اتاق', reverbDamping: 'میرایی',
-            compAmount: 'کمپرسور', mono: 'خروجی مونو', limiter: 'محافظ حداکثر صدا',
-            monoDesc: 'ترکیب دو کانال در یک کانال', limiterDesc: 'جلوگیری از اعوجاج هنگام تقویت',
+            compAmount: 'کمپرسور', mono: 'خروجی مونو', limiter: 'محدودکننده True Peak',
+            limiterCeilingDb: 'سقف True Peak', limiterAttackMs: 'Attack', limiterReleaseMs: 'Release',
+            limiterLoading: 'در حال بارگذاری محدودکننده AudioWorklet…', limiterIdle: 'محدودکننده با موتور صدا راه‌اندازی می‌شود.',
+            limiterActive: 'فعال · Oversampling {oversampling}× · تأخیر Lookahead برابر {latency} ms',
+            limiterBypassed: 'غیرفعال · تأخیر ثابت Lookahead برابر {latency} ms همچنان برقرار است',
+            limiterFallback: 'True Peak Limiter در دسترس نیست؛ کاهش پیک بومی فعال است. {reason}',
+            monoDesc: 'ترکیب دو کانال در یک کانال', limiterDesc: 'تشخیص پیک بین نمونه‌ها با Oversampling چهاربرابر و Lookahead پنج میلی‌ثانیه‌ای',
             off: 'خاموش', saved: 'پروفایل ذخیره شد', created: 'پروفایل ساخته شد', deleted: 'پروفایل حذف شد',
             imported: '{n} پروفایل وارد شد', importFailed: 'این فایل یک پروفایل معتبر KORAI نیست',
             limitReached: 'به سقف تعداد پروفایل‌ها رسیدید', autoApplied: 'پروفایل تغییر کرد: {name}',
@@ -108,13 +118,15 @@
         { id: 'tone', icon: 'fa-sliders', params: ['preampDb', 'lowCutHz', 'bassDb', 'trebleDb', 'warmth'] },
         { id: 'space', icon: 'fa-expand', params: ['width', 'crossfeed', 'balance'], switches: ['mono'] },
         { id: 'reverb', icon: 'fa-landmark', params: ['reverbMix', 'reverbDecay', 'reverbDamping'] },
-        { id: 'dynamics', icon: 'fa-bolt', params: ['compAmount'], switches: ['limiter'] }
+        { id: 'dynamics', icon: 'fa-bolt', params: ['compAmount', 'limiterCeilingDb', 'limiterAttackMs', 'limiterReleaseMs'], switches: ['limiter'] }
     ];
     const SWITCH_ICONS = { mono: 'fa-circle-dot', limiter: 'fa-shield-halved' };
 
     function formatValue(key, value) {
         if (key === 'lowCutHz') return value <= 0 ? L('off') : `${Math.round(value)} Hz`;
         if (key === 'reverbDecay') return `${value.toFixed(1)} s`;
+        if (key === 'limiterAttackMs') return `${value.toFixed(2)} ms`;
+        if (key === 'limiterReleaseMs') return `${Math.round(value)} ms`;
         if (key === 'balance') return Math.abs(value) < 0.025 ? L('center') : `${value < 0 ? L('left') : L('right')} ${Math.round(Math.abs(value) * 100)}`;
         if (PARAMS[key].unit === 'dB') return `${value > 0 ? '+' : ''}${value.toFixed(1)} dB`;
         if (PARAMS[key].unit === '%') return value <= 0 && key !== 'width' ? L('off') : `${Math.round(value * 100)}%`;
@@ -134,7 +146,7 @@
     const ui = {
         root: null, chips: null, actions: {}, nameBar: null, nameInput: null, nameMode: null, pickedIcon: 'fa-sliders',
         sliders: new Map(), switches: new Map(), bypassBtn: null, modifiedBadge: null,
-        meterLevel: null, meterReduction: null, meterLevelText: null, canvas: null,
+        meterLevel: null, meterReduction: null, meterLevelText: null, canvas: null, limiterStatus: null,
         deviceSelect: null, deviceBind: null, autoSwitch: null, namesBtn: null,
         devices: [], deleteArmedUntil: 0, meterTimer: null, curveFrame: 0
     };
@@ -177,7 +189,7 @@
         ];
         return h('details', { class: 'sp-group', open: open ? true : null },
             h('summary', {}, icon(group.icon), h('span', { text: L(group.id) }), icon('fa-chevron-down sp-chevron')),
-            h('div', { class: 'sp-group-body' }, rows));
+            h('div', { class: 'sp-group-body' }, rows, group.id === 'dynamics' ? ui.limiterStatus : null));
     }
 
     function buildChips() {
@@ -395,6 +407,31 @@
     }
 
     // ------------------------------------------------------------------ rendering
+    function syncLimiterStatus() {
+        if (!ui.limiterStatus) return;
+        const status = engine.getLimiterStatus?.() || { state: 'idle' };
+        ui.limiterStatus.className = 'sp-limiter-status';
+        if (status.state === 'ready') {
+            const latency = Number(status.latencyMs || 0).toFixed(2);
+            if (status.enabled === false) {
+                ui.limiterStatus.textContent = L('limiterBypassed', { latency });
+            } else {
+                ui.limiterStatus.classList.add('is-active');
+                ui.limiterStatus.textContent = L('limiterActive', {
+                    oversampling: status.oversampling || 4,
+                    latency
+                });
+            }
+        } else if (status.state === 'loading') {
+            ui.limiterStatus.textContent = L('limiterLoading');
+        } else if (status.state === 'unavailable') {
+            ui.limiterStatus.classList.add('is-fallback');
+            ui.limiterStatus.textContent = L('limiterFallback', { reason: status.reason || '' });
+        } else {
+            ui.limiterStatus.textContent = L('limiterIdle');
+        }
+    }
+
     function syncControls() {
         for (const [key, { input, valueEl }] of ui.sliders) {
             const value = manager.live[key];
@@ -413,6 +450,7 @@
         ui.bypassBtn.classList.toggle('is-on', engine.bypass);
         ui.bypassBtn.setAttribute('aria-pressed', engine.bypass ? 'true' : 'false');
         ui.root.classList.toggle('is-bypassed', engine.bypass);
+        syncLimiterStatus();
         renderDeviceBind();
         scheduleCurve();
     }
@@ -479,6 +517,7 @@
             h('div', { class: 'sp-meter' }, h('span', { text: L('reduction') }), h('div', { class: 'sp-meter-track' }, ui.meterReduction), h('b', { text: '' })));
 
         ui.canvas = h('canvas', { class: 'sp-curve', 'aria-label': L('curve'), role: 'img' });
+        ui.limiterStatus = h('p', { class: 'sp-limiter-status', role: 'status', 'aria-live': 'polite' });
 
         ui.deviceSelect = h('select', { class: 'sp-select', 'aria-label': L('output') });
         ui.deviceSelect.addEventListener('change', async () => {
@@ -559,7 +598,10 @@
             syncControls();
             if (reason === 'auto-profile') notify(L('autoApplied', { name: profileName(manager.active) }), 'info');
         });
-        engine.onChange(reason => { if (reason === 'bypass') syncControls(); });
+        engine.onChange(reason => {
+            if (reason === 'bypass') window.setEqualizerBypass?.(engine.bypass);
+            syncControls();
+        });
 
         // Keep profile state in sync with the stand-alone 5-band equalizer and the Mono setting.
         window.addEventListener('settings-changed', event => {

@@ -1,6 +1,6 @@
 {
   "name": "korai-player",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "KORAI Player - local-first desktop music library and playback",
   "homepage": "https://github.com/Behdad-kanaani/korai-player",
   "main": "main.js",
@@ -64,6 +64,8 @@
       "!**/test/**",
       "!**/tests/**",
       "!**/__tests__/**",
+      "!**/*.test.js",
+      "!**/*.spec.js",
       "!**/docs/**",
       "!**/example/**",
       "!**/*.log",

@@ -12,6 +12,12 @@ let coversDir = null;
 let saveDebounceTimer = null;
 let isSaving = false;
 let saveQueued = false;
+let lastGoodSnapshotAt = 0;
+let snapshotInProgress = false;
+let databaseRevision = 0;
+
+// Keep a useful long-term listening window while bounding JSON database growth.
+const MAX_PLAY_HISTORY = 50000;
 
 const defaultData = {
   tracks: [],
@@ -181,7 +187,7 @@ function normalizeDatabase(data) {
       playedAt: Number(entry?.playedAt) || Date.now()
     }))
     .filter(entry => entry.id > 0 && trackIds.has(entry.trackId))
-    .slice(-500);
+    .slice(-MAX_PLAY_HISTORY);
 
   for (const playlist of normalized.playlists) {
     playlist.tracks = playlist.tracks.filter(trackId => trackIds.has(trackId));
@@ -197,6 +203,33 @@ function normalizeDatabase(data) {
   return normalized;
 }
 
+function getLastGoodPath() {
+  return dbPath ? `${dbPath}.last-good` : null;
+}
+
+function atomicWriteSync(targetPath, payload) {
+  const tempPath = `${targetPath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
+  let fd;
+  try {
+    fd = fs.openSync(tempPath, 'wx');
+    fs.writeFileSync(fd, payload, 'utf8');
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+    fd = null;
+    fs.renameSync(tempPath, targetPath);
+    try {
+      const dirFd = fs.openSync(path.dirname(targetPath), 'r');
+      try { fs.fsyncSync(dirFd); } finally { fs.closeSync(dirFd); }
+    } catch { /* Directory fsync is not supported on every platform. */ }
+  } catch (error) {
+    if (fd !== undefined && fd !== null) {
+      try { fs.closeSync(fd); } catch {}
+    }
+    try { fs.unlinkSync(tempPath); } catch {}
+    throw error;
+  }
+}
+
 function initDatabase(userDataPath) {
   if (!userDataPath) throw new Error('userDataPath is required');
 
@@ -205,20 +238,58 @@ function initDatabase(userDataPath) {
   fs.mkdirSync(coversDir, { recursive: true });
 
   let parsed = null;
+  let recoveredFromSnapshot = false;
   if (fs.existsSync(dbPath)) {
     try {
       parsed = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
     } catch (error) {
       const corruptPath = `${dbPath}.corrupt-${Date.now()}`;
       try { fs.renameSync(dbPath, corruptPath); } catch {}
-      console.warn('[database] Corrupt database detected; starting from defaults:', error.message);
+      console.warn('[database] Corrupt database detected; attempting last-known-good recovery:', error.message);
+      const lastGoodPath = getLastGoodPath();
+      if (lastGoodPath && fs.existsSync(lastGoodPath)) {
+        try {
+          parsed = JSON.parse(fs.readFileSync(lastGoodPath, 'utf8'));
+          recoveredFromSnapshot = true;
+          console.warn('[database] Recovered library from last-known-good snapshot.');
+        } catch (snapshotError) {
+          console.error('[database] Last-known-good snapshot is also invalid:', snapshotError.message);
+        }
+      }
     }
   }
 
   dbData = normalizeDatabase(parsed || cloneDefaultData());
-  if (!parsed) saveDatabaseSync();
-  else if (JSON.stringify(parsed) !== JSON.stringify(dbData)) saveDatabase();
+  if (!parsed || recoveredFromSnapshot || JSON.stringify(parsed) !== JSON.stringify(dbData)) saveDatabaseSync();
+  try {
+    const snapshotPath = getLastGoodPath();
+    if (snapshotPath && fs.existsSync(dbPath)) {
+      fs.copyFileSync(dbPath, snapshotPath);
+      lastGoodSnapshotAt = Date.now();
+    }
+  } catch (error) {
+    console.warn('[database] Could not initialize recovery snapshot:', error.message);
+  }
   return dbData;
+}
+
+async function snapshotLastGoodDatabase() {
+  if (!dbPath || !fs.existsSync(dbPath) || snapshotInProgress || Date.now() - lastGoodSnapshotAt < 15 * 60 * 1000) return;
+  snapshotInProgress = true;
+  const snapshotPath = getLastGoodPath();
+  const tempPath = `${snapshotPath}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    await fsPromises.copyFile(dbPath, tempPath);
+    const handle = await fsPromises.open(tempPath, 'r');
+    try { await handle.sync(); } finally { await handle.close(); }
+    await fsPromises.rename(tempPath, snapshotPath);
+    lastGoodSnapshotAt = Date.now();
+  } catch (error) {
+    try { await fsPromises.unlink(tempPath); } catch {}
+    console.warn('[database] Last-known-good snapshot update failed:', error.message);
+  } finally {
+    snapshotInProgress = false;
+  }
 }
 
 async function saveDatabaseAsync() {
@@ -229,14 +300,33 @@ async function saveDatabaseAsync() {
   }
 
   isSaving = true;
-  const tempPath = `${dbPath}.tmp`;
   try {
+    await snapshotLastGoodDatabase();
+    const revision = databaseRevision;
     const jsonContent = JSON.stringify(dbData, null, 2);
-    await fsPromises.writeFile(tempPath, jsonContent, 'utf8');
-    await fsPromises.rename(tempPath, dbPath);
+    const tempPath = `${dbPath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
+    let handle;
+    try {
+      handle = await fsPromises.open(tempPath, 'wx');
+      await handle.writeFile(jsonContent, 'utf8');
+      await handle.sync();
+      await handle.close();
+      handle = null;
+      // A synchronous shutdown flush or a newer mutation may have happened
+      // while this snapshot was being written. Never let an older snapshot win.
+      if (revision !== databaseRevision) {
+        try { await fsPromises.unlink(tempPath); } catch {}
+        saveQueued = true;
+        return;
+      }
+      fs.renameSync(tempPath, dbPath);
+    } catch (error) {
+      if (handle) { try { await handle.close(); } catch {} }
+      try { await fsPromises.unlink(tempPath); } catch {}
+      throw error;
+    }
   } catch (error) {
-    console.error('[database] Atomic write failed:', error);
-    try { await fsPromises.unlink(tempPath); } catch {}
+    console.error('[database] Atomic write failed; in-memory changes remain pending:', error);
   } finally {
     isSaving = false;
     if (saveQueued) {
@@ -247,24 +337,39 @@ async function saveDatabaseAsync() {
 }
 
 function saveDatabase() {
+  databaseRevision++;
   clearTimeout(saveDebounceTimer);
   saveDebounceTimer = setTimeout(() => {
     saveDatabaseAsync().catch(error => console.error('[database] save failed:', error));
   }, 100);
 }
 
+function snapshotLastGoodDatabaseSync() {
+  if (!dbPath || !fs.existsSync(dbPath)) return;
+  const snapshotPath = getLastGoodPath();
+  const tempPath = `${snapshotPath}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    fs.copyFileSync(dbPath, tempPath, fs.constants.COPYFILE_EXCL);
+    const fd = fs.openSync(tempPath, 'r');
+    try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    fs.renameSync(tempPath, snapshotPath);
+    lastGoodSnapshotAt = Date.now();
+  } catch (error) {
+    try { fs.unlinkSync(tempPath); } catch {}
+    console.warn('[database] Could not refresh last-known-good snapshot:', error.message);
+  }
+}
+
 function saveDatabaseSync() {
   if (!dbPath || !dbData) return;
-  const tempPath = `${dbPath}.tmp`;
+  databaseRevision++;
   const payload = JSON.stringify(dbData, null, 2);
   try {
-    fs.writeFileSync(tempPath, payload, 'utf8');
-    fs.renameSync(tempPath, dbPath);
+    atomicWriteSync(dbPath, payload);
+    snapshotLastGoodDatabaseSync();
   } catch (error) {
     console.error('[database] Atomic sync write failed:', error);
-    try { fs.writeFileSync(dbPath, payload, 'utf8'); } catch (fallbackError) {
-      console.error('[database] Fallback sync write failed:', fallbackError);
-    }
+    throw error;
   }
 }
 
@@ -400,6 +505,7 @@ function restoreDatabaseBackup(backup) {
     if (Buffer.byteLength(serialized, 'utf8') > MAX_BACKUP_TOTAL_BYTES) {
       throw new Error('Restored library exceeds the 256 MiB size limit.');
     }
+    snapshotLastGoodDatabaseSync();
     const tempPath = `${dbPath}.restore-${timestamp}.tmp`;
     fs.writeFileSync(tempPath, serialized, { encoding: 'utf8', flag: 'wx' });
     try {
@@ -434,6 +540,8 @@ function getDb() {
 
   return {
     getAllTracks: () => [...dbData.tracks].sort((a, b) => b.createdAt - a.createdAt).map(cloneTrack),
+
+    getPlayHistory: () => dbData.play_history.map(entry => ({ ...entry })),
 
     getTrackById: (id) => cloneTrack(dbData.tracks.find(track => track.id === Number(id))),
 
@@ -683,7 +791,9 @@ function getDb() {
       dbData.play_history.push(history);
       track.playCount = (track.playCount || 0) + 1;
       track.updatedAt = Date.now();
-      if (dbData.play_history.length > 500) dbData.play_history = dbData.play_history.slice(-500);
+      if (dbData.play_history.length > MAX_PLAY_HISTORY) {
+        dbData.play_history = dbData.play_history.slice(-MAX_PLAY_HISTORY);
+      }
       saveDatabase();
       return { ...history };
     },

@@ -55,8 +55,8 @@ let lastPlaySource = {
 };
 let wasVocalSeparatorActive = false;
 let reconnectAudioGraph = null; 
-// Play request counter to avoid play() / load() race conditions
-let playRequestCounter = 0;
+// Serializes track changes and cancels obsolete media-load waits.
+const playbackRequestGate = window.KoraiPlaybackRequestControl.createRequestGate();
 // tokens for ipc listener cleanup
 let stateUpdateTokenMini = null;
 let stateUpdateTokenMain = null;
@@ -75,6 +75,7 @@ let audioCtx = null;
 let audioSource = null;
 let analyser = null;
 let eqFilters = [];
+let eqBypassed = false;
 const eqBands = [60, 230, 910, 4000, 14000];
 let gainNode = null;
 
@@ -84,6 +85,7 @@ let crossfadeDuration = 0;
 let queuedAudioTransition = null;
 let queuedAudioTransitionFailure = null;
 let isChangingPlaybackTrack = false;
+let audioLimiterFallbackNoticeShown = false;
 
 let sleepIntervalId = null;
 let sleepTimeRemaining = 0;
@@ -117,6 +119,20 @@ window.isPlaying = isPlaying;
 window.setPlayState = setPlayState;
 window.showNotification = showNotification;
 
+function setEqualizerBypass(enabled) {
+    eqBypassed = Boolean(enabled);
+    const values = eqBands.map((_, index) => {
+        const slider = document.getElementById(`eqSlider${index}`);
+        if (slider && Number.isFinite(Number(slider.value))) return Number(slider.value);
+        const stored = window.settingsStore?.getArray?.('eq', [0, 0, 0, 0, 0]) || [];
+        const value = Number(stored[index]);
+        return Number.isFinite(value) ? value : 0;
+    });
+    const groups = [window.eqFilters || eqFilters, queuedAudioTransition?.graph?.filters || []];
+    window.KoraiEqualizerBypass?.apply(groups, eqBypassed, values, window.audioCtx);
+}
+window.setEqualizerBypass = setEqualizerBypass;
+
 // Every track chain ends in the shared master effects bus (profiles, reverb, limiter...).
 function connectToMasterBus(node, context) {
     const bus = window.KoraiAudioEngine && window.KoraiAudioEngine.engine;
@@ -131,6 +147,17 @@ function connectToMasterBus(node, context) {
     node.connect(context.destination);
 }
 
+async function waitForAudioEngineReady() {
+    const engine = window.KoraiAudioEngine?.engine;
+    if (!engine?.waitForLimiterReady) return null;
+    const status = await engine.waitForLimiterReady();
+    if (status?.state === 'unavailable' && !audioLimiterFallbackNoticeShown) {
+        audioLimiterFallbackNoticeShown = true;
+        console.warn('KORAI True Peak Limiter unavailable; native peak-reduction fallback is active:', status.reason);
+    }
+    return status;
+}
+
 function syncAudioGraphReferences() {
     audioCtx = window.audioCtx || null;
     audioSource = window.audioSource || null;
@@ -143,11 +170,13 @@ function syncAudioGraphReferences() {
 // UTILITY FUNCTIONS
 // =============================================================================
 
-function escapeHtml(str) {
-    if (str === null || str === undefined || str === '') return '';
-    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-    return String(str).replace(/[&<>"']/g, ch => map[ch]);
-}
+const escapeHtml = window.KoraiHtmlSecurity?.escapeHtml || (value => {
+    const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return value === null || value === undefined ? '' : String(value).replace(/[&<>"']/g, ch => entities[ch]);
+});
+const genreFilterButtonHtml = window.KoraiHtmlSecurity?.genreFilterButtonHtml || ((genre, displayGenre, active) =>
+    `<button class="filter-chip${active ? ' active' : ''}" data-genre-filter="${escapeHtml(genre)}">${escapeHtml(displayGenre)}</button>`
+);
 
 function detectPerformanceMode() {
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -634,8 +663,20 @@ function showNotification(message, type = 'info') {
     if (type === 'success') icon = 'fa-check-circle';
     if (type === 'error') icon = 'fa-triangle-exclamation';
     
-    notif.innerHTML = `<i class="fas ${icon}"></i><div class="notif-content"><p style="margin: 0; font-size: 0.8rem;">${message}</p></div>`;
-    
+    const iconNode = document.createElement('i');
+    iconNode.className = `fas ${icon}`;
+    iconNode.setAttribute('aria-hidden', 'true');
+
+    const contentNode = document.createElement('div');
+    contentNode.className = 'notif-content';
+    const messageNode = document.createElement('p');
+    messageNode.style.margin = '0';
+    messageNode.style.fontSize = '0.8rem';
+    // Filenames, metadata, and server errors are untrusted text, never markup.
+    messageNode.textContent = String(message ?? '');
+    contentNode.appendChild(messageNode);
+    notif.append(iconNode, contentNode);
+
     document.body.appendChild(notif);
     setTimeout(() => { notif.classList.add('show'); }, 50);
     setTimeout(() => {
@@ -1530,76 +1571,40 @@ function playFromQueue(idx) {
 
 let emergencyRecoveryInProgress = false;
 
-async function emergencyAudioRecovery() {
-    if (emergencyRecoveryInProgress) return;
+async function emergencyAudioRecovery(options = {}) {
+    if (emergencyRecoveryInProgress) return false;
     emergencyRecoveryInProgress = true;
-    
-    console.warn('Emergency audio recovery triggered');
-    
+    const notify = options.notify !== false;
     try {
-        // Force stop all audio
+        console.warn('Emergency audio graph recovery triggered');
+        // Never call playTrack() here: recovery may be running inside a playTrack request.
         if (audioElement) {
-            try {
-                audioElement.pause();
-                audioElement.src = '';
-                audioElement.load();
-            } catch (e) {}
+            try { audioElement.pause(); } catch (_) { /* best effort */ }
+            try { audioElement._koraiSourceNode?.disconnect(); } catch (_) { /* context may be closed */ }
+            audioElement._koraiSourceNode = null;
         }
-        
-        // Close and recreate AudioContext
         if (window.audioCtx && window.audioCtx.state !== 'closed') {
-            try {
-                await window.audioCtx.close();
-            } catch (e) {}
+            try { await window.audioCtx.close(); } catch (_) { /* continue rebuilding */ }
         }
-        
-        // Reset all references
         window.audioCtx = null;
         window.audioSource = null;
         window.gainNode = null;
         window.analyser = null;
         window.eqFilters = [];
         syncAudioGraphReferences();
-        
-        // Reset state
+        if (!setupAudioNodes()) throw new Error('Could not rebuild the audio graph');
         setPlayState(false);
-        
-        // Small delay
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Reinitialize audio
-        initAudio();
-        
-        // If there was a current track, try to play it
-        if (currentTrackId) {
-            await new Promise(resolve => setTimeout(resolve, 200));
-            await playTrack(currentTrackId);
-        }
-        
-        showNotification(t('notificationAudioRecovered'), 'success');
-        
-    } catch (e) {
-        console.error('Emergency recovery failed:', e);
-        showNotification(t('notificationAudioSystemError'), 'error');
+        if (notify) showNotification(t('notificationAudioRecovered'), 'success');
+        return true;
+    } catch (error) {
+        console.error('Emergency audio recovery failed:', error);
+        if (notify) showNotification(t('notificationAudioSystemError'), 'error');
+        return false;
     } finally {
         emergencyRecoveryInProgress = false;
     }
 }
-
-// Listen for audio element errors that might require recovery
-if (audioElement) {
-    audioElement.addEventListener('error', (e) => {
-        console.error('Audio element error:', e);
-        if (audioElement.error) {
-            const errorCode = audioElement.error.code;
-            // MEDIA_ERR_DECODE (3) or MEDIA_ERR_SRC_NOT_SUPPORTED (4)
-            if (errorCode === 3 || errorCode === 4) {
-                console.warn('Media decode error, attempting recovery...');
-                setTimeout(() => emergencyAudioRecovery(), 500);
-            }
-        }
-    });
-}
+// Audio-element errors are handled by the active element listeners.
 
 function removeFromQueue(idx) {
     if (!Number.isInteger(idx) || idx < 0 || idx >= queue.length) return;
@@ -1624,6 +1629,7 @@ function removeFromQueue(idx) {
                 audioElement.pause();
                 audioElement.removeAttribute('src');
                 audioElement.load();
+                window.KoraiAudioEngine?.engine?.resetLimiter?.();
                 setPlayState(false);
             }
             updatePlayerUI();
@@ -1723,6 +1729,7 @@ async function nextTrackEnhanced(options = {}) {
             audioElement.currentTime = getCueSegment(currentTrack, audioElement.duration).start;
             if (audioElement.paused || !isPlaying) {
                 try {
+                    await waitForAudioEngineReady();
                     await audioElement.play();
                     setPlayState(true);
                 } catch (e) {
@@ -1971,6 +1978,7 @@ function attachPromotedAudioListeners(element) {
     });
     element.addEventListener('seeked', () => {
         if (element !== audioElement) return;
+        window.KoraiAudioEngine?.engine?.resetLimiter?.();
         if (listeningSession) listeningSession.lastPosition = element.currentTime;
         const position = getElementTimelinePosition(element);
         syncTimelinePosition(position.current, position.duration);
@@ -2004,7 +2012,7 @@ function createQueuedAudioGraph(element, initialGain) {
         filter.Q.value = 1;
         const savedEq = window.settingsStore?.getArray?.('eq', [0, 0, 0, 0, 0]) || [];
         const savedGain = Number(savedEq[index]);
-        if (Number.isFinite(savedGain)) filter.gain.value = savedGain;
+        if (Number.isFinite(savedGain)) filter.gain.value = eqBypassed ? 0 : savedGain;
         return filter;
     });
     const analyserNode = context.createAnalyser();
@@ -2158,25 +2166,39 @@ async function maybePrepareQueuedAudioTransition(element) {
     if (fadeDuration <= 0 || remaining > crossfadeDuration) return;
     const context = window.audioCtx;
     if (!context || !window.gainNode || !transition.graph) return;
-    try {
+    if (!window.KoraiPlaybackTransition.claimFadeStart(transition, element)) return;
+
+    // Claim the transition before awaiting AudioContext.resume(). Several timeupdate
+    // events can arrive in the same turn; only this request may schedule the fade.
+    transition.fadeStartPromise = (async () => {
         await context.resume();
+        if (queuedAudioTransition !== transition || transition.stage !== 'starting-fade' || audioElement !== element) {
+            return false;
+        }
         const now = context.currentTime;
-        transition.stage = 'fading';
         transition.fadeDuration = fadeDuration;
         window.gainNode.gain.cancelScheduledValues(now);
         window.gainNode.gain.setValueAtTime(getTrackNormalizationGain(currentTrack), now);
         window.gainNode.gain.linearRampToValueAtTime(0, now + fadeDuration);
         transition.graph.gain.gain.setValueAtTime(0, now);
         transition.graph.gain.gain.linearRampToValueAtTime(transition.graph.normalizationGain, now + fadeDuration);
+        transition.stage = 'fading';
         transition.playPromise = transition.audio.play();
         await transition.playPromise;
-        if (queuedAudioTransition !== transition || transition.stage !== 'fading') return;
+        if (queuedAudioTransition !== transition || transition.stage !== 'fading' || audioElement !== element) {
+            return false;
+        }
         transition.timer = setTimeout(() => {
             void promoteQueuedAudioTransition(transition);
         }, fadeDuration * 1000);
+        return true;
+    })();
+
+    try {
+        await transition.fadeStartPromise;
     } catch (error) {
         console.warn('Could not start crossfade:', error);
-        cancelQueuedAudioTransition(true);
+        if (queuedAudioTransition === transition) cancelQueuedAudioTransition(true);
     }
 }
 
@@ -2279,6 +2301,9 @@ async function handleQueuedAudioEnd(element) {
         const transition = queuedAudioTransition;
         if (transition && transition.outgoing === element) {
             try {
+                if (transition.stage === 'starting-fade' && transition.fadeStartPromise) {
+                    await transition.fadeStartPromise;
+                }
                 if (queuedAudioTransition === transition && transition.stage === 'ready' && gaplessEnabled) {
                     if (await promoteQueuedAudioTransition(transition)) return;
                 }
@@ -2372,21 +2397,32 @@ function setupAudioNodes() {
             });
 
             el.addEventListener('loadedmetadata', () => {
+                if (el !== audioElement) return;
                 const position = getElementTimelinePosition(el);
                 const totalText = document.getElementById('durationK');
                 if (totalText) totalText.innerText = formatTime(position.duration);
                 syncTimelinePosition(position.current, position.duration);
-                const savedState = JSON.parse(localStorage.getItem('korai_playback_state') || '{}');
-                if (savedState && savedState.trackId === currentTrackId && savedState.currentTime > 0) {
+                const recoveryTime = Number(el._koraiRecoveryResumeTime);
+                if (Number.isFinite(recoveryTime) && recoveryTime > 0) {
                     const segment = getCueSegment(currentTrack, el.duration);
                     el.currentTime = currentTrack?.cueSheetPath
-                        ? (savedState.currentTime >= segment.start && savedState.currentTime < segment.end
-                            ? savedState.currentTime : segment.start)
-                        : Math.min(el.duration, savedState.currentTime);
+                        ? (recoveryTime >= segment.start && recoveryTime < segment.end ? recoveryTime : segment.start)
+                        : Math.min(el.duration, recoveryTime);
+                    el._koraiRecoveryResumeTime = null;
+                } else {
+                    const savedState = JSON.parse(localStorage.getItem('korai_playback_state') || '{}');
+                    if (savedState && String(savedState.trackId) === String(currentTrackId) && savedState.currentTime > 0) {
+                        const segment = getCueSegment(currentTrack, el.duration);
+                        el.currentTime = currentTrack?.cueSheetPath
+                            ? (savedState.currentTime >= segment.start && savedState.currentTime < segment.end
+                                ? savedState.currentTime : segment.start)
+                            : Math.min(el.duration, savedState.currentTime);
+                    }
                 }
             });
 
             el.addEventListener('durationchange', () => {
+                if (el !== audioElement) return;
                 const position = getElementTimelinePosition(el);
                 const totalText = document.getElementById('durationK');
                 if (totalText && Number.isFinite(position.duration)) totalText.innerText = formatTime(position.duration);
@@ -2395,6 +2431,7 @@ function setupAudioNodes() {
 
             el.addEventListener('seeked', () => {
                 if (el !== audioElement) return;
+                window.KoraiAudioEngine?.engine?.resetLimiter?.();
                 if (queuedAudioTransition) cancelQueuedAudioTransition(true);
                 if (listeningSession) listeningSession.lastPosition = el.currentTime;
                 const position = getElementTimelinePosition(el);
@@ -2403,6 +2440,7 @@ function setupAudioNodes() {
             });
 
             el.addEventListener('pause', () => {
+                if (el !== audioElement) return;
                 if (listeningSession) listeningSession.lastPosition = el.currentTime;
             });
 
@@ -2413,6 +2451,7 @@ function setupAudioNodes() {
             });
 
             el.addEventListener('error', (e) => {
+                if (el !== audioElement) return;
                 console.error('Audio error:', e);
                 showNotification(t('notificationAudioFileUnavailable'), 'error');
                 setPlayState(false);
@@ -2467,43 +2506,60 @@ function setupAudioNodes() {
         try { attachAudioElementListeners(audioElement); } catch (e) { console.debug('attachAudioElementListeners failed', e); }
 
         try {
-            if (audioElement._koraiSourceNode) {
+            const sourceResult = window.KoraiMediaElementSource.acquire(
+                audioElement,
+                window.audioCtx,
+                (element, context) => context.createMediaElementSource(element),
+                (old) => {
+                    const replacement = new Audio();
+                    const resumeTime = Number(old.currentTime);
+                    replacement.crossOrigin = old.crossOrigin || 'anonymous';
+                    replacement.volume = Number.isFinite(old.volume) ? old.volume : volume;
+                    replacement.muted = Boolean(old.muted);
+                    replacement.preload = old.preload || 'auto';
+                    replacement.playbackRate = Number.isFinite(old.playbackRate) ? old.playbackRate : 1;
+                    const sourceUrl = old.currentSrc || old.src;
+                    if (sourceUrl) replacement.src = sourceUrl;
+                    if (Number.isFinite(resumeTime) && resumeTime > 0) {
+                        replacement._koraiRecoveryResumeTime = resumeTime;
+                    }
+                    replacement._koraiResumeAfterSourceRebuild = !old.paused;
+                    return replacement;
+                }
+            );
+
+            if (sourceResult.replaced) {
+                const oldElement = audioElement;
+                audioElement = sourceResult.element;
+                window.audioElement = audioElement;
+                audioElement._koraiReplaced = true;
+                applyTempoToElement(audioElement);
+                attachAudioElementListeners(audioElement);
                 try {
-                    audioElement._koraiSourceNode.disconnect();
-                } catch (e) {}
-                audioElement._koraiSourceNode = null;
+                    oldElement.pause();
+                    oldElement.removeAttribute('src');
+                    oldElement.load();
+                } catch (releaseError) {
+                    console.debug('Could not release replaced audio element:', releaseError);
+                }
+                if (audioElement._koraiResumeAfterSourceRebuild) {
+                    delete audioElement._koraiResumeAfterSourceRebuild;
+                    audioElement.addEventListener('canplay', () => {
+                        if (audioElement && audioElement === window.audioElement && !audioElement.paused) return;
+                        if (audioElement !== sourceResult.element) return;
+                        audioElement.play().then(() => setPlayState(true)).catch(error => {
+                            console.warn('Could not resume playback after rebuilding audio source:', error);
+                        });
+                    }, { once: true });
+                }
             }
-            window.audioSource = window.audioCtx.createMediaElementSource(audioElement);
-            audioElement._koraiSourceNode = window.audioSource;
+            window.audioSource = sourceResult.source;
+            audioElement._koraiSourceNode = sourceResult.source;
+            audioElement._koraiSourceContext = window.audioCtx;
+            if (sourceResult.replaced) audioElement.load();
         } catch (e) {
-            console.warn('createMediaElementSource failed, attempting to recreate <audio> element:', e);
-            try {
-                const old = audioElement;
-                const newEl = new Audio();
-                newEl.crossOrigin = old.crossOrigin || 'anonymous';
-                newEl.volume = old.volume || volume;
-                newEl.muted = old.muted || false;
-                if (old.src) {
-                    newEl.src = old.src;
-                }
-                if (old.currentTime > 0) {
-                    newEl.currentTime = old.currentTime;
-                }
-                window.audioElement = newEl;
-                audioElement = window.audioElement;
-                window.audioElement._koraiReplaced = true;
-                attachAudioElementListeners(window.audioElement);
-                try {
-                    window.audioSource = window.audioCtx.createMediaElementSource(window.audioElement);
-                    window.audioElement._koraiSourceNode = window.audioSource;
-                } catch (e2) {
-                    console.error('Recreate audio element and source failed:', e2);
-                    return false;
-                }
-            } catch (e2) {
-                console.error('Recreate audio element and source failed:', e2);
-                return false;
-            }
+            console.error('Could not acquire media element audio source:', e);
+            return false;
         }
 
         window.gainNode = window.audioCtx.createGain();
@@ -2529,7 +2585,7 @@ function setupAudioNodes() {
         const savedEq = window.settingsStore?.getArray('eq', [0, 0, 0, 0, 0]) || [];
         window.eqFilters.forEach((filter, index) => {
             const gain = Number(savedEq[index]);
-            if (Number.isFinite(gain)) filter.gain.value = gain;
+            if (Number.isFinite(gain)) filter.gain.value = eqBypassed ? 0 : gain;
         });
 
         currentNode.connect(window.analyser);
@@ -2879,7 +2935,7 @@ function persistEqualizerSettings() {
 function updateEqualizerBand(index, dbValue) {
     const gainValue = parseFloat(dbValue);
     if (!Number.isFinite(gainValue)) return;
-    if (eqFilters[index]) {
+    if (eqFilters[index] && !eqBypassed) {
         eqFilters[index].gain.value = gainValue;
     }
     const display = document.getElementById(`eqVal${index}`);
@@ -3633,6 +3689,9 @@ function renderActiveTrackSurface() {
             renderStats().then(() => {
                 if (audioCtx && analyser) startLiveSpectrumAnalyzer();
             });
+            break;
+        case 'intelligence':
+            window.renderIntelligencePage?.();
             break;
         case 'playlist':
             renderPlaylistView();
@@ -4399,10 +4458,12 @@ async function addTrackToPlaylist(playlistId, trackId) {
 // =============================================================================
 
 async function playTrack(trackId, sourceType = 'library', sourceId = null, sourceTracksArray = null, playOptions = {}) {
+    const requestId = playbackRequestGate.begin();
     if (queuedAudioTransition) cancelQueuedAudioTransition(true);
     if (pendingPlayRequest) {
-        try { await pendingPlayRequest; } catch (e) { }
+        try { await pendingPlayRequest; } catch (e) { /* allow the latest request to continue */ }
     }
+    if (!playbackRequestGate.isCurrent(requestId)) return;
     const hasLibrary = Array.isArray(tracks) && tracks.length > 0;
     if (!hasLibrary && !currentTrack) {
         showNotification(t('emptyLibrary'), 'warning');
@@ -4413,6 +4474,7 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
         isChangingPlaybackTrack = true;
         try {
             await new Promise(resolve => setTimeout(resolve, 50));
+            if (!playbackRequestGate.isCurrent(requestId)) return;
             const samePlaySource = sourceType === lastPlaySource.type &&
                 String(sourceId ?? '') === String(lastPlaySource.sourceId ?? '');
             if (String(currentTrackId) === String(trackId) && samePlaySource &&
@@ -4421,10 +4483,13 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
                     if (window.audioCtx && window.audioCtx.state === 'suspended') {
                         try { await window.audioCtx.resume(); } catch (e) { }
                     }
+                    if (!playbackRequestGate.isCurrent(requestId)) return;
                     if (!audioElement._koraiSourceNode) {
                         setupAudioNodes();
                     }
+                    await waitForAudioEngineReady();
                     await audioElement.play();
+                    if (!playbackRequestGate.isCurrent(requestId)) return;
                     setPlayState(true);
                     savePlaybackState();
                     renderQueue();
@@ -4436,20 +4501,22 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
                     }
                 }
             }
+            const requestedTrack = window.KoraiPlaybackTrackResolution.resolveTrack(
+                tracks,
+                trackId,
+                window.currentTrack
+            );
+            if (!requestedTrack) {
+                showNotification(t('notificationTrackNotFound'), 'error');
+                return;
+            }
             if (listeningSession && String(listeningSession.trackId) !== String(trackId)) {
                 accountListeningProgress(audioElement);
                 finishListeningSession(listeningSession.trackId);
             }
-            currentTrackId = trackId;
-            currentTrack = tracks.find(t => t.id == trackId) || null;
-            if (!currentTrack && window.currentTrack && window.currentTrack.id === trackId) {
-                currentTrack = window.currentTrack;
-            }
-            if (!currentTrack) {
-                showNotification(t('notificationTrackNotFound'), 'error');
-                return;
-            }
-            window.currentTrackId = trackId;
+            currentTrackId = requestedTrack.id;
+            currentTrack = requestedTrack;
+            window.currentTrackId = currentTrackId;
             window.currentTrack = currentTrack;
             const sourceChanged = sourceType !== lastPlaySource.type ||
                 String(sourceId ?? '') !== String(lastPlaySource.sourceId ?? '');
@@ -4492,6 +4559,8 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
             if (window.audioCtx && window.audioCtx.state === 'suspended') {
                 try { await window.audioCtx.resume(); } catch (e) { }
             }
+            await waitForAudioEngineReady();
+            if (!playbackRequestGate.isCurrent(requestId)) return;
             const streamUrl = `http://127.0.0.1:${apiPort}/api/tracks/${trackId}/stream`;
             if (audioElement._koraiSourceNode) {
                 try {
@@ -4502,12 +4571,16 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
             if (!audioElement.paused) {
                 try { await audioElement.pause(); } catch (e) { }
             }
+            if (!playbackRequestGate.isCurrent(requestId)) return;
+            // A normal track replacement must not leak the previous track's delayed samples.
+            // Queued crossfades intentionally keep this shared master state continuous.
+            window.KoraiAudioEngine?.engine?.resetLimiter?.();
             const savedPosition = localStorage.getItem('korai_playback_state');
             let savedTime = 0;
             if (savedPosition) {
                 try {
                     const parsed = JSON.parse(savedPosition);
-                    if (parsed.trackId === trackId && parsed.currentTime > 0) {
+                    if (String(parsed.trackId) === String(trackId) && Number.isFinite(parsed.currentTime) && parsed.currentTime > 0) {
                         savedTime = parsed.currentTime;
                     }
                 } catch (e) {}
@@ -4515,48 +4588,16 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
             audioElement.src = '';
             audioElement.load();
             audioElement._koraiCueEndHandledFor = null;
+            const mediaReady = window.KoraiPlaybackRequestControl.waitForMediaReady(audioElement, { timeoutMs: 8000, forceWait: true });
+            const releaseMediaCancellation = playbackRequestGate.onCancel(requestId, mediaReady.cancel);
             audioElement.src = streamUrl;
             audioElement.load();
-            let loadError = null;
             try {
-                await new Promise((resolve, reject) => {
-                    let settled = false;
-                    const timeoutId = setTimeout(() => {
-                        if (!settled) {
-                            settled = true;
-                            resolve();
-                        }
-                    }, 5000);
-                    const onCanPlay = () => {
-                        if (settled) return;
-                        settled = true;
-                        clearTimeout(timeoutId);
-                        cleanup();
-                        resolve();
-                    };
-                    const onError = (e) => {
-                        if (settled) return;
-                        settled = true;
-                        clearTimeout(timeoutId);
-                        loadError = e;
-                        cleanup();
-                        reject(new Error('Media load error: ' + (e.message || 'unknown')));
-                    };
-                    const cleanup = () => {
-                        audioElement.removeEventListener('canplay', onCanPlay);
-                        audioElement.removeEventListener('error', onError);
-                    };
-                    audioElement.addEventListener('canplay', onCanPlay);
-                    audioElement.addEventListener('error', onError);
-                });
-            } catch (e) {
-                console.warn('Media load warning:', e.message);
-                if (e.message.includes('NotSupportedError') || e.message.includes('media load error')) {
-                    showNotification(t('notificationUnsupportedFormat'), 'error');
-                    setPlayState(false);
-                    return;
-                }
+                await mediaReady.promise;
+            } finally {
+                releaseMediaCancellation();
             }
+            if (!playbackRequestGate.isCurrent(requestId)) return;
             const segment = getCueSegment(currentTrack, audioElement.duration);
             if (currentTrack.cueSheetPath) {
                 audioElement.currentTime = savedTime >= segment.start && savedTime < segment.end
@@ -4578,12 +4619,16 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
             }
             let playSuccess = false;
             for (let attempt = 0; attempt < 3 && !playSuccess; attempt++) {
+                if (!playbackRequestGate.isCurrent(requestId)) return;
                 try {
                     if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 100 * attempt));
+                    if (!playbackRequestGate.isCurrent(requestId)) return;
                     if (!audioElement._koraiSourceNode) {
                         setupAudioNodes();
                     }
+                    await waitForAudioEngineReady();
                     await audioElement.play();
+                    if (!playbackRequestGate.isCurrent(requestId)) return;
                     playSuccess = true;
                     audioRecoveryAttempts = 0;
                 } catch (e) {
@@ -4594,15 +4639,30 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
                     }
                 }
             }
-            if (!playSuccess) {
-                if (audioRecoveryAttempts < MAX_AUDIO_RECOVERY_ATTEMPTS) {
-                    audioRecoveryAttempts++;
-                    await emergencyAudioRecovery();
-                    await playTrack(trackId, sourceType, sourceId, sourceTracksArray, playOptions);
-                    return;
-                } else {
-                    throw new Error('Playback failed after retries');
+            if (!playSuccess && audioRecoveryAttempts < MAX_AUDIO_RECOVERY_ATTEMPTS &&
+                playbackRequestGate.isCurrent(requestId)) {
+                audioRecoveryAttempts++;
+                const recovered = await emergencyAudioRecovery({ notify: false });
+                if (recovered && playbackRequestGate.isCurrent(requestId) && audioElement?.src) {
+                    try {
+                        if (audioElement.readyState < 3) {
+                            const retryReady = window.KoraiPlaybackRequestControl.waitForMediaReady(audioElement, { timeoutMs: 5000 });
+                            const releaseRetryCancellation = playbackRequestGate.onCancel(requestId, retryReady.cancel);
+                            try { await retryReady.promise; } finally { releaseRetryCancellation(); }
+                        }
+                        if (playbackRequestGate.isCurrent(requestId)) {
+                            await waitForAudioEngineReady();
+                            await audioElement.play();
+                            playSuccess = playbackRequestGate.isCurrent(requestId);
+                        }
+                    } catch (recoveryError) {
+                        console.warn('Playback retry after audio-graph recovery failed:', recoveryError);
+                    }
                 }
+            }
+            if (!playSuccess) {
+                if (!playbackRequestGate.isCurrent(requestId)) return;
+                throw new Error('Playback failed after retries');
             }
             if (wasVocalSeparatorActive && typeof reconnectAudioGraph === 'function') {
                 setTimeout(() => reconnectAudioGraph(true).catch(e => console.debug(e)), 100);
@@ -4620,8 +4680,12 @@ async function playTrack(trackId, sourceType = 'library', sourceId = null, sourc
             renderQueue();
             savePlaybackState();
         } catch (err) {
+            if (err?.name === 'AbortError' || !playbackRequestGate.isCurrent(requestId)) {
+                console.debug('Playback request superseded:', requestId);
+                return;
+            }
             console.error('Play error:', err);
-            if (!err.message.includes('NotSupported')) {
+            if (!String(err.message || '').includes('NotSupported')) {
                 showNotification(tf('notificationAudioPlaybackError', { error: err.message || t('notificationUnknownError') }), 'error');
             }
             setPlayState(false);
@@ -4656,6 +4720,7 @@ function togglePlay() {
                 try {
                     await audioElement.pause();
                 } catch (e) { }
+                window.KoraiAudioEngine?.engine?.resetLimiter?.();
                 setPlayState(false);
                 savePlaybackState();
             } else {
@@ -4686,6 +4751,7 @@ function togglePlay() {
                     }
                 }
                 try {
+                    await waitForAudioEngineReady();
                     await audioElement.play();
                     setPlayState(true);
                     audioRecoveryAttempts = 0;
@@ -4733,7 +4799,7 @@ async function tryAutoPlayTrack(trackId, attempts = 5) {
             // small backoff
             await new Promise(r => setTimeout(r, 250 + i * 150));
             // try emergency recovery on later attempts
-            if (i === 2) await emergencyAudioRecovery();
+            if (i === 2) await emergencyAudioRecovery({ notify: false });
         }
     }
     return false;
@@ -4930,7 +4996,7 @@ function renderLibrary(filteredTracks = null) {
     
     let listToRender = filteredTracks !== null ? filteredTracks : [...tracks];
     // Build sanitized genre list: group variants, remove junk (urls, site tags), and sort by frequency
-    const genreGroups = {};
+    const genreGroups = Object.create(null);
     tracks.forEach(t => {
         const raw = (t.genre || '').toString().trim();
         if (!raw) return;
@@ -4990,9 +5056,8 @@ function renderLibrary(filteredTracks = null) {
     existingGenres.forEach(g => {
         const genre = g.raw;
         const displayGenre = getGenreTranslation(g.norm) || cleanGenreDisplay(genre) || g.norm;
-        const escapedGenre = genre.replace(/'/g, "\\'");
         const isActive = libraryGenreFilter === genre || libraryGenreFilter === g.norm;
-        genreFilterHtml += `<button class="filter-chip ${isActive ? 'active' : ''}" onclick="setLibraryGenreFilter('${escapedGenre}')">${escapeHtml(displayGenre)}</button>`;
+        genreFilterHtml += genreFilterButtonHtml(genre, displayGenre, isActive);
     });
     
     genreFilterHtml += `
@@ -5051,6 +5116,14 @@ function renderLibrary(filteredTracks = null) {
     const toggleBtn = document.getElementById('genreFilterToggleBtn');
     const filterBody = document.getElementById('genreFilterBody');
     const filterHeader = document.getElementById('genreFilterHeader');
+    const genreFilterWrapper = document.getElementById('genreFilterWrapperBar');
+    if (genreFilterWrapper) {
+        genreFilterWrapper.addEventListener('click', event => {
+            const button = event.target.closest('button[data-genre-filter]');
+            if (!button || !genreFilterWrapper.contains(button)) return;
+            window.setLibraryGenreFilter(button.dataset.genreFilter);
+        });
+    }
     
     if (toggleBtn && filterBody) {
         // Check localStorage for saved state
@@ -6210,6 +6283,7 @@ window.switchSection = function(sectionName) {
     const heroEl = document.querySelector('.hero-cinematic, .hero-cinematic-v2');
 
     const doSwitch = () => {
+        if (sectionName !== 'intelligence') window.stopIntelligenceSpectrum?.();
         if (sectionName !== 'library') selectedTagTrackIds.clear();
         currentActiveSection = sectionName;
         currentActivePlaylistId = null;
@@ -6223,12 +6297,15 @@ window.switchSection = function(sectionName) {
         if (sectionName === 'albums') renderAlbums();
         if (sectionName === 'favorites' && navFavorites) navFavorites.classList.add('active');
         if (sectionName === 'stats' && navStats) navStats.classList.add('active');
+        const navIntelligence = document.getElementById('navIntelligence');
+        if (sectionName === 'intelligence' && navIntelligence) navIntelligence.classList.add('active');
         if (sectionName === 'home') window.renderHome?.();
         if (sectionName === 'library') renderLibrary();
         if (sectionName === 'duplicates') renderDuplicatePage();
         if (sectionName === 'artists') renderArtists();
         if (sectionName === 'favorites') renderFavorites();
         if (sectionName === 'stats') { renderStats().then(() => { if (audioCtx && analyser) startLiveSpectrumAnalyzer(); }); }
+        if (sectionName === 'intelligence') window.renderIntelligencePage?.();
     };
 
     // If we're switching away from home and the cinematic hero exists, play a close animation first
@@ -7067,7 +7144,7 @@ async function initVersionStatus() {
                 versionBadge.classList.remove('update-available');
                 versionBadge.onclick = null;
             } else {
-                versionBadge.textContent = 'v1.6.0';
+                versionBadge.textContent = 'v1.8.0';
             }
         });
     }
@@ -7257,7 +7334,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (window.electronAPI?.onLibraryRestored) {
             window.electronAPI.onLibraryRestored(async (restoreResult) => {
                 try {
-                    playRequestCounter++;
+                    playbackRequestGate.invalidate();
                     cancelQueuedAudioTransition(false);
                     if (audioElement) {
                         audioElement.pause();

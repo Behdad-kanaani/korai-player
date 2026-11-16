@@ -4,7 +4,12 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const AdmZip = require('adm-zip');
-const { createRateLimiter, assertSafeUrl, resolveSafePath } = require('./securityUtils');
+const { createRateLimiter, fetchSafeUrl, resolveSafePath, isPathInside, isSafeObjectKey, getClientIp } = require('./securityUtils');
+
+const PLUGIN_ID_RE = /^[a-zA-Z0-9._-]+(?:\/[a-zA-Z0-9._-]+)?$/;
+function isValidPluginId(id) {
+  return typeof id === 'string' && isSafeObjectKey(id) && PLUGIN_ID_RE.test(id);
+}
 
 /**
  * Setup plugin API endpoints for managing plugins via HTTP
@@ -46,15 +51,32 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
   const router = express.Router();
   router.use(createRateLimiter(60, 60_000));
 
+  // Distinct budgets for endpoints with materially different cost/risk. These
+  // are in addition to the router-wide ceiling and are keyed by direct peer IP.
+  const pluginStoreInstallLimiter = createRateLimiter(3, 60_000);
+  const pluginArchiveInstallLimiter = createRateLimiter(5, 60_000);
+  const pluginPreviewLimiter = createRateLimiter(10, 60_000);
+  const pluginMutationLimiter = createRateLimiter(20, 60_000);
+  const pluginHookLimiter = createRateLimiter(30, 60_000);
+  const pluginCatalogLimiter = createRateLimiter(30, 60_000);
+  const pluginReadLimiter = createRateLimiter(60, 60_000);
+  const pluginPerformanceLimiter = createRateLimiter(30, 60_000);
+
   // Temporary upload dir
   const uploadDir = path.join(os.tmpdir(), 'korai-plugin-uploads');
-  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+  fs.mkdirSync(uploadDir, { recursive: true, mode: 0o700 });
+  const uploadDirStat = fs.lstatSync(uploadDir);
+  if (!uploadDirStat.isDirectory() || uploadDirStat.isSymbolicLink()) {
+    throw new Error('Plugin upload directory is not a safe local directory');
+  }
+  try { fs.chmodSync(uploadDir, 0o700); } catch {}
+
 
   const upload = multer({
     dest: uploadDir,
-    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max
+    limits: { fileSize: 50 * 1024 * 1024, files: 1, fields: 10, parts: 11 }, // bounded ZIP upload
     fileFilter: (req, file, cb) => {
-      if (!file.originalname.endsWith('.zip')) {
+      if (typeof file.originalname !== 'string' || path.extname(file.originalname).toLowerCase() !== '.zip') {
         return cb(new Error('Only ZIP files allowed'));
       }
       cb(null, true);
@@ -132,7 +154,7 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
   });
 
   // Marketplace plugin list and search
-  router.get('/store', async (req, res) => {
+  router.get('/store', pluginCatalogLimiter, async (req, res) => {
     try {
       if (!pluginStore) return res.status(500).json({ error: 'plugin store unavailable' });
       const query = (req.query.q || '').toString().trim();
@@ -143,7 +165,7 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
     }
   });
 
-  router.get('/store/:id', async (req, res) => {
+  router.get('/store/:id', pluginCatalogLimiter, async (req, res) => {
     try {
       if (!pluginStore) return res.status(500).json({ error: 'plugin store unavailable' });
       const plugin = await pluginStore.getPluginDetails(req.params.id);
@@ -154,27 +176,23 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
     }
   });
 
-  router.post('/store/install', async (req, res) => {
+  router.post('/store/install', pluginStoreInstallLimiter, async (req, res) => {
     try {
       const url = req.body && req.body.url;
       if (!url) return res.status(400).json({ error: 'url is required' });
       if (!pluginStore) return res.status(500).json({ error: 'plugin store unavailable' });
-      const parsed = await assertSafeUrl(url, { allowHosts: ['raw.githubusercontent.com', 'github.com', 'objects.githubusercontent.com'] });
-      const tempPath = path.join(uploadDir, `plugin-store-${Date.now()}-${Math.round(Math.random() * 1e9)}.zip`);
-      const response = await fetch(parsed, { redirect: 'manual', signal: AbortSignal.timeout(30000) });
-      if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
-        const redirected = await assertSafeUrl(new URL(response.headers.get('location'), parsed).href, {
-          allowHosts: ['raw.githubusercontent.com', 'github.com', 'objects.githubusercontent.com']
-        });
-        const redirectedResponse = await fetch(redirected, { signal: AbortSignal.timeout(30000) });
-        if (!redirectedResponse.ok) throw new Error(`Failed to download plugin: ${redirectedResponse.status}`);
-        await streamResponseToFile(redirectedResponse, tempPath, 50 * 1024 * 1024);
-      } else {
-        if (!response.ok) throw new Error(`Failed to download plugin: ${response.status}`);
-        await streamResponseToFile(response, tempPath, 50 * 1024 * 1024);
-      }
+      const allowedStoreHosts = ['raw.githubusercontent.com', 'github.com', 'objects.githubusercontent.com'];
+      const tempPath = path.join(uploadDir, `plugin-store-${Date.now()}-${require('crypto').randomBytes(12).toString('hex')}.zip`);
+      const response = await fetchSafeUrl(url, {
+        allowHosts: allowedStoreHosts,
+        timeoutMs: 30_000,
+        maxRedirects: 4,
+        headers: { 'User-Agent': 'KORAI-Player-Plugin-Installer' }
+      });
+      if (!response.ok) throw new Error(`Failed to download plugin: ${response.status}`);
+      await streamResponseToFile(response, tempPath, 50 * 1024 * 1024);
       try {
-        const plugin = pluginManager.installFromZip(tempPath);
+        const plugin = pluginManager.installFromZip(tempPath, { allowedRoots: [uploadDir] });
         res.json({ message: 'Plugin installed successfully', plugin });
       } finally {
         try { fs.unlinkSync(tempPath); } catch {}
@@ -185,12 +203,12 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
   });
 
   // Install from ZIP
-  router.post('/install', upload.single('file'), async (req, res) => {
+  router.post('/install', pluginArchiveInstallLimiter, upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     try {
       const zipPath = req.file.path;
-      const plugin = pluginManager.installFromZip(zipPath);
+      const plugin = pluginManager.installFromZip(zipPath, { allowedRoots: [uploadDir] });
 
       // Cleanup temp file
       fs.unlink(zipPath, () => {});
@@ -208,7 +226,7 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
   });
 
   // Preview plugin manifest from ZIP without installing
-  router.post('/preview', upload.single('file'), async (req, res) => {
+  router.post('/preview', pluginPreviewLimiter, upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     const zipPath = req.file.path;
@@ -240,7 +258,7 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
   });
 
   // Enable plugin
-  router.post('/:id/enable', async (req, res) => {
+  router.post('/:id/enable', pluginMutationLimiter, async (req, res) => {
     try {
       // Check permissions first
       const perms = pluginManager.getPermissions(req.params.id);
@@ -271,9 +289,9 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
   });
 
   // Disable plugin
-  router.post('/:id/disable', async (req, res) => {
+  router.post('/:id/disable', pluginMutationLimiter, async (req, res) => {
     try {
-      const entryCheck = pluginManager.registry[req.params.id];
+      const entryCheck = pluginManager.getPlugin(req.params.id);
       if (entryCheck && entryCheck.builtin) {
         return res.status(403).json({ error: 'builtin_plugin', message: 'This plugin is builtin and cannot be disabled' });
       }
@@ -288,7 +306,7 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
   });
 
   // Get plugin permission status
-  router.get('/:id/permissions', (req, res) => {
+  router.get('/:id/permissions', pluginReadLimiter, (req, res) => {
     try {
       const perms = pluginManager.getPermissions(req.params.id);
       res.json(perms);
@@ -298,7 +316,7 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
   });
 
   // List pending runtime permission requests for a plugin
-  router.get('/:id/requests', (req, res) => {
+  router.get('/:id/requests', pluginReadLimiter, (req, res) => {
     try {
       if (!pluginHost) return res.status(500).json({ error: 'Plugin host not available' });
       const map = pluginHost.pendingRequests && pluginHost.pendingRequests.get(req.params.id);
@@ -314,7 +332,7 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
   });
 
   // Approve or deny a pending runtime permission request
-  router.post('/:id/requests/:msgId', express.json(), (req, res) => {
+  router.post('/:id/requests/:msgId', pluginMutationLimiter, express.json(), (req, res) => {
     try {
       if (!pluginHost) return res.status(500).json({ error: 'Plugin host not available' });
       const id = req.params.id;
@@ -343,7 +361,7 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
   });
 
   // Performance endpoints
-  router.get('/performance', (req, res) => {
+  router.get('/performance', pluginPerformanceLimiter, (req, res) => {
     try {
       const perf = pluginHost && pluginHost.performanceMonitor;
       if (!perf) return res.status(404).json({ error: 'Performance monitor not available' });
@@ -353,7 +371,7 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
     }
   });
 
-  router.get('/:id/performance', (req, res) => {
+  router.get('/:id/performance', pluginPerformanceLimiter, (req, res) => {
     try {
       const perf = pluginHost && pluginHost.performanceMonitor;
       if (!perf) return res.status(404).json({ error: 'Performance monitor not available' });
@@ -367,10 +385,10 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
   });
 
   // Call a hook on all running plugins that implement it (admin/testing)
-  router.post('/hook/:hookName', async (req, res) => {
+  router.post('/hook/:hookName', pluginHookLimiter, async (req, res) => {
     try {
       // Only allow calls from localhost for safety
-      const ip = (req.ip || '').toString();
+      const ip = getClientIp(req);
       const isLocal = ip === '127.0.0.1' || ip === '::1' || ip.endsWith('127.0.0.1') || ip.includes('::ffff:127.0.0.1');
       if (!isLocal) return res.status(403).json({ error: 'forbidden' });
       if (!pluginHost) return res.status(500).json({ error: 'Plugin host not available' });
@@ -391,10 +409,10 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
   });
 
   // Call a hook on a single plugin by id
-  router.post('/:id/hook/:hookName', async (req, res) => {
+  router.post('/:id/hook/:hookName', pluginHookLimiter, async (req, res) => {
     try {
       // Only allow calls from localhost for safety
-      const ip = (req.ip || '').toString();
+      const ip = getClientIp(req);
       const isLocal = ip === '127.0.0.1' || ip === '::1' || ip.endsWith('127.0.0.1') || ip.includes('::ffff:127.0.0.1');
       if (!isLocal) return res.status(403).json({ error: 'forbidden' });
       if (!pluginHost) return res.status(500).json({ error: 'Plugin host not available' });
@@ -419,7 +437,7 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
   });
 
   // Approve requested permissions for plugin
-  router.post('/:id/approve', express.json(), (req, res) => {
+  router.post('/:id/approve', pluginMutationLimiter, express.json(), (req, res) => {
     try {
       const list = req.body && Array.isArray(req.body.permissions) ? req.body.permissions : [];
       const granted = pluginManager.approvePermissions(req.params.id, list);
@@ -430,28 +448,18 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
   });
 
   // Uninstall plugin
-  router.delete('/:id', async (req, res) => {
+  router.delete('/:id', pluginMutationLimiter, async (req, res) => {
     try {
-      const entry = pluginManager.registry[req.params.id];
+      const entry = pluginManager.getPlugin(req.params.id);
       if (!entry) throw new Error('Plugin not found');
 
-      // Prevent uninstalling builtin/default plugins
+      // Prevent uninstalling builtin/default plugins.
       if (entry.builtin) {
         return res.status(403).json({ error: 'builtin_plugin', message: 'This plugin is builtin and cannot be uninstalled' });
       }
 
-      if (pluginHost) {
-        await pluginHost.deactivatePlugin(req.params.id);
-      }
-
-      // Delete plugin dir
-      if (entry.path && fs.existsSync(entry.path)) {
-        fs.rmSync(entry.path, { recursive: true, force: true });
-      }
-
-      delete pluginManager.registry[req.params.id];
-      pluginManager.saveRegistry();
-
+      if (pluginHost) await pluginHost.deactivatePlugin(req.params.id);
+      pluginManager.uninstallPlugin(req.params.id);
       res.json({ message: 'Plugin uninstalled' });
     } catch (err) {
       res.status(400).json({ error: err.message });
@@ -460,52 +468,54 @@ function setupPluginRoutes(app, pluginManager, pluginHost, pluginStore) {
 
   app.use('/api/plugins', router);
 
-  // Serve plugin assets (safe, prevents path traversal)
-  app.get('/api/plugin-asset/:id/:file', (req, res) => {
+  // Serve only the two declared plugin UI assets, after canonical containment.
+  app.get('/api/plugin-asset/:id/:file', createRateLimiter(120, 60_000), (req, res) => {
     try {
-      const id = req.params.id;
-      const file = req.params.file;
-      if (!id || !file) return res.status(400).send('bad request');
-      if (file.includes('..') || file.includes('/') || file.includes('\\')) return res.status(400).send('invalid file');
-      let entry = pluginManager.registry[id];
-      let target = null;
-      let pluginRoot = null;
+      const { id, file } = req.params;
+      if (!isValidPluginId(id) || !['ui.css', 'ui.js'].includes(file)) {
+        return res.status(400).send('invalid request');
+      }
 
-      if (entry && entry.path) {
-        pluginRoot = path.resolve(entry.path);
-        target = path.resolve(pluginRoot, file);
-      } else {
+      let entry = typeof pluginManager.getPlugin === 'function'
+        ? pluginManager.getPlugin(id)
+        : (pluginManager.registry && Object.hasOwn(pluginManager.registry, id) ? pluginManager.registry[id] : null);
+      let pluginRoot = entry && entry.path ? entry.path : null;
+
+      if (!pluginRoot) {
         try {
-          const workspacePlugins = path.join(pluginManager.appRoot, 'plugins');
-          if (fs.existsSync(workspacePlugins)) {
-            const dirs = fs.readdirSync(workspacePlugins, { withFileTypes: true }).filter(d => d.isDirectory());
-            const match = dirs.find(d => d.name.startsWith(id + '@'));
-            if (match) {
-              const candidate = path.resolve(workspacePlugins, match.name);
-              if (fs.existsSync(candidate)) {
+          const rawWorkspaceRoot = path.join(pluginManager.appRoot, 'plugins');
+          const workspaceRoot = fs.realpathSync.native(rawWorkspaceRoot);
+          const dirs = fs.readdirSync(workspaceRoot, { withFileTypes: true }).filter(dir => dir.isDirectory());
+          const match = dirs.find(dir => dir.name.startsWith(id.replace(/[^a-zA-Z0-9._-]+/g, '_') + '@'));
+          if (match) {
+            const candidate = fs.realpathSync.native(path.join(workspaceRoot, match.name));
+            if (isPathInside(workspaceRoot, candidate)) {
+              const manifestPath = resolveSafePath(path.join(candidate, 'manifest.json'), candidate, { allowHome: false });
+              if (manifestPath && fs.existsSync(manifestPath)) {
                 pluginRoot = candidate;
-                target = path.resolve(candidate, file);
                 entry = entry || { path: candidate };
               }
             }
           }
-        } catch (e) {
-          // ignore
+        } catch {
+          // Workspace fallback is optional; the registry remains authoritative.
         }
       }
-      if (!entry || !entry.path) return res.status(404).send('plugin not found');
-      if (!pluginRoot) pluginRoot = path.resolve(entry.path);
-      if (!target) target = path.resolve(pluginRoot, file);
-      const safeTarget = resolveSafePath(target, pluginRoot);
-      if (!safeTarget) return res.status(400).send('access denied');
-      const relativePath = path.relative(pluginRoot, safeTarget);
-      if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) return res.status(400).send('access denied');
-      if (!fs.existsSync(safeTarget)) return res.status(404).send('not found');
-      res.sendFile(safeTarget);
-    } catch (e) {
-      res.status(500).send('error');
+
+      if (!entry || !pluginRoot) return res.status(404).send('plugin not found');
+      const canonicalRoot = fs.realpathSync.native(pluginRoot);
+      const requestedTarget = path.join(canonicalRoot, file);
+      const safeTarget = resolveSafePath(requestedTarget, canonicalRoot, { allowHome: false });
+      if (!safeTarget || !isPathInside(canonicalRoot, safeTarget)) return res.status(400).send('access denied');
+      const stat = fs.statSync(safeTarget);
+      if (!stat.isFile()) return res.status(404).send('not found');
+      return res.sendFile(safeTarget);
+    } catch (error) {
+      if (error && error.code === 'ENOENT') return res.status(404).send('not found');
+      return res.status(500).send('error');
     }
   });
+
 }
 
 module.exports = { setupPluginRoutes };
